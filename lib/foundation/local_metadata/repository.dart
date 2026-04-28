@@ -27,7 +27,11 @@ class LocalMetadataRepository {
       }
       _doc = LocalMetadataDocument.fromJson(decoded);
     } catch (e, s) {
-      Log.error('LocalMetadata', 'Invalid metadata sidecar, fallback to legacy: $e', s);
+      Log.error(
+        'LocalMetadata',
+        'Invalid metadata sidecar, fallback to legacy: $e',
+        s,
+      );
       _doc = LocalMetadataDocument.empty();
     }
   }
@@ -37,8 +41,12 @@ class LocalMetadataRepository {
   Future<void> upsertSeries(LocalSeriesMeta series) async {
     final newSeries = Map<String, LocalSeriesMeta>.from(_doc.series);
     newSeries[series.seriesKey] = series;
-    _doc = LocalMetadataDocument(version: LocalMetadataDocument.currentVersion, series: newSeries);
-    await _persist();
+    final newDoc = LocalMetadataDocument(
+      version: LocalMetadataDocument.currentVersion,
+      series: newSeries,
+    );
+    await _persist(newDoc);
+    _doc = newDoc;
   }
 
   Future<void> removeSeries(String seriesKey) async {
@@ -47,22 +55,30 @@ class LocalMetadataRepository {
     }
     final newSeries = Map<String, LocalSeriesMeta>.from(_doc.series);
     newSeries.remove(seriesKey);
-    _doc = LocalMetadataDocument(version: LocalMetadataDocument.currentVersion, series: newSeries);
-    await _persist();
+    final newDoc = LocalMetadataDocument(
+      version: LocalMetadataDocument.currentVersion,
+      series: newSeries,
+    );
+    await _persist(newDoc);
+    _doc = newDoc;
   }
 
-  Future<void> _persist() async {
+  Future<void> _persist(LocalMetadataDocument document) async {
     final file = File(_filePath);
     await file.parent.create(recursive: true);
 
     final tmpPath = '$_filePath.tmp';
     final tmpFile = File(tmpPath);
-    final payload = jsonEncode(_doc.toJson());
+    final payload = jsonEncode(document.toJson());
 
     await tmpFile.writeAsString(payload, flush: true);
-    if (await file.exists()) {
-      await file.delete();
+    try {
+      await tmpFile.rename(_filePath);
+    } on FileSystemException {
+      if (await file.exists()) {
+        await file.delete();
+      }
+      await tmpFile.rename(_filePath);
     }
-    await tmpFile.rename(_filePath);
   }
 }

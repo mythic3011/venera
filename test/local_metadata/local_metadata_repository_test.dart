@@ -111,6 +111,25 @@ void main() {
       expect(series!.groups.single.label, 'Season 1');
       expect(series.chapters['c1']!.displayTitle, 'Ep 1');
     });
+
+    test('failed persist does not update in-memory document', () async {
+      final dir = await Directory.systemTemp.createTemp('local_meta_write_fail_');
+      final blocker = File(FilePath.join(dir.path, 'blocked'));
+      await blocker.writeAsString('not-a-directory');
+      final repository = LocalMetadataRepository(
+        FilePath.join(blocker.path, 'local_metadata_v1.json'),
+      );
+      await repository.init();
+
+      await expectLater(
+        () => repository.upsertSeries(
+          const LocalSeriesMeta(seriesKey: '0:1', groups: [], chapters: {}),
+        ),
+        throwsA(isA<FileSystemException>()),
+      );
+
+      expect(repository.document.series, isEmpty);
+    });
   });
 
   group('LocalManager metadata overlay', () {
