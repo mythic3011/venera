@@ -10,6 +10,10 @@ import 'package:venera/utils/image.dart';
 import 'app_dio.dart';
 
 abstract class ImageDownloader {
+  static bool shouldUseSourceImageConfig(String? sourceKey) {
+    return sourceKey != null && sourceKey != 'local';
+  }
+
   static Stream<ImageDownloadProgress> loadThumbnail(
       String url, String? sourceKey,
       [String? cid]) async* {
@@ -26,8 +30,8 @@ abstract class ImageDownloader {
     }
 
     var configs = <String, dynamic>{};
-    if (sourceKey != null) {
-      var comicSource = ComicSource.find(sourceKey);
+    if (shouldUseSourceImageConfig(sourceKey)) {
+      var comicSource = ComicSource.find(sourceKey!);
       configs = comicSource?.getThumbnailLoadingConfig?.call(url) ?? {};
     }
     configs['headers'] ??= {};
@@ -138,11 +142,16 @@ abstract class ImageDownloader {
     Future<Map<String, dynamic>?> Function()? onLoadFailed;
 
     var configs = <String, dynamic>{};
-    if (sourceKey != null) {
-      var comicSource = ComicSource.find(sourceKey);
-      configs = (await comicSource!.getImageLoadingConfig
-              ?.call(imageKey, cid, eid)) ??
-          {};
+    if (shouldUseSourceImageConfig(sourceKey)) {
+      var comicSource = ComicSource.find(sourceKey!);
+      if (comicSource == null) {
+        throw StateError(
+          "Comic source not found: $sourceKey. Please refresh/install sources.",
+        );
+      }
+      configs =
+          (await comicSource.getImageLoadingConfig?.call(imageKey, cid, eid)) ??
+              {};
     }
     var retryLimit = 5;
     while (true) {

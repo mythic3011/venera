@@ -31,6 +31,12 @@ import 'package:venera/foundation/image_provider/reader_image.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/log.dart';
 import 'package:venera/foundation/res.dart';
+import 'package:venera/foundation/reader/local_page_provider.dart';
+import 'package:venera/foundation/reader/diagnostic_mapping.dart';
+import 'package:venera/foundation/reader/remote_page_provider.dart';
+import 'package:venera/foundation/reader/source_ref_resolver.dart';
+import 'package:venera/foundation/reader/source_ref_diagnostics.dart';
+import 'package:venera/foundation/source_ref.dart';
 import 'package:venera/network/images.dart';
 import 'package:venera/pages/settings/settings_page.dart';
 import 'package:venera/utils/clipboard_image.dart';
@@ -77,6 +83,7 @@ class Reader extends StatefulWidget {
     this.initialPage,
     this.initialChapter,
     this.initialChapterGroup,
+    this.sourceRef,
     required this.author,
     required this.tags,
   });
@@ -103,6 +110,8 @@ class Reader extends StatefulWidget {
   final int? initialChapterGroup;
 
   final History history;
+
+  final SourceRef? sourceRef;
 
   @override
   State<Reader> createState() => _ReaderState();
