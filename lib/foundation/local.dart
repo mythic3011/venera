@@ -263,7 +263,7 @@ class LocalManager with ChangeNotifier {
     }
   }
 
-  Future<void> init() async {
+  Future<void> init({bool skipSourceInit = false}) async {
     _db = sqlite3.open(
       '${App.dataPath}/local.db',
     );
@@ -303,13 +303,42 @@ class LocalManager with ChangeNotifier {
       FilePath.join(App.dataPath, 'local_metadata_v1.json'),
     );
     await _metadataRepository.init();
-    await ComicSourceManager().ensureInit();
+    if (!skipSourceInit) {
+      await ComicSourceManager().ensureInit();
+    }
     restoreDownloadingTasks();
   }
 
 
   String _metadataSeriesKey(LocalComic comic) {
     return '${comic.comicType.value}:${comic.id}';
+  }
+
+  String? _normalizeMetadataGroupId(String? groupId) {
+    final trimmed = groupId?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return null;
+    }
+    if (trimmed == "__default__") {
+      return LocalSeriesMeta.defaultGroupId;
+    }
+    return trimmed;
+  }
+
+  bool _metadataGroupExists(LocalSeriesMeta series, String? groupId) {
+    return groupId == null ||
+        groupId == LocalSeriesMeta.defaultGroupId ||
+        series.groups.any((group) => group.id == groupId);
+  }
+
+  bool _metadataGroupLabelExists(
+    Iterable<LocalChapterGroup> groups,
+    String label, {
+    String? exceptGroupId,
+  }) {
+    return groups.any((group) {
+      return group.id != exceptGroupId && group.label == label;
+    });
   }
 
   void setMetadataRepositoryForTest(LocalMetadataRepository repository) {
@@ -329,8 +358,11 @@ class LocalManager with ChangeNotifier {
     final existing = _metadataRepository.getSeries(seriesKey) ??
         LocalSeriesMeta(seriesKey: seriesKey, groups: const [], chapters: const {});
     final groups = existing.groups.toList();
+    if (_metadataGroupLabelExists(groups, normalizedLabel)) {
+      throw Exception("Group label already exists");
+    }
     final id = (groupId?.trim().isNotEmpty ?? false)
-        ? groupId!.trim()
+        ? _normalizeMetadataGroupId(groupId)!
         : 'group_${DateTime.now().microsecondsSinceEpoch}';
     if (groups.any((g) => g.id == id)) {
       throw Exception('Group already exists');
@@ -360,6 +392,13 @@ class LocalManager with ChangeNotifier {
     final seriesKey = _metadataSeriesKey(comic);
     final existing = _metadataRepository.getSeries(seriesKey) ??
         LocalSeriesMeta(seriesKey: seriesKey, groups: const [], chapters: const {});
+    if (_metadataGroupLabelExists(
+      existing.groups,
+      normalizedLabel,
+      exceptGroupId: groupId,
+    )) {
+      throw Exception("Group label already exists");
+    }
     var found = false;
     final groups = existing.groups.map((group) {
       if (group.id != groupId) return group;
@@ -408,9 +447,8 @@ class LocalManager with ChangeNotifier {
     final seriesKey = _metadataSeriesKey(comic);
     final existing = _metadataRepository.getSeries(seriesKey) ??
         LocalSeriesMeta(seriesKey: seriesKey, groups: const [], chapters: const {});
-    if (groupId != null &&
-        groupId != LocalSeriesMeta.defaultGroupId &&
-        !existing.groups.any((g) => g.id == groupId)) {
+    final normalizedGroupId = _normalizeMetadataGroupId(groupId);
+    if (!_metadataGroupExists(existing, normalizedGroupId)) {
       throw Exception('Group not found');
     }
     final chapters = Map<String, LocalChapterMeta>.from(existing.chapters);
@@ -418,7 +456,7 @@ class LocalManager with ChangeNotifier {
     chapters[chapterId] = LocalChapterMeta(
       chapterId: chapterId,
       displayTitle: current?.displayTitle,
-      groupId: groupId,
+      groupId: normalizedGroupId,
       sortOrder: current?.sortOrder,
     );
     await _metadataRepository.upsertSeries(existing.copyWith(chapters: chapters));
@@ -468,8 +506,8 @@ class LocalManager with ChangeNotifier {
     final seriesKey = _metadataSeriesKey(comic);
     final existing = _metadataRepository.getSeries(seriesKey) ??
         LocalSeriesMeta(seriesKey: seriesKey, groups: const [], chapters: const {});
-    if (groupId != LocalSeriesMeta.defaultGroupId &&
-        !existing.groups.any((g) => g.id == groupId)) {
+    final normalizedGroupId = _normalizeMetadataGroupId(groupId);
+    if (!_metadataGroupExists(existing, normalizedGroupId)) {
       throw Exception("Group not found");
     }
     final chapters = Map<String, LocalChapterMeta>.from(existing.chapters);
@@ -479,7 +517,7 @@ class LocalManager with ChangeNotifier {
       chapters[chapterId] = LocalChapterMeta(
         chapterId: chapterId,
         displayTitle: current?.displayTitle,
-        groupId: groupId,
+        groupId: normalizedGroupId,
         sortOrder: i,
       );
     }
@@ -506,10 +544,8 @@ class LocalManager with ChangeNotifier {
       final chapterId = entry.key;
       final chapterTitle = entry.value;
       final meta = series.chapters[chapterId];
-      final requestedGroupId = meta?.groupId;
-      final hasRequestedGroup = requestedGroupId == null ||
-          requestedGroupId == LocalSeriesMeta.defaultGroupId ||
-          series.groups.any((g) => g.id == requestedGroupId);
+      final requestedGroupId = _normalizeMetadataGroupId(meta?.groupId);
+      final hasRequestedGroup = _metadataGroupExists(series, requestedGroupId);
       final targetGroupId = hasRequestedGroup
           ? (requestedGroupId ?? LocalSeriesMeta.defaultGroupId)
           : LocalSeriesMeta.defaultGroupId;
@@ -547,7 +583,12 @@ class LocalManager with ChangeNotifier {
       for (final row in rows) {
         mapped[row.$1] = row.$2;
       }
-      grouped[group.label] = mapped;
+      final existingGroup = grouped[group.label];
+      if (existingGroup == null) {
+        grouped[group.label] = mapped;
+      } else {
+        existingGroup.addAll(mapped);
+      }
     }
 
     if (grouped.isEmpty) {
@@ -910,6 +951,7 @@ class LocalManager with ChangeNotifier {
       }
     }
     remove(c.id, c.comicType);
+    _metadataRepository.removeSeries(_metadataSeriesKey(c));
     notifyListeners();
   }
 
@@ -921,19 +963,30 @@ class LocalManager with ChangeNotifier {
         .where((e) => !chapters.contains(e))
         .toList();
     if (newDownloadedChapters.isNotEmpty) {
+      final currentMap = c.chapters?.allChapters ?? const <String, String>{};
+      final newChapterMap = <String, String>{};
+      for (final id in newDownloadedChapters) {
+        final title = currentMap[id];
+        if (title != null) {
+          newChapterMap[id] = title;
+        }
+      }
       _db.execute(
-        'UPDATE comics SET downloadedChapters = ? WHERE id = ? AND comic_type = ?;',
+        'UPDATE comics SET chapters = ?, downloadedChapters = ? WHERE id = ? AND comic_type = ?;',
         [
+          jsonEncode(newChapterMap),
           jsonEncode(newDownloadedChapters),
           c.id,
           c.comicType.value,
         ],
       );
+      _removeChapterMetadata(c, chapters);
     } else {
       _db.execute(
         'DELETE FROM comics WHERE id = ? AND comic_type = ?;',
         [c.id, c.comicType.value],
       );
+      _metadataRepository.removeSeries(_metadataSeriesKey(c));
     }
     var shouldRemovedDirs = <Directory>[];
     for (var chapter in chapters) {
@@ -949,6 +1002,18 @@ class LocalManager with ChangeNotifier {
       _deleteDirectories(shouldRemovedDirs);
     }
     notifyListeners();
+  }
+
+  Future<void> _removeChapterMetadata(
+    LocalComic comic,
+    Iterable<String> chapterIds,
+  ) async {
+    final series = _metadataRepository.getSeries(_metadataSeriesKey(comic));
+    if (series == null) return;
+    final removeIds = chapterIds.toSet();
+    final chapters = Map<String, LocalChapterMeta>.from(series.chapters)
+      ..removeWhere((id, _) => removeIds.contains(id));
+    await _metadataRepository.upsertSeries(series.copyWith(chapters: chapters));
   }
 
   void renameComicChapter(LocalComic comic, String chapterId, String newTitle) {
