@@ -866,6 +866,34 @@ class LocalManager with ChangeNotifier {
     downloadingTasks.first.resume();
   }
 
+  Future<void> setComicCover(LocalComic comic, String imagePath) async {
+    if (!comic.baseDir.startsWith(path)) {
+      throw Exception("Only app-managed local comics support setting cover");
+    }
+    final imageFile = File(imagePath);
+    if (!imageFile.existsSync()) {
+      throw Exception("Cover image not found");
+    }
+    if (!imageFile.path.startsWith(comic.baseDir)) {
+      throw Exception("Invalid cover image path");
+    }
+    final ext = imageFile.extension;
+    final newCoverName = "cover.$ext";
+    final newCoverPath = FilePath.join(comic.baseDir, newCoverName);
+    await imageFile.copy(newCoverPath);
+    if (comic.cover != newCoverName) {
+      final oldCover = File(FilePath.join(comic.baseDir, comic.cover));
+      if (oldCover.existsSync()) {
+        oldCover.deleteIgnoreError();
+      }
+      _db.execute(
+        'UPDATE comics SET cover = ? WHERE id = ? AND comic_type = ?;',
+        [newCoverName, comic.id, comic.comicType.value],
+      );
+    }
+    notifyListeners();
+  }
+
   void deleteComic(LocalComic c, [bool removeFileOnDisk = true]) {
     if (removeFileOnDisk) {
       var dir = Directory(FilePath.join(path, c.directory));
@@ -921,6 +949,193 @@ class LocalManager with ChangeNotifier {
       _deleteDirectories(shouldRemovedDirs);
     }
     notifyListeners();
+  }
+
+  void renameComicChapter(LocalComic comic, String chapterId, String newTitle) {
+    final trimmed = newTitle.trim();
+    if (trimmed.isEmpty) return;
+    final currentMap = comic.chapters?.allChapters;
+    if (currentMap == null || !currentMap.containsKey(chapterId)) {
+      throw Exception("Chapter not found");
+    }
+    final updated = LinkedHashMap<String, String>.from(currentMap);
+    updated[chapterId] = trimmed;
+    _db.execute(
+      'UPDATE comics SET chapters = ? WHERE id = ? AND comic_type = ?;',
+      [jsonEncode(updated), comic.id, comic.comicType.value],
+    );
+    notifyListeners();
+  }
+
+  void reorderComicChapters(LocalComic comic, List<String> orderedChapterIds) {
+    final currentDownloaded = comic.downloadedChapters.toSet();
+    final orderedSet = orderedChapterIds.toSet();
+    if (orderedChapterIds.length != comic.downloadedChapters.length ||
+        orderedSet.length != orderedChapterIds.length ||
+        currentDownloaded.length != orderedSet.length ||
+        !orderedSet.containsAll(currentDownloaded)) {
+      throw Exception("Invalid chapter order");
+    }
+    final currentMap = comic.chapters?.allChapters ?? const <String, String>{};
+    final reordered = <String, String>{};
+    for (final id in orderedChapterIds) {
+      reordered[id] = currentMap[id] ?? id;
+    }
+    _db.execute(
+      'UPDATE comics SET chapters = ?, downloadedChapters = ? WHERE id = ? AND comic_type = ?;',
+      [
+        jsonEncode(reordered),
+        jsonEncode(orderedChapterIds),
+        comic.id,
+        comic.comicType.value,
+      ],
+    );
+    notifyListeners();
+  }
+
+  Future<void> addComicsAsChapters(
+    LocalComic targetComic,
+    List<LocalComic> sourceComics, {
+    bool deleteSourceComics = false,
+  }) async {
+    if (sourceComics.isEmpty) return;
+    final target = find(targetComic.id, targetComic.comicType);
+    if (target == null) {
+      throw Exception("Target comic not found");
+    }
+    if (!target.baseDir.startsWith(path)) {
+      throw Exception("Only app-managed local comics support chapter merge");
+    }
+
+    final targetDir = Directory(target.baseDir);
+    if (!targetDir.existsSync()) {
+      throw Exception("Target comic directory not found");
+    }
+
+    final chapterMap = <String, String>{};
+    final downloaded = <String>[];
+
+    if (target.hasChapters) {
+      final all = target.chapters!.allChapters;
+      for (final id in target.downloadedChapters) {
+        chapterMap[id] = all[id] ?? id;
+        downloaded.add(id);
+      }
+    } else {
+      final existingPages = await _listChapterImageFiles(targetDir);
+      if (existingPages.isNotEmpty) {
+        const id = "1";
+        final chapterDir = Directory(
+          FilePath.join(targetDir.path, getChapterDirectoryName(id)),
+        );
+        chapterDir.createSync(recursive: true);
+        await _copyPagesToChapter(existingPages, chapterDir);
+        for (final page in existingPages) {
+          page.deleteIgnoreError();
+        }
+        chapterMap[id] = target.title;
+        downloaded.add(id);
+      }
+    }
+
+    var nextId = _computeNextChapterId(chapterMap.keys);
+    final shouldDeleteSources = <LocalComic>[];
+
+    for (final sourceItem in sourceComics) {
+      final source = find(sourceItem.id, sourceItem.comicType);
+      if (source == null || source.id == target.id) continue;
+
+      Future<void> appendOneChapter(Directory sourceDir, String sourceTitle) async {
+        final pages = await _listChapterImageFiles(sourceDir);
+        if (pages.isEmpty) return;
+        final chapterId = (nextId++).toString();
+        final chapterDir = Directory(
+          FilePath.join(targetDir.path, getChapterDirectoryName(chapterId)),
+        );
+        chapterDir.createSync(recursive: true);
+        await _copyPagesToChapter(pages, chapterDir);
+        chapterMap[chapterId] = sourceTitle;
+        downloaded.add(chapterId);
+      }
+
+      if (source.hasChapters) {
+        final all = source.chapters!.allChapters;
+        for (final chapterId in source.downloadedChapters) {
+          final chapterTitle = all[chapterId] ?? chapterId;
+          final sourceDir = Directory(
+            FilePath.join(source.baseDir, getChapterDirectoryName(chapterId)),
+          );
+          if (!sourceDir.existsSync()) continue;
+          await appendOneChapter(sourceDir, "${source.title} - $chapterTitle");
+        }
+      } else {
+        final sourceDir = Directory(source.baseDir);
+        if (sourceDir.existsSync()) {
+          await appendOneChapter(sourceDir, source.title);
+        }
+      }
+
+      if (deleteSourceComics) {
+        shouldDeleteSources.add(source);
+      }
+    }
+
+    if (downloaded.isEmpty) {
+      return;
+    }
+
+    _db.execute(
+      'UPDATE comics SET chapters = ?, downloadedChapters = ? WHERE id = ? AND comic_type = ?;',
+      [
+        jsonEncode(chapterMap),
+        jsonEncode(downloaded),
+        target.id,
+        target.comicType.value,
+      ],
+    );
+
+    if (deleteSourceComics && shouldDeleteSources.isNotEmpty) {
+      batchDeleteComics(shouldDeleteSources, true, true);
+      return;
+    }
+    notifyListeners();
+  }
+
+  int _computeNextChapterId(Iterable<String> ids) {
+    var maxId = 0;
+    for (final id in ids) {
+      final n = int.tryParse(id);
+      if (n != null && n > maxId) {
+        maxId = n;
+      }
+    }
+    return maxId + 1;
+  }
+
+  Future<List<File>> _listChapterImageFiles(Directory dir) async {
+    final files = <File>[];
+    await for (final entity in dir.list()) {
+      if (entity is! File) continue;
+      if (entity.name.startsWith('cover.')) continue;
+      if (entity.name.startsWith('.')) continue;
+      if (isHiddenOrMacMetadataPath(entity.name)) continue;
+      files.add(entity);
+    }
+    files.sort((a, b) => naturalCompare(a.name, b.name));
+    return files;
+  }
+
+  Future<void> _copyPagesToChapter(
+    List<File> sourceFiles,
+    Directory chapterDir,
+  ) async {
+    for (var i = 0; i < sourceFiles.length; i++) {
+      final source = sourceFiles[i];
+      final target = File(
+        FilePath.join(chapterDir.path, "${i + 1}.${source.extension}"),
+      );
+      await source.copy(target.path);
+    }
   }
 
   void batchDeleteComics(List<LocalComic> comics, [bool removeFileOnDisk = true, bool removeFavoriteAndHistory = true]) {
