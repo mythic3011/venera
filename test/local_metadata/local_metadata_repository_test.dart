@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
+import 'package:venera/foundation/favorites.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/local_metadata/local_metadata.dart';
 import 'package:venera/utils/io.dart';
@@ -478,5 +479,71 @@ void main() {
         return !series.chapters.containsKey('c1') && series.chapters.containsKey('c2');
       });
     });
+
+    test(
+      'deleteComic does not crash when favorite DB exists but favorites manager is uninitialized',
+      () async {
+        await LocalFavoritesManager().close();
+        final (manager, repository) = await _buildInitializedManagerWithRepo(
+          tempPrefix: 'local_meta_delete_uninit_favorites_',
+        );
+        final comic = LocalComic(
+          id: '1',
+          title: 'Series',
+          subtitle: 'Author',
+          tags: const ['tag'],
+          directory: 'series',
+          chapters: const ComicChapters({'c1': 'Chapter 1', 'c2': 'Chapter 2'}),
+          cover: 'cover.jpg',
+          comicType: ComicType.local,
+          downloadedChapters: const ['c1', 'c2'],
+          createdAt: DateTime.fromMillisecondsSinceEpoch(0),
+        );
+        await manager.add(comic);
+        await manager.createGroup(comic, groupId: 'g1', label: 'Season');
+        await File(FilePath.join(App.dataPath, 'local_favorite.db')).writeAsString('');
+
+        expect(() => manager.deleteComic(comic, false), returnsNormally);
+        await _waitUntil(() => repository.getSeries('0:1') == null);
+      },
+    );
+
+    test(
+      'deleteComic calls favorites cleanup when favorites manager is initialized',
+      () async {
+        final (manager, _) = await _buildInitializedManagerWithRepo(
+          tempPrefix: 'local_meta_delete_init_favorites_',
+        );
+        final comic = LocalComic(
+          id: '1',
+          title: 'Series',
+          subtitle: 'Author',
+          tags: const ['tag'],
+          directory: 'series',
+          chapters: const ComicChapters({'c1': 'Chapter 1', 'c2': 'Chapter 2'}),
+          cover: 'cover.jpg',
+          comicType: ComicType.local,
+          downloadedChapters: const ['c1', 'c2'],
+          createdAt: DateTime.fromMillisecondsSinceEpoch(0),
+        );
+        await manager.add(comic);
+        await manager.createGroup(comic, groupId: 'g1', label: 'Season');
+
+        var cleanupCalled = false;
+        final favorites = LocalFavoritesManager();
+        favorites.markInitializedForTest(true);
+        try {
+          LocalFavoritesManager.deleteLocalComicOverrideForTest = (id, type) {
+            cleanupCalled = id == comic.id && type == comic.comicType;
+          };
+
+          expect(() => manager.deleteComic(comic, false), returnsNormally);
+          expect(cleanupCalled, isTrue);
+        } finally {
+          LocalFavoritesManager.deleteLocalComicOverrideForTest = null;
+          favorites.markInitializedForTest(false);
+        }
+      },
+    );
   });
 }

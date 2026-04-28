@@ -529,13 +529,13 @@ class LocalManager with ChangeNotifier {
     if (base == null) return null;
     final series = _metadataRepository.getSeries(_metadataSeriesKey(comic));
     if (series == null) {
-      final fallback = LinkedHashMap<String, LinkedHashMap<String, String>>();
+      final fallback = <String, Map<String, String>>{};
       fallback[LocalSeriesMeta.defaultGroupLabel] =
           LinkedHashMap<String, String>.from(base.allChapters);
       return EffectiveChaptersView(groupedChapters: fallback);
     }
 
-    final grouped = LinkedHashMap<String, LinkedHashMap<String, String>>();
+    final grouped = <String, Map<String, String>>{};
     final allBase = base.allChapters;
     final chaptersByGroup = <String, List<(String, String, int)>>{};
 
@@ -579,7 +579,7 @@ class LocalManager with ChangeNotifier {
         if (byOrder != 0) return byOrder;
         return a.$1.compareTo(b.$1);
       });
-      final mapped = LinkedHashMap<String, String>();
+      final mapped = <String, String>{};
       for (final row in rows) {
         mapped[row.$1] = row.$2;
       }
@@ -942,13 +942,15 @@ class LocalManager with ChangeNotifier {
     }
     // Deleting a local comic means that it's no longer available, thus both favorite and history should be deleted.
     if (c.comicType == ComicType.local) {
-      if (HistoryManager().find(c.id, c.comicType) != null) {
-        HistoryManager().remove(c.id, c.comicType);
+      if (HistoryManager().isInitialized) {
+        if (HistoryManager().find(c.id, c.comicType) != null) {
+          HistoryManager().remove(c.id, c.comicType);
+        }
       }
-      var folders = LocalFavoritesManager().find(c.id, c.comicType);
-      for (var f in folders) {
-        LocalFavoritesManager().deleteComicWithId(f, c.id, c.comicType);
-      }
+      LocalFavoritesManager().deleteLocalComicFromAllFoldersIfInitialized(
+        c.id,
+        c.comicType,
+      );
     }
     remove(c.id, c.comicType);
     _metadataRepository.removeSeries(_metadataSeriesKey(c));

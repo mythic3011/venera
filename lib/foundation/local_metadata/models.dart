@@ -86,6 +86,7 @@ class LocalSeriesMeta {
   });
 
   static const defaultGroupId = 'default';
+  static const legacyDefaultGroupId = '__default__';
   static const defaultGroupLabel = 'Chapters';
 
   Map<String, dynamic> toJson() => {

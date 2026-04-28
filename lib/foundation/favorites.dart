@@ -17,6 +17,11 @@ import 'app.dart';
 import 'comic_source/comic_source.dart';
 import 'comic_type.dart';
 
+typedef DeleteLocalComicFromFavoritesForTest = void Function(
+  String id,
+  ComicType type,
+);
+
 String _getTimeString(DateTime time) {
   return time.toIso8601String().replaceFirst("T", " ").substring(0, 19);
 }
@@ -221,9 +226,16 @@ class LocalFavoritesManager with ChangeNotifier {
   LocalFavoritesManager._create();
 
   static LocalFavoritesManager? cache;
+  static DeleteLocalComicFromFavoritesForTest? deleteLocalComicOverrideForTest;
 
   late Database _db;
   late FavoritesStore _store;
+  bool _isInitialized = false;
+  bool get isInitialized => _isInitialized;
+  @visibleForTesting
+  void markInitializedForTest(bool value) {
+    _isInitialized = value;
+  }
 
   late Map<String, int> counts;
 
@@ -238,6 +250,9 @@ class LocalFavoritesManager with ChangeNotifier {
   }
 
   Future<void> init() async {
+    if (_isInitialized) {
+      return;
+    }
     counts = {};
     _db = sqlite3.open("${App.dataPath}/local_favorite.db");
     _store = FavoritesStore("${App.dataPath}/local_favorite.db");
@@ -290,6 +305,7 @@ class LocalFavoritesManager with ChangeNotifier {
       appdata.settings['followUpdatesFolder'] = null;
     }
     initCounts();
+    _isInitialized = true;
   }
 
   void initCounts() {
@@ -811,6 +827,21 @@ class LocalFavoritesManager with ChangeNotifier {
     notifyListeners();
   }
 
+  void deleteLocalComicFromAllFoldersIfInitialized(String id, ComicType type) {
+    if (!_isInitialized) {
+      return;
+    }
+    final override = deleteLocalComicOverrideForTest;
+    if (override != null) {
+      override(id, type);
+      return;
+    }
+    final folders = find(id, type);
+    for (final folder in folders) {
+      deleteComicWithId(folder, id, type);
+    }
+  }
+
   void batchDeleteComics(String folder, List<FavoriteItem> comics) {
     try {
       for (var comic in comics) {
@@ -1302,8 +1333,12 @@ class LocalFavoritesManager with ChangeNotifier {
   }
 
   Future<void> close() async {
+    if (!_isInitialized) {
+      return;
+    }
     await _store.close();
     _db.dispose();
+    _isInitialized = false;
   }
 
   void notifyChanges() {
