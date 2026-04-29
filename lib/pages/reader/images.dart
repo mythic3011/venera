@@ -179,6 +179,32 @@ class _ReaderImagesState extends State<_ReaderImages> {
       ),
     );
     final sourceRef = _buildSourceRef(loadMode);
+    Future<Res<List<String>>> legacyLoadPages() async {
+      if (loadMode == 'local') {
+        final targetChapterId =
+            sourceRef.params['chapterId']?.toString() ??
+            reader.widget.chapters?.ids.elementAtOrNull(reader.chapter - 1) ??
+            reader.chapter.toString();
+        return Res(
+          await LocalManager().getImages(
+            reader.cid,
+            ComicType.fromKey(reader.type.sourceKey),
+            targetChapterId,
+          ),
+        );
+      }
+      final source = ComicSource.find(reader.type.sourceKey);
+      final loadComicPages = source?.loadComicPages;
+      if (loadComicPages == null) {
+        return const Res.error('SOURCE_NOT_AVAILABLE');
+      }
+      final chapterId =
+          sourceRef.params['chapterId']?.toString() ??
+          reader.widget.chapters?.ids.elementAtOrNull(reader.chapter - 1) ??
+          reader.chapter.toString();
+      return loadComicPages(reader.cid, chapterId);
+    }
+
     final loader = ReaderPageLoader(
       loadLocalPages:
           ({
@@ -214,7 +240,14 @@ class _ReaderImagesState extends State<_ReaderImages> {
           },
       sourceExists: (sourceKey) => ComicSource.find(sourceKey) != null,
     );
-    final result = await loader.load(sourceRef);
+    final result = await dispatchReaderPageLoad(
+      useSourceRefResolver:
+          appdata.settings['reader_use_source_ref_resolver'] == true,
+      loadMode: loadMode,
+      legacyLoadPages: legacyLoadPages,
+      loader: loader,
+      sourceRef: sourceRef,
+    );
     if (!mounted) return;
     final res = result.res;
     if (res.error) {

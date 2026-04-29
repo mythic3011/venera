@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:venera/foundation/comic_source/comic_source.dart';
 import 'package:venera/foundation/reader/page_provider.dart';
-import 'package:venera/foundation/reader/source_ref_resolver.dart';
+import 'package:venera/foundation/reader/reader_page_loader.dart';
 import 'package:venera/foundation/res.dart';
 import 'package:venera/foundation/source_ref.dart';
 import 'package:venera/pages/comic_details_page/comic_page.dart';
@@ -16,16 +16,20 @@ class _SpyProvider implements ReadablePageProvider {
   }
 }
 
-Future<Res<List<String>>> _dispatch({
-  required bool flag,
+Future<ReaderPageLoaderResult> _dispatch({
+  required bool useSourceRefResolver,
   required SourceRef ref,
-  required Future<Res<List<String>>> Function() legacy,
-  required SourceRefResolver resolver,
+  required String loadMode,
+  required Future<Res<List<String>>> Function() legacyLoadPages,
+  required ReaderPageLoader loader,
 }) async {
-  if (!flag) {
-    return legacy();
-  }
-  return resolver.resolve(ref).loadPages(ref);
+  return dispatchReaderPageLoad(
+    useSourceRefResolver: useSourceRefResolver,
+    loadMode: loadMode,
+    legacyLoadPages: legacyLoadPages,
+    loader: loader,
+    sourceRef: ref,
+  );
 }
 
 void main() {
@@ -33,9 +37,17 @@ void main() {
     final local = _SpyProvider();
     final remote = _SpyProvider();
     var legacyCalls = 0;
-    final resolver = SourceRefResolver(
-      localProvider: local,
-      remoteProviderFactory: (_) => remote,
+    final loader = ReaderPageLoader(
+      loadLocalPages:
+          ({required localType, required localComicId, chapterId}) async {
+            local.calls++;
+            return ['resolver-local'];
+          },
+      loadRemotePages:
+          ({required sourceKey, required comicId, required chapterId}) async {
+            remote.calls++;
+            return const Res(['resolver-remote']);
+          },
       sourceExists: (_) => true,
     );
     final ref = SourceRef.fromLegacyLocal(
@@ -45,13 +57,14 @@ void main() {
     );
 
     await _dispatch(
-      flag: false,
+      useSourceRefResolver: false,
       ref: ref,
-      legacy: () async {
+      loadMode: 'local',
+      legacyLoadPages: () async {
         legacyCalls++;
         return const Res(['legacy']);
       },
-      resolver: resolver,
+      loader: loader,
     );
 
     expect(legacyCalls, 1);
@@ -63,9 +76,17 @@ void main() {
     final local = _SpyProvider();
     final remote = _SpyProvider();
     var legacyCalls = 0;
-    final resolver = SourceRefResolver(
-      localProvider: local,
-      remoteProviderFactory: (_) => remote,
+    final loader = ReaderPageLoader(
+      loadLocalPages:
+          ({required localType, required localComicId, chapterId}) async {
+            local.calls++;
+            return ['resolver-local'];
+          },
+      loadRemotePages:
+          ({required sourceKey, required comicId, required chapterId}) async {
+            remote.calls++;
+            return const Res(['resolver-remote']);
+          },
       sourceExists: (_) => true,
     );
     final ref = SourceRef.fromLegacyLocal(
@@ -75,13 +96,14 @@ void main() {
     );
 
     await _dispatch(
-      flag: true,
+      useSourceRefResolver: true,
       ref: ref,
-      legacy: () async {
+      loadMode: 'local',
+      legacyLoadPages: () async {
         legacyCalls++;
         return const Res(['legacy']);
       },
-      resolver: resolver,
+      loader: loader,
     );
 
     expect(legacyCalls, 0);
@@ -92,9 +114,17 @@ void main() {
   test('flag_on_local_ref_never_calls_remote_provider', () async {
     final local = _SpyProvider();
     final remote = _SpyProvider();
-    final resolver = SourceRefResolver(
-      localProvider: local,
-      remoteProviderFactory: (_) => remote,
+    final loader = ReaderPageLoader(
+      loadLocalPages:
+          ({required localType, required localComicId, chapterId}) async {
+            local.calls++;
+            return ['resolver-local'];
+          },
+      loadRemotePages:
+          ({required sourceKey, required comicId, required chapterId}) async {
+            remote.calls++;
+            return const Res(['resolver-remote']);
+          },
       sourceExists: (_) => true,
     );
     final ref = SourceRef.fromLegacyLocal(
@@ -104,10 +134,11 @@ void main() {
     );
 
     await _dispatch(
-      flag: true,
+      useSourceRefResolver: true,
       ref: ref,
-      legacy: () async => const Res(['legacy']),
-      resolver: resolver,
+      loadMode: 'local',
+      legacyLoadPages: () async => const Res(['legacy']),
+      loader: loader,
     );
 
     expect(local.calls, 1);
@@ -117,9 +148,17 @@ void main() {
   test('flag_on_remote_ref_never_calls_local_provider', () async {
     final local = _SpyProvider();
     final remote = _SpyProvider();
-    final resolver = SourceRefResolver(
-      localProvider: local,
-      remoteProviderFactory: (_) => remote,
+    final loader = ReaderPageLoader(
+      loadLocalPages:
+          ({required localType, required localComicId, chapterId}) async {
+            local.calls++;
+            return ['resolver-local'];
+          },
+      loadRemotePages:
+          ({required sourceKey, required comicId, required chapterId}) async {
+            remote.calls++;
+            return const Res(['resolver-remote']);
+          },
       sourceExists: (_) => true,
     );
     final ref = SourceRef.fromLegacyRemote(
@@ -129,10 +168,11 @@ void main() {
     );
 
     await _dispatch(
-      flag: true,
+      useSourceRefResolver: true,
       ref: ref,
-      legacy: () async => const Res(['legacy']),
-      resolver: resolver,
+      loadMode: 'remote',
+      legacyLoadPages: () async => const Res(['legacy']),
+      loader: loader,
     );
 
     expect(local.calls, 0);

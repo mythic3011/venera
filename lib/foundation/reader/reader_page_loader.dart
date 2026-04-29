@@ -1,4 +1,5 @@
 import 'package:venera/foundation/reader/local_page_provider.dart';
+import 'package:venera/foundation/reader/diagnostic_mapping.dart';
 import 'package:venera/foundation/reader/remote_page_provider.dart';
 import 'package:venera/foundation/reader/source_ref_diagnostics.dart';
 import 'package:venera/foundation/reader/source_ref_resolver.dart';
@@ -6,10 +7,7 @@ import 'package:venera/foundation/res.dart';
 import 'package:venera/foundation/source_ref.dart';
 
 class ReaderPageLoaderResult {
-  const ReaderPageLoaderResult({
-    required this.res,
-    required this.loadMode,
-  });
+  const ReaderPageLoaderResult({required this.res, required this.loadMode});
 
   final Res<List<String>> res;
   final String loadMode;
@@ -31,9 +29,8 @@ class ReaderPageLoader {
     final localProvider = LocalPageProvider(loadLocalPages: loadLocalPages);
     final resolver = SourceRefResolver(
       localProvider: localProvider,
-      remoteProviderFactory: (_) => RemotePageProvider(
-        loadRemotePages: loadRemotePages,
-      ),
+      remoteProviderFactory: (_) =>
+          RemotePageProvider(loadRemotePages: loadRemotePages),
       sourceExists: sourceExists,
     );
     try {
@@ -41,16 +38,24 @@ class ReaderPageLoader {
       final res = await provider.loadPages(sourceRef);
       return ReaderPageLoaderResult(res: res, loadMode: loadMode);
     } on SourceRefDiagnostic catch (e) {
-      if (e.code == SourceRefDiagnosticCode.sourceNotAvailable) {
-        return ReaderPageLoaderResult(
-          res: const Res.error('SOURCE_NOT_AVAILABLE'),
-          loadMode: loadMode,
-        );
-      }
       return ReaderPageLoaderResult(
-        res: Res.error(e.message),
+        res: Res.error(mapSourceRefDiagnosticToMessage(e)),
         loadMode: loadMode,
       );
     }
   }
+}
+
+Future<ReaderPageLoaderResult> dispatchReaderPageLoad({
+  required bool useSourceRefResolver,
+  required String loadMode,
+  required Future<Res<List<String>>> Function() legacyLoadPages,
+  required ReaderPageLoader loader,
+  required SourceRef sourceRef,
+}) async {
+  if (!useSourceRefResolver) {
+    final res = await legacyLoadPages();
+    return ReaderPageLoaderResult(res: res, loadMode: loadMode);
+  }
+  return loader.load(sourceRef);
 }
