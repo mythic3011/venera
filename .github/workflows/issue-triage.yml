@@ -1,0 +1,114 @@
+name: Issue triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+  contents: read
+
+concurrency:
+  group: issue-triage-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply triage labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || "";
+            const text = `${issue.title}\n${body}`.toLowerCase();
+
+            const requiredLabels = {
+              "type: bug": "d73a4a",
+              "type: proposal": "a2eeef",
+              "type: source": "fbca04",
+              "type: local-library": "1f6feb",
+              "type: reader": "1f6feb",
+              "type: import": "1f6feb",
+              "type: network": "1f6feb",
+              "type: ui": "1f6feb",
+              "type: docs": "0075ca",
+              "priority: p0": "b60205",
+              "priority: p1": "d93f0b",
+              "priority: p2": "fbca04",
+              "needs-info": "d4c5f9",
+              "not-actionable": "6e7781",
+              "wishlist": "cfd3d7",
+              "security-sensitive": "ee0701",
+              "needs-triage": "ededed"
+            };
+
+            for (const [name, color] of Object.entries(requiredLabels)) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name
+                });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name,
+                  color,
+                  description: "Created by issue triage workflow"
+                });
+              }
+            }
+
+            const labels = new Set(issue.labels.map((label) => label.name));
+            const add = (label) => labels.add(label);
+
+            if (text.includes("[bug]")) add("type: bug");
+            if (text.includes("[proposal]")) add("type: proposal");
+            if (text.includes("reader") || text.includes("閱讀器")) add("type: reader");
+            if (text.includes("local library") || text.includes("本地漫畫庫") || text.includes("local comic")) add("type: local-library");
+            if (text.includes("import") || text.includes("匯入")) add("type: import");
+            if (text.includes("network") || text.includes("網絡") || text.includes("download")) add("type: network");
+            if (text.includes("comic source") || text.includes("漫畫源") || text.includes("source")) add("type: source");
+            if (text.includes("ui") || text.includes("介面")) add("type: ui");
+            if (text.includes("docs") || text.includes("文件") || text.includes("readme")) add("type: docs");
+            if (text.includes("cookie") || text.includes("token") || text.includes("password") || text.includes("authorization")) {
+              add("security-sensitive");
+            }
+
+            const hasMissingTemplateFields =
+              text.includes("describe what happened") ||
+              text.includes("describe what should happen") ||
+              text.includes("what user problem does this solve") ||
+              text.includes("describe the exact behavior") ||
+              text.includes("1.\n2.\n3.");
+            const lowEffort =
+              body.length < 500 ||
+              hasMissingTemplateFields ||
+              text.includes("please add") ||
+              text.includes("support this") ||
+              text.includes("make the ui better") ||
+              text.includes("it does not work") ||
+              text.includes("加這個") ||
+              text.includes("支援這個") ||
+              text.includes("希望可以") ||
+              text.includes("不能用");
+
+            if (lowEffort) {
+              add("needs-info");
+              add("not-actionable");
+            }
+
+            if (text.includes("wishlist") || text.includes("許願")) {
+              add("wishlist");
+            }
+
+            await github.rest.issues.setLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: Array.from(labels)
+            });

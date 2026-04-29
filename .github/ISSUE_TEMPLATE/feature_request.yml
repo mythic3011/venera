@@ -1,0 +1,81 @@
+name: Feature request / 功能建議
+description: Propose a concrete feature. This is not a wishlist. / 提出具體功能建議；這裡不是許願池。
+title: "[Proposal]: "
+labels: ["type: proposal", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository is not a wishlist or free support queue.
+        If you want different behavior, provide evidence, a concrete proposal, or a PR.
+
+        本 repo 不是許願池，也不是免費支援隊列。
+        如果你希望改變行為，請提供證據、具體方案，或提交 PR。
+
+        Requests without concrete behavior, design direction, or risk analysis may be deferred or closed.
+
+        沒有具體行為、設計方向或風險說明的請求可能會被延後或關閉。
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / 範圍
+      options:
+        - Reader / 閱讀器
+        - Local Library / 本地漫畫庫
+        - Import / 匯入
+        - Network / 網絡
+        - Comic Source / 漫畫源
+        - UI / 介面
+        - Docs / 文件
+        - Other / 其他
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / 要解決的問題
+      description: Describe the user problem, not just the button or source you want. / 說明使用者問題，而不只是列出想要某個按鈕或漫畫源。
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed behavior / 建議行為
+      description: Explain exactly how it should work. / 清楚說明它應該如何運作。
+    validations:
+      required: true
+  - type: textarea
+    id: insufficient
+    attributes:
+      label: Why existing behavior is insufficient / 為何現有功能不足
+      description: Explain why current behavior cannot solve the problem. / 說明現有功能為何不能解決問題。
+    validations:
+      required: true
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation direction / 實作方向
+      description: Mention possible files/components, data model impact, edge cases, migration risk, performance risk, security risk, or UX risk. / 說明可能涉及的檔案或元件、資料模型影響、邊界情況、migration 風險、效能風險、安全風險或 UX 風險。
+    validations:
+      required: true
+  - type: dropdown
+    id: contribution
+    attributes:
+      label: Contribution intent / 貢獻意向
+      options:
+        - I will implement this / 我會實作
+        - I can help test / 我可協助測試
+        - Request only / 只是提出請求
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope_check
+    attributes:
+      label: Scope check / 範圍確認
+      options:
+        - label: I searched existing issues. / 我已搜尋現有 issues。
+          required: true
+        - label: This is not a generic wishlist request. / 這不是泛泛而談的許願式請求。
+          required: true
+        - label: I included a concrete behavior/design proposal. / 我已提供具體行為或設計方向。
+          required: true

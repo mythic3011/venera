@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Contribution And Issue Policy / 貢獻與 Issue 政策
+    url: https://github.com/mythic3011/venera/blob/master/CONTRIBUTING.md
+    about: Read this before opening an issue or pull request.
   - name: Comic source config issues
     url: https://github.com/venera-app/venera-configs/issues
     about: Report comic source/config script issues in the dedicated repository.

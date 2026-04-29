@@ -1,0 +1,110 @@
+name: Bug report / Bug 回報
+description: Report a reproducible bug with logs. / 回報可重現並附有 log 的 bug。
+title: "[Bug]: "
+labels: ["type: bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository is not a wishlist or free support queue.
+        If you want different behavior, provide evidence, a concrete proposal, or a PR.
+
+        本 repo 不是許願池，也不是免費支援隊列。
+        如果你希望改變行為，請提供證據、具體方案，或提交 PR。
+
+        Bugs without reproduction steps, platform/version, or logs may be closed as not reproducible.
+
+        沒有重現步驟、平台/版本或 log 的 bug 可能會被標記為無法重現並關閉。
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / 範圍
+      options:
+        - Reader / 閱讀器
+        - Local Library / 本地漫畫庫
+        - Import / 匯入
+        - Network / 網絡
+        - Comic Source / 漫畫源
+        - UI / 介面
+        - Settings / 設定
+        - Other / 其他
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current behavior / 目前行為
+      description: Describe what happened. / 說明實際發生了甚麼。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior / 預期行為
+      description: Describe what should happen. / 說明你預期應該發生甚麼。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps / 重現步驟
+      description: Provide concrete steps. / 提供可執行的重現步驟。
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform / 平台
+      placeholder: "macOS / Windows / Linux / Android / iOS"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version or commit / App 版本或 commit
+    validations:
+      required: true
+  - type: input
+    id: install
+    attributes:
+      label: Install method / 安裝方式
+      placeholder: "GitHub Releases / self-built / third-party package / other"
+    validations:
+      required: true
+  - type: dropdown
+    id: source_type
+    attributes:
+      label: Source type / 來源類型
+      options:
+        - Local comics / 本地漫畫
+        - Remote source / 遠端漫畫源
+        - Downloaded comics / 已下載漫畫
+        - Import / 匯入
+        - Settings / 設定
+        - Other / 其他
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / diagnostics / 截圖
+      description: Paste relevant logs, diagnostics, or screenshots. Redact passwords, tokens, cookies, and raw personal data. / 貼上相關 log、diagnostics 或截圖。請先遮蔽密碼、token、cookie 及原始個人資料。
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope_check
+    attributes:
+      label: Scope check / 範圍確認
+      options:
+        - label: I searched existing issues. / 我已搜尋現有 issues。
+          required: true
+        - label: I included reproduction steps. / 我已提供重現步驟。
+          required: true
+        - label: I included logs/screenshots where relevant. / 我已提供相關 log / 截圖。
+          required: true
+        - label: This is not a generic wishlist request. / 這不是泛泛而談的許願式請求。
+          required: true
