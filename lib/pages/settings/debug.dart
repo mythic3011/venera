@@ -88,8 +88,19 @@ class DebugPageState extends State<DebugPage> {
 
   @override
   Widget build(BuildContext context) {
-    return SmoothCustomScrollView(
-      slivers: [
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          return;
+        }
+        if (exporter.isRunning && exporter.baseUri != null) {
+          App.rootContext.showMessage(
+            message: "Diagnostics API is still running".tl,
+          );
+        }
+      },
+      child: SmoothCustomScrollView(
+        slivers: [
         SliverAppbar(title: Text("Debug".tl)),
         _CallbackSetting(
           title: "Reload Configs".tl,
@@ -217,7 +228,8 @@ class DebugPageState extends State<DebugPage> {
             ],
           ),
         ),
-      ],
+        ],
+      ),
     );
   }
 }
