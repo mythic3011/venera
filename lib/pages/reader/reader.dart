@@ -323,7 +323,6 @@ class _ReaderState extends State<Reader>
       ReaderTraceEvent(
         event: 'reader.dispose',
         timestamp: DateTime.now(),
-        loadMode: type == ComicType.local ? 'local' : 'remote',
         sourceKey: type.sourceKey,
         comicId: cid,
         chapterId: widget.chapters?.ids.elementAtOrNull(chapter - 1),
