@@ -13,6 +13,7 @@ import 'package:venera/foundation/favorites.dart';
 import 'package:venera/foundation/image_provider/image_favorites_provider.dart';
 import 'package:venera/foundation/log.dart';
 import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/source_identity/source_identity.dart';
 import 'package:venera/foundation/reader/resume_target_store.dart';
 import 'package:venera/utils/channel.dart';
 import 'package:venera/utils/ext.dart';
@@ -158,9 +159,8 @@ class History implements Comic {
   String? get language => null;
 
   @override
-  String get sourceKey => type == ComicType.local
-      ? 'local'
-      : type.comicSource?.key ?? "Unknown:${type.value}";
+  String get sourceKey =>
+      type == ComicType.local ? localSourceKey : type.sourceKey;
 
   @override
   double? get stars => null;
@@ -438,7 +438,7 @@ class HistoryManager with ChangeNotifier {
   /// Fetches the latest cover, title and subtitle from the source.
   /// Keeps the reading progress (ep, page, etc.).
   Future<bool> refreshHistoryInfo(History history) async {
-    if (history.sourceKey == 'local') {
+    if (isLocalSourceKey(history.sourceKey)) {
       // Local comics don't need refresh
       return false;
     }
@@ -519,7 +519,7 @@ class HistoryManager with ChangeNotifier {
 
     var historiesToRefresh = <History>[];
     for (var history in histories) {
-      if (history.sourceKey == 'local') {
+      if (isLocalSourceKey(history.sourceKey)) {
         skipped++;
         current++;
         controller.add(

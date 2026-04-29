@@ -1,27 +1,31 @@
-enum SourceRefType {
-  local,
-  remote,
+import 'package:venera/foundation/source_identity/source_identity.dart';
+
+enum SourceRefType { local, remote }
+
+String sourceRefTypeKey(SourceRefType type) => switch (type) {
+  SourceRefType.local => localSourceRefTypeKey,
+  SourceRefType.remote => remoteSourceRefTypeKey,
+};
+
+SourceRefType sourceRefTypeFromKey(String key) {
+  return switch (key) {
+    localSourceRefTypeKey => SourceRefType.local,
+    remoteSourceRefTypeKey => SourceRefType.remote,
+    _ => throw ArgumentError('Unknown SourceRefType: $key'),
+  };
 }
 
 extension SourceRefTypeX on SourceRefType {
-  String get key => switch (this) {
-    SourceRefType.local => 'local',
-    SourceRefType.remote => 'remote',
-  };
+  String get key => sourceRefTypeKey(this);
 
-  static SourceRefType fromKey(String key) {
-    return switch (key) {
-      'local' => SourceRefType.local,
-      'remote' => SourceRefType.remote,
-      _ => throw ArgumentError('Unknown SourceRefType: $key'),
-    };
-  }
+  static SourceRefType fromKey(String key) => sourceRefTypeFromKey(key);
 }
 
 class SourceRef {
   final String id;
   final SourceRefType type;
   final String sourceKey;
+  final SourceIdentity sourceIdentity;
   final String refId;
   final String? routeKey;
   final Map<String, Object?> params;
@@ -30,6 +34,7 @@ class SourceRef {
     required this.id,
     required this.type,
     required this.sourceKey,
+    required this.sourceIdentity,
     required this.refId,
     this.routeKey,
     this.params = const {},
@@ -45,7 +50,11 @@ class SourceRef {
     return SourceRef(
       id: 'local:$localType:$localComicId:${_chapterToken(chapterId)}',
       type: SourceRefType.local,
-      sourceKey: 'local',
+      sourceKey: localSourceKey,
+      sourceIdentity: sourceIdentityFromKey(
+        localSourceKey,
+        names: const ['Local'],
+      ),
       refId: localComicId,
       params: {
         'localType': localType,
@@ -65,12 +74,10 @@ class SourceRef {
       id: 'remote:$sourceKey:$comicId:${_chapterToken(chapterId)}',
       type: SourceRefType.remote,
       sourceKey: sourceKey,
+      sourceIdentity: sourceIdentityFromKey(sourceKey),
       refId: comicId,
       routeKey: routeKey,
-      params: {
-        'comicId': comicId,
-        'chapterId': chapterId,
-      },
+      params: {'comicId': comicId, 'chapterId': chapterId},
     );
   }
 
@@ -79,9 +86,9 @@ class SourceRef {
     required String sourceKey,
     String? chapterId,
   }) {
-    if (sourceKey == 'local') {
+    if (isLocalSourceKey(sourceKey)) {
       return SourceRef.fromLegacyLocal(
-        localType: 'local',
+        localType: localSourceKey,
         localComicId: comicId,
         chapterId: chapterId,
       );
@@ -98,6 +105,7 @@ class SourceRef {
       'id': id,
       'type': type.key,
       'sourceKey': sourceKey,
+      'sourceIdentity': sourceIdentity.toJson(),
       'refId': refId,
       'routeKey': routeKey,
       'params': params,
@@ -108,12 +116,19 @@ class SourceRef {
     final id = _requireString(json, 'id');
     final type = SourceRefTypeX.fromKey(_requireString(json, 'type'));
     final sourceKey = _requireString(json, 'sourceKey');
+    final rawIdentity = json['sourceIdentity'];
     final refId = _requireString(json, 'refId');
     final rawParams = json['params'];
     return SourceRef(
       id: id,
       type: type,
       sourceKey: sourceKey,
+      sourceIdentity: rawIdentity is Map<String, dynamic>
+          ? SourceIdentity.fromJson(rawIdentity)
+          : sourceIdentityFromKey(
+              sourceKey,
+              names: type == SourceRefType.local ? const ['Local'] : const [],
+            ),
       refId: refId,
       routeKey: json['routeKey'] as String?,
       params: rawParams is Map<String, dynamic>
@@ -137,6 +152,7 @@ class ReadingResumeTarget {
   final String sourceRefId;
   final SourceRefType sourceRefType;
   final String sourceKey;
+  final SourceIdentity? sourceIdentity;
   final int pageIndex;
   final DateTime updatedAt;
 
@@ -146,6 +162,7 @@ class ReadingResumeTarget {
     required this.sourceRefId,
     required this.sourceRefType,
     required this.sourceKey,
+    this.sourceIdentity,
     required this.pageIndex,
     required this.updatedAt,
   });
@@ -157,6 +174,7 @@ class ReadingResumeTarget {
       'sourceRefId': sourceRefId,
       'sourceRefType': sourceRefType.key,
       'sourceKey': sourceKey,
+      'sourceIdentity': sourceIdentity?.toJson(),
       'pageIndex': pageIndex,
       'updatedAtMs': updatedAt.millisecondsSinceEpoch,
     };
@@ -185,10 +203,13 @@ class ReadingResumeTarget {
       sourceRefId: requireString('sourceRefId'),
       sourceRefType: SourceRefTypeX.fromKey(requireString('sourceRefType')),
       sourceKey: requireString('sourceKey'),
+      sourceIdentity: json['sourceIdentity'] is Map<String, dynamic>
+          ? SourceIdentity.fromJson(
+              Map<String, dynamic>.from(json['sourceIdentity']),
+            )
+          : null,
       pageIndex: requireInt('pageIndex'),
-      updatedAt: DateTime.fromMillisecondsSinceEpoch(
-        requireInt('updatedAtMs'),
-      ),
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(requireInt('updatedAtMs')),
     );
   }
 }

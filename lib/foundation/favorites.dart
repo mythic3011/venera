@@ -9,6 +9,7 @@ import 'package:venera/foundation/db/favorites_store.dart';
 import 'package:venera/foundation/image_provider/local_favorite_image.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/log.dart';
+import 'package:venera/foundation/source_identity/source_identity.dart';
 import 'package:venera/pages/follow_updates_page.dart';
 import 'package:venera/utils/tags_translation.dart';
 import 'dart:io';
@@ -17,10 +18,8 @@ import 'app.dart';
 import 'comic_source/comic_source.dart';
 import 'comic_type.dart';
 
-typedef DeleteLocalComicFromFavoritesForTest = void Function(
-  String id,
-  ComicType type,
-);
+typedef DeleteLocalComicFromFavoritesForTest =
+    void Function(String id, ComicType type);
 
 String _getTimeString(DateTime time) {
   return time.toIso8601String().replaceFirst("T", " ").substring(0, 19);
@@ -110,9 +109,8 @@ class FavoriteItem implements Comic {
   int? get maxPage => null;
 
   @override
-  String get sourceKey => type == ComicType.local
-      ? 'local'
-      : type.comicSource?.key ?? "Unknown:${type.value}";
+  String get sourceKey =>
+      type == ComicType.local ? localSourceKey : type.sourceKey;
 
   @override
   double? get stars => null;
@@ -136,20 +134,10 @@ class FavoriteItem implements Comic {
   }
 
   static FavoriteItem fromJson(Map<String, dynamic> json) {
-    var type = json["type"] as int;
-    if (type == 0 && json['coverPath'].toString().startsWith('http')) {
-      type = 'picacg'.hashCode;
-    } else if (type == 1) {
-      type = 'ehentai'.hashCode;
-    } else if (type == 2) {
-      type = 'jm'.hashCode;
-    } else if (type == 3) {
-      type = 'hitomi'.hashCode;
-    } else if (type == 4) {
-      type = 'wnacg'.hashCode;
-    } else if (type == 6) {
-      type = 'nhentai'.hashCode;
-    }
+    final type = normalizeFavoriteJsonTypeValue(
+      typeValue: json["type"] as int,
+      coverPath: json['coverPath'].toString(),
+    );
     return FavoriteItem(
       id: json["id"] ?? json['target'],
       name: json["name"],
@@ -659,7 +647,8 @@ class LocalFavoritesManager with ChangeNotifier {
       coverPath: comic.coverPath,
       time: comic.time,
     );
-    final displayOrder = order ??
+    final displayOrder =
+        order ??
         (appdata.settings['newFavoriteAddTo'] == "end"
             ? _store.maxDisplayOrder(folder) + 1
             : _store.minDisplayOrder(folder) - 1);

@@ -1,4 +1,5 @@
 import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/foundation/source_identity/source_identity.dart';
 
 class ComicType {
   final int value;
@@ -13,11 +14,10 @@ class ComicType {
 
   String get sourceKey {
     if (this == local) {
-      return "local";
-    } else {
-      final source = comicSource;
-      return source?.key ?? "Unknown:$value";
+      return localSourceKey;
     }
+    final source = comicSource;
+    return source?.key ?? sourceKeyFromTypeValue(value);
   }
 
   ComicSource? get comicSource {
@@ -31,16 +31,7 @@ class ComicType {
   static const local = ComicType(0);
 
   factory ComicType.fromKey(String key) {
-    if (key == "local") {
-      return local;
-    } else if (key.startsWith("Unknown:")) {
-      final intKey = int.tryParse(key.substring("Unknown:".length));
-      if (intKey != null) {
-        return ComicType(intKey);
-      }
-      return ComicType(key.hashCode);
-    } else {
-      return ComicType(key.hashCode);
-    }
+    final value = sourceTypeValueFromKey(key);
+    return value == 0 ? local : ComicType(value);
   }
 }

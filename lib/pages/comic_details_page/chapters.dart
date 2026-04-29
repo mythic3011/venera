@@ -58,7 +58,7 @@ class _NormalComicChaptersState extends State<_NormalComicChapters> {
   void didChangeDependencies() {
     state = context.findAncestorStateOfType<_ComicPageState>()!;
     chapters = state.comic.chapters!;
-    if (state.comic.sourceKey == 'local') {
+    if (isLocalSourceKey(state.comic.sourceKey)) {
       showAll = true;
     }
     super.didChangeDependencies();
@@ -223,7 +223,7 @@ class _GroupedComicChaptersState extends State<_GroupedComicChapters>
   void didChangeDependencies() {
     state = context.findAncestorStateOfType<_ComicPageState>()!;
     chapters = state.comic.chapters!;
-    if (state.comic.sourceKey == 'local') {
+    if (isLocalSourceKey(state.comic.sourceKey)) {
       showAll = true;
     }
     tabController = TabController(

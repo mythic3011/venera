@@ -110,6 +110,13 @@ class ComicSourceParser {
         (throw ComicSourceParseException('version is required'));
     var minAppVersion = JsEngine().runCode("this['temp'].minAppVersion");
     var url = JsEngine().runCode("this['temp'].url");
+    final resolvedVersion = version ?? "1.0.0";
+    final identity = _loadSourceIdentity(
+      key: key,
+      name: _name!,
+      version: resolvedVersion,
+      filePath: filePath,
+    );
     if (minAppVersion != null) {
       if (compareSemVer(minAppVersion, App.version.split('-').first)) {
         throw ComicSourceParseException(
@@ -122,6 +129,9 @@ class ComicSourceParser {
     for (var source in ComicSource.all()) {
       if (source.key == key) {
         throw ComicSourceParseException("key($key) already exists");
+      }
+      if (source.identity.id == identity.id) {
+        throw ComicSourceParseException("source identity id(${identity.id}) already exists");
       }
     }
     _key = key;
@@ -165,6 +175,7 @@ class ComicSourceParser {
       _getValue("comic.enableTagsTranslate") ?? false,
       _parseStarRatingFunc(),
       _parseArchiveDownloader(),
+      identity: identity,
     );
 
     await source.loadData();
@@ -183,6 +194,45 @@ class ComicSourceParser {
     if (!_key!.contains(RegExp(r"^[a-zA-Z0-9_]+$"))) {
       throw ComicSourceParseException("key $_key is invalid");
     }
+  }
+
+  SourceIdentity _loadSourceIdentity({
+    required String key,
+    required String name,
+    required String version,
+    required String filePath,
+  }) {
+    final rawIdentity = JsEngine().runCode("this['temp'].identity");
+    final rawSourceId = JsEngine().runCode("this['temp'].sourceId");
+    if (rawIdentity != null && rawIdentity is! Map) {
+      throw ComicSourceParseException('identity must be an object');
+    }
+    if (rawSourceId != null && rawSourceId is! String) {
+      throw ComicSourceParseException('sourceId must be a string');
+    }
+    final identityMap = rawIdentity is Map ? Map<String, dynamic>.from(rawIdentity) : const <String, dynamic>{};
+    final identityId = (identityMap['id'] as String?) ?? (rawSourceId as String?) ?? key;
+    if (!identityId.contains(RegExp(r"^[a-zA-Z0-9_]+$"))) {
+      throw ComicSourceParseException("identity id $identityId is invalid");
+    }
+    final aliases = identityMap['aliases'];
+    final names = identityMap['names'];
+    return SourceIdentity.legacy(
+      key: key,
+      id: identityId,
+      kind: identityMap['kind'] as String? ?? remoteSourceKind,
+      aliases: aliases is List ? aliases.whereType<String>() : const <String>[],
+      names: [
+        name,
+        if (names is List) ...names.whereType<String>(),
+      ],
+      version: identityMap['version'] as String? ?? version,
+      audit: SourceIdentityAudit(
+        source: 'comic_source_parser',
+        loadedFrom: filePath,
+        declaredVersion: version,
+      ),
+    );
   }
 
   bool _checkExists(String index) {

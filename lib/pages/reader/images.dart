@@ -37,7 +37,7 @@ String? resolveLegacyRemoteSourceUnavailableErrorForTesting(
   if (sourceKey == null || sourceKey.isEmpty) {
     return 'SOURCE_NOT_AVAILABLE:<unknown>';
   }
-  if (sourceKey.startsWith('Unknown:')) {
+  if (isUnknownSourceKey(sourceKey)) {
     return 'SOURCE_NOT_AVAILABLE:$sourceKey';
   }
   final source = (findSource ?? ComicSource.find)(sourceKey);
@@ -59,9 +59,60 @@ bool _isReaderSourceUnavailableError(String? errorMessage) {
       message.contains('relative image url without a valid comic source');
 }
 
+bool _shouldLoadReaderPagesLocally({
+  required ComicType type,
+  required String comicId,
+  required bool Function(String comicId, ComicType type) isDownloaded,
+  required bool Function(String comicId) hasLocalComic,
+}) {
+  if (type == ComicType.local || isDownloaded(comicId, type)) {
+    return true;
+  }
+  return isUnknownSourceKey(type.sourceKey) && hasLocalComic(comicId);
+}
+
+String _readerLocalTypeKey({
+  required ComicType type,
+  required String comicId,
+  required bool Function(String comicId) hasLocalComic,
+}) {
+  if (isUnknownSourceKey(type.sourceKey) && hasLocalComic(comicId)) {
+    return localSourceKey;
+  }
+  return type.sourceKey;
+}
+
 @visibleForTesting
 bool isReaderSourceUnavailableErrorForTesting(String? errorMessage) {
   return _isReaderSourceUnavailableError(errorMessage);
+}
+
+@visibleForTesting
+bool shouldLoadReaderPagesLocallyForTesting({
+  required ComicType type,
+  required String comicId,
+  required bool Function(String comicId, ComicType type) isDownloaded,
+  required bool Function(String comicId) hasLocalComic,
+}) {
+  return _shouldLoadReaderPagesLocally(
+    type: type,
+    comicId: comicId,
+    isDownloaded: isDownloaded,
+    hasLocalComic: hasLocalComic,
+  );
+}
+
+@visibleForTesting
+String readerLocalTypeKeyForTesting({
+  required ComicType type,
+  required String comicId,
+  required bool Function(String comicId) hasLocalComic,
+}) {
+  return _readerLocalTypeKey(
+    type: type,
+    comicId: comicId,
+    hasLocalComic: hasLocalComic,
+  );
 }
 
 @visibleForTesting
@@ -166,13 +217,18 @@ class _ReaderImagesState extends State<_ReaderImages> {
     if (inProgress) return;
     inProgress = true;
     final loadMode =
-        reader.type == ComicType.local ||
-            (LocalManager().isDownloaded(
-              reader.cid,
-              reader.type,
-              reader.chapter,
-              reader.widget.chapters,
-            ))
+        _shouldLoadReaderPagesLocally(
+          type: reader.type,
+          comicId: reader.cid,
+          isDownloaded: (comicId, type) => LocalManager().isDownloaded(
+            comicId,
+            type,
+            reader.chapter,
+            reader.widget.chapters,
+          ),
+          hasLocalComic: (comicId) =>
+              LocalManager().find(comicId, ComicType.local) != null,
+        )
         ? 'local'
         : 'remote';
     final callId = reader.beginPageListDiagnostics(loadMode);
@@ -186,7 +242,14 @@ class _ReaderImagesState extends State<_ReaderImages> {
         return Res(
           await LocalManager().getImages(
             reader.cid,
-            ComicType.fromKey(reader.type.sourceKey),
+            ComicType.fromKey(
+              _readerLocalTypeKey(
+                type: reader.type,
+                comicId: reader.cid,
+                hasLocalComic: (comicId) =>
+                    LocalManager().find(comicId, ComicType.local) != null,
+              ),
+            ),
             targetChapterId,
           ),
         );
@@ -306,7 +369,12 @@ class _ReaderImagesState extends State<_ReaderImages> {
         reader.chapter.toString();
     if (loadMode == 'local') {
       return SourceRef.fromLegacyLocal(
-        localType: reader.type.sourceKey,
+        localType: _readerLocalTypeKey(
+          type: reader.type,
+          comicId: reader.cid,
+          hasLocalComic: (comicId) =>
+              LocalManager().find(comicId, ComicType.local) != null,
+        ),
         localComicId: reader.cid,
         chapterId: chapterId,
       );

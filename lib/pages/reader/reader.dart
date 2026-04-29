@@ -35,6 +35,7 @@ import 'package:venera/foundation/res.dart';
 import 'package:venera/foundation/reader/reader_diagnostics.dart';
 import 'package:venera/foundation/reader/reader_page_loader.dart';
 import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/source_identity/source_identity.dart';
 import 'package:venera/network/images.dart';
 import 'package:venera/pages/comic_source_page.dart';
 import 'package:venera/pages/settings/settings_page.dart';

@@ -19,6 +19,7 @@ import 'package:venera/foundation/history.dart';
 import 'package:venera/foundation/image_provider/cached_image.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/source_identity/source_identity.dart';
 import 'package:venera/foundation/res.dart';
 import 'package:venera/network/download.dart';
 import 'package:venera/network/cache.dart';
@@ -70,7 +71,7 @@ class ComicPage extends StatefulWidget {
 
 class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
     with _ComicPageActions {
-  bool get _isLocalSource => widget.sourceKey == 'local';
+  bool get _isLocalSource => isLocalSourceKey(widget.sourceKey);
 
   ComicDetails _buildLocalDetails(LocalComic localComic) {
     final tags = <String, List<String>>{};
@@ -379,7 +380,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                     style: ts.s14,
                   ).paddingVertical(4),
                 Text(
-                  comic.sourceKey == 'local'
+                  isLocalSourceKey(comic.sourceKey)
                       ? "Local".tl
                       : (ComicSource.find(comic.sourceKey)?.name ??
                             comic.sourceKey),
@@ -1113,7 +1114,7 @@ class _ComicPageLoadingPlaceHolder extends StatelessWidget {
   }
 
   ImageProvider? _imageProvider() {
-    if (sourceKey == 'local') {
+    if (isLocalSourceKey(sourceKey)) {
       final localComic = LocalManager().find(cid, ComicType.local);
       if (localComic != null) {
         return FileImage(localComic.coverFile);

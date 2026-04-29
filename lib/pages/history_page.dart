@@ -4,6 +4,7 @@ import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/history.dart';
+import 'package:venera/foundation/source_identity/source_identity.dart';
 import 'package:venera/utils/translations.dart';
 
 class HistoryPage extends StatefulWidget {
@@ -66,10 +67,7 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   void _removeHistory(History comic) {
-    HistoryManager().remove(
-      comic.id,
-      ComicType.fromKey(comic.sourceKey),
-    );
+    HistoryManager().remove(comic.id, ComicType.fromKey(comic.sourceKey));
   }
 
   void _refreshHistory(History comic) async {
@@ -103,8 +101,7 @@ class _HistoryPageState extends State<HistoryPage> {
     int failed = 0;
     int skipped = 0;
 
-    await for (var progress
-        in HistoryManager().refreshAllHistoriesStream()) {
+    await for (var progress in HistoryManager().refreshAllHistoriesStream()) {
       if (isCanceled) {
         return;
       }
@@ -123,10 +120,10 @@ class _HistoryPageState extends State<HistoryPage> {
         message:
             "Refresh Completed: Success @success, Failed @failed, Skipped @skipped"
                 .tlParams({
-          'success': success,
-          'failed': failed,
-          'skipped': skipped,
-        }),
+                  'success': success,
+                  'failed': failed,
+                  'skipped': skipped,
+                }),
       );
     }
   }
@@ -135,19 +132,19 @@ class _HistoryPageState extends State<HistoryPage> {
   Widget build(BuildContext context) {
     List<Widget> selectActions = [
       IconButton(
-          icon: const Icon(Icons.select_all),
-          tooltip: "Select All".tl,
-          onPressed: selectAll
+        icon: const Icon(Icons.select_all),
+        tooltip: "Select All".tl,
+        onPressed: selectAll,
       ),
       IconButton(
-          icon: const Icon(Icons.deselect),
-          tooltip: "Deselect".tl,
-          onPressed: deSelect
+        icon: const Icon(Icons.deselect),
+        tooltip: "Deselect".tl,
+        onPressed: deSelect,
       ),
       IconButton(
-          icon: const Icon(Icons.flip),
-          tooltip: "Invert Selection".tl,
-          onPressed: invertSelection
+        icon: const Icon(Icons.flip),
+        tooltip: "Invert Selection".tl,
+        onPressed: invertSelection,
       ),
       IconButton(
         icon: const Icon(Icons.delete),
@@ -277,7 +274,7 @@ class _HistoryPageState extends State<HistoryPage> {
                     }
                   : null,
               badgeBuilder: (c) {
-                if (c.sourceKey == 'local') {
+                if (isLocalSourceKey(c.sourceKey)) {
                   return 'Local'.tl;
                 }
                 return ComicSource.find(c.sourceKey)?.name ?? c.sourceKey;
@@ -311,17 +308,13 @@ class _HistoryPageState extends State<HistoryPage> {
   String getDescription(History h) {
     var res = "";
     if (h.ep >= 1) {
-      res += "Chapter @ep".tlParams({
-        "ep": h.ep,
-      });
+      res += "Chapter @ep".tlParams({"ep": h.ep});
     }
     if (h.page >= 1) {
       if (h.ep >= 1) {
         res += " - ";
       }
-      res += "Page @page".tlParams({
-        "page": h.page,
-      });
+      res += "Page @page".tlParams({"page": h.page});
     }
     return res;
   }

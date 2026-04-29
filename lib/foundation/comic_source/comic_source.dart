@@ -12,6 +12,7 @@ import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/history.dart';
 import 'package:venera/foundation/res.dart';
+import 'package:venera/foundation/source_identity/source_identity.dart';
 import 'package:venera/pages/category_comics_page.dart';
 import 'package:venera/pages/search_result_page.dart';
 import 'package:venera/utils/data_sync.dart';
@@ -45,10 +46,12 @@ class ComicSourceManager with ChangeNotifier, Init {
   List<ComicSource> all() => List.from(_sources);
 
   ComicSource? find(String key) =>
-      _sources.firstWhereOrNull((element) => element.key == key);
+      _sources.firstWhereOrNull((element) => element.identity.matchesKey(key));
 
-  ComicSource? fromIntKey(int key) =>
-      _sources.firstWhereOrNull((element) => element.key.hashCode == key);
+  ComicSource? fromIntKey(int key) => _sources.firstWhereOrNull(
+    (element) =>
+        matchesSourceIdentityTypeValue(identity: element.identity, typeValue: key),
+  );
 
   @override
   @protected
@@ -131,9 +134,13 @@ class ComicSource {
   /// Identifier of this source.
   final String key;
 
+  final SourceIdentity identity;
+
   int get intKey {
-    return key.hashCode;
+    return identity.typeValue;
   }
+
+  ComicType get comicType => ComicType(intKey);
 
   /// Account config.
   final AccountConfig? account;
@@ -332,7 +339,8 @@ class ComicSource {
     this.enableTagsTranslate,
     this.starRatingFunc,
     this.archiveDownloader,
-  );
+    {SourceIdentity? identity,}
+  ) : identity = identity ?? sourceIdentityFromKey(key, names: [name], version: version);
 }
 
 class AccountConfig {

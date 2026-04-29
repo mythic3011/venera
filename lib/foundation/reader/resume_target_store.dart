@@ -128,6 +128,7 @@ class ResumeTargetStore {
         sourceRefId: sourceRef.id,
         sourceRefType: sourceRef.type,
         sourceKey: sourceRef.sourceKey,
+        sourceIdentity: sourceRef.sourceIdentity,
         pageIndex: page,
         updatedAt: DateTime.now(),
       ),

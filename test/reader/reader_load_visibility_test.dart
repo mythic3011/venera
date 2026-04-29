@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/image_provider/reader_image.dart';
 import 'package:venera/pages/reader/reader.dart';
 
@@ -92,5 +93,33 @@ void main() {
       isReaderSourceUnavailableErrorForTesting('LOCAL_ASSET_MISSING'),
       isFalse,
     );
+  });
+
+  test('unknown reader type falls back to local when local comic exists', () {
+    final shouldLoadLocal = shouldLoadReaderPagesLocallyForTesting(
+      type: ComicType.fromKey('Unknown:122396838'),
+      comicId: '1',
+      isDownloaded: (_, _) => false,
+      hasLocalComic: (comicId) => comicId == '1',
+    );
+    final localTypeKey = readerLocalTypeKeyForTesting(
+      type: ComicType.fromKey('Unknown:122396838'),
+      comicId: '1',
+      hasLocalComic: (comicId) => comicId == '1',
+    );
+
+    expect(shouldLoadLocal, isTrue);
+    expect(localTypeKey, 'local');
+  });
+
+  test('unknown reader type stays remote when no local comic exists', () {
+    final shouldLoadLocal = shouldLoadReaderPagesLocallyForTesting(
+      type: ComicType.fromKey('Unknown:122396838'),
+      comicId: 'missing',
+      isDownloaded: (_, _) => false,
+      hasLocalComic: (_) => false,
+    );
+
+    expect(shouldLoadLocal, isFalse);
   });
 }
