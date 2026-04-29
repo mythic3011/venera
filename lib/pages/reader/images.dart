@@ -62,6 +62,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
           reader.type,
           reader.chapter,
         );
+        if (!mounted) return;
         setState(() {
           reader.images = images;
           reader.isLoading = false;
@@ -72,6 +73,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
           });
         });
       } catch (e) {
+        if (!mounted) return;
         setState(() {
           error = e.toString();
           reader.isLoading = false;
@@ -95,6 +97,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
         reader.widget.cid,
         cp,
       );
+      if (!mounted) return;
       if (res.error) {
         setState(() {
           error = res.errorMessage;
@@ -149,6 +152,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
       try {
         final provider = resolver.resolve(sourceRef);
         final res = await provider.loadPages(sourceRef);
+        if (!mounted) return;
         if (res.error) {
           setState(() {
             error = res.errorMessage;
@@ -167,6 +171,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
           });
         }
       } on SourceRefDiagnostic catch (e) {
+        if (!mounted) return;
         setState(() {
           error = mapSourceRefDiagnosticToMessage(e);
           reader.isLoading = false;
@@ -174,6 +179,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
         });
       }
     }
+    if (!mounted) return;
     context.readerScaffold.update();
   }
 
