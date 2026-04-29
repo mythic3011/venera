@@ -331,6 +331,17 @@ class _GalleryModeState extends State<_GalleryMode>
     super.initState();
   }
 
+  @override
+  void dispose() {
+    keyRepeatTimer?.cancel();
+    controller.dispose();
+    for (final photoController in photoViewControllers.values) {
+      photoController.dispose();
+    }
+    photoViewControllers.clear();
+    super.dispose();
+  }
+
   /// Get the range of images for the given page. [page] is 1-based.
   (int start, int end) getPageImagesRange(int page) {
     var imagesPerPage = reader.imagesPerPage;
@@ -517,7 +528,7 @@ class _GalleryModeState extends State<_GalleryMode>
           var keys = photoViewControllers.keys.toList();
           for (var key in keys) {
             if (key != i) {
-              photoViewControllers.remove(key);
+              photoViewControllers.remove(key)?.dispose();
             }
           }
         },
@@ -835,6 +846,8 @@ class _ContinuousModeState extends State<_ContinuousMode>
   @override
   void dispose() {
     itemPositionsListener.itemPositions.removeListener(onPositionChanged);
+    _scrollController?.removeListener(onScroll);
+    photoViewController.dispose();
     super.dispose();
   }
 
