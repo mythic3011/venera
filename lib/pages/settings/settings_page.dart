@@ -264,6 +264,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget buildRight(int pageIndex) {
     return Navigator(
+      key: ValueKey(pageIndex),
       onGenerateRoute: (settings) {
         return PageRouteBuilder(
           pageBuilder: (context, animation, secondaryAnimation) {
