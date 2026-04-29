@@ -6,6 +6,8 @@ import 'package:venera/foundation/image_provider/reader_image.dart';
 
 void main() {
   test('file URI image keys normalize to readable local file paths', () {
+    expect(readerImageFilePathForTesting('file:///tmp/a.jpg'), '/tmp/a.jpg');
+
     final tempDir = Directory.systemTemp.createTempSync(
       'venera_reader_image_path_test_',
     );
@@ -16,6 +18,25 @@ void main() {
 
     expect(normalizedPath, file.path);
     expect(File(normalizedPath).existsSync(), isTrue);
+  });
+
+  test('file URI image key with spaces normalizes correctly', () {
+    final tempDir = Directory.systemTemp.createTempSync(
+      'venera_reader_image_path_test_',
+    );
+    addTearDown(() => tempDir.deleteSync(recursive: true));
+
+    final file = File('${tempDir.path}/page with spaces.bin')
+      ..writeAsBytesSync([1, 2, 3]);
+    final uri = file.uri.toString();
+    final normalizedPath = readerImageFilePathForTesting(uri);
+
+    expect(normalizedPath, file.path);
+    expect(File(normalizedPath).existsSync(), isTrue);
+  });
+
+  test('file URI with absolute path normalizes to local path', () {
+    expect(readerImageFilePathForTesting('file:///tmp/a.jpg'), '/tmp/a.jpg');
   });
 
   test('remote and relative image keys are not normalized as local paths', () {
