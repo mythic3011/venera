@@ -2,7 +2,12 @@
 
 ## Status
 
-- Approved target architecture for Venera local/remote comic management.
+- Supporting architecture document for the active Venera Next core rewrite.
+- Breaking-change direction is explicitly approved.
+- The canonical execution plan now lives in
+  `docs/plans/2026-04-30-venera-next-core-rewrite-plan.md`.
+- The implementation backlog detail lives in
+  `docs/plans/2026-04-30-unified-comic-detail-local-remote-implementation-plan.md`.
 - This supersedes the older local-only management direction in
   `docs/plans/2026-04-28-local-comic-management-design.md` whenever the two
   conflict.
@@ -10,6 +15,8 @@
   longer the domain boundary.
 
 ## Decision
+
+This architecture is now part of **Venera Next Core Rewrite**.
 
 Do **Unified Comic Detail + Unified Local Library Management**.
 
@@ -22,6 +29,22 @@ Use one domain identity:
 
 `local`, `remote`, `downloaded`, `imported`, `matched`, and `unavailable` are
 state/provenance around the comic. They are not separate detail-page products.
+
+## Old-Core Kill Rules
+
+1. `data/venera.db` is the only post-cutover comic-domain authority.
+2. `local.db`, `history.db`, `local_favorite.db`, and hidden JSON state are
+   import inputs only, never active runtime authorities.
+3. No dual-write, no runtime fallback reads, and no hidden temporary
+   compatibility mode.
+4. `LocalManager` and similar old managers cannot remain backend/domain
+   authority after cutover. They may survive only as migration helpers or
+   compile shims with explicit deletion gates.
+5. The target detail flow is only `ComicDetailPage(comicId)`. Local-only and
+   remote-only detail authority must be removed as active product surfaces.
+6. Widgets and pages must not rebuild storage or source authority in UI code.
+7. Migration or import failure is a hard-stop and must not trigger silent
+   fallback to old storage truth.
 
 ## Problem
 
@@ -151,6 +174,9 @@ The current layout is a fragmented filesystem monolith:
 This is not the target design. It splits domain truth across multiple DBs and
 JSON files, which makes local/remote merge, migration, smoke validation,
 backup/restore, and transaction safety much harder than they need to be.
+
+Under the rewrite decision, this old storage layout is not a refactor target.
+It is legacy input and extraction material only.
 
 The target design is one canonical relational database plus filesystem blobs:
 
