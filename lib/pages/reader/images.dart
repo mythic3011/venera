@@ -1,5 +1,23 @@
 part of 'reader.dart';
 
+@visibleForTesting
+String? resolveLegacyRemoteSourceUnavailableErrorForTesting(
+  String? sourceKey, {
+  ComicSource? Function(String key)? findSource,
+}) {
+  if (sourceKey == null || sourceKey.isEmpty) {
+    return 'SOURCE_NOT_AVAILABLE:<unknown>';
+  }
+  if (sourceKey.startsWith('Unknown:')) {
+    return 'SOURCE_NOT_AVAILABLE:$sourceKey';
+  }
+  final source = (findSource ?? ComicSource.find)(sourceKey);
+  if (source == null) {
+    return 'SOURCE_NOT_AVAILABLE:$sourceKey';
+  }
+  return null;
+}
+
 class _ReaderImages extends StatefulWidget {
   const _ReaderImages({super.key});
 
@@ -82,6 +100,20 @@ class _ReaderImagesState extends State<_ReaderImages> {
       }
     } else if (!useResolver) {
       var cp = reader.widget.chapters?.ids.elementAtOrNull(reader.chapter - 1);
+      final sourceUnavailableError =
+          resolveLegacyRemoteSourceUnavailableErrorForTesting(
+            reader.type.sourceKey,
+          );
+      if (sourceUnavailableError != null) {
+        setState(() {
+          error =
+              '$sourceUnavailableError Comic source is unavailable. Please refresh/install this source and retry.';
+          reader.isLoading = false;
+          inProgress = false;
+        });
+        context.readerScaffold.update();
+        return;
+      }
       final source = reader.type.comicSource;
       final loadComicPages = source?.loadComicPages;
       if (loadComicPages == null) {
