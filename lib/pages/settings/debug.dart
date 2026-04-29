@@ -81,7 +81,7 @@ class DebugPageState extends State<DebugPage> {
 
   Future<void> _saveLogsFile() async {
     final data = utf8.encode(await Log.buildExportText());
-    await saveFile(data: data, filename: "venera_logs.txt");
+    await saveFile(data: data, filename: Log.buildExportFileName());
     if (mounted) {
       context.showMessage(message: "Saved".tl);
     }

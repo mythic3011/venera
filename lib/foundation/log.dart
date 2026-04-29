@@ -53,12 +53,16 @@ class Log {
 
   static IOSink? _file;
 
-  static String _buildExportFileName() {
-    final stamp = DateTime.now()
+  static String buildExportFileName({
+    DateTime? timestamp,
+    String prefix = 'venera_logs_export',
+  }) {
+    final stamp = (timestamp ?? DateTime.now())
         .toIso8601String()
         .replaceAll(':', '-')
-        .replaceAll('.', '-');
-    return "logs_export_$stamp.txt";
+        .replaceAll('.', '-')
+        .replaceAll('T', '_');
+    return "${prefix}_$stamp.txt";
   }
 
   static String _platformName() {
@@ -154,7 +158,7 @@ class Log {
     await _file?.flush();
     final outPath =
         outputPath ??
-        Directory(App.dataPath).joinFile(_buildExportFileName()).path;
+        Directory(App.dataPath).joinFile(buildExportFileName()).path;
     final file = File(outPath);
     await file.parent.create(recursive: true);
     final exportText = await buildExportText();

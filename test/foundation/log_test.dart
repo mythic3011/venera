@@ -24,6 +24,13 @@ void main() {
     expect(DateTime.tryParse(serialized['time'] as String), isNotNull);
   });
 
+  test('buildExportFileName is descriptive and stable', () {
+    final filename = Log.buildExportFileName(
+      timestamp: DateTime.parse('2026-04-30T12:34:56.789Z'),
+    );
+    expect(filename, 'venera_logs_export_2026-04-30_12-34-56-789Z.txt');
+  });
+
   test('Log.newest returns newest matching logs first', () {
     Log.info('i1', 'i1');
     Log.error('e1', 'e1');
