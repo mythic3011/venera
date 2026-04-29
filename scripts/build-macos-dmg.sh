@@ -8,6 +8,7 @@ APP_NAME="venera"
 APP_BUNDLE_PATH="build/macos/Build/Products/Release/${APP_NAME}.app"
 DMG_STAGE_DIR="dist/dmg_contents"
 DMG_OUTPUT_PATH="dist/${APP_NAME}.dmg"
+XCODE_DESTINATION="${XCODE_DESTINATION:-platform=macOS,arch=arm64}"
 START_TS="$(date +%s)"
 VERBOSE="${VERBOSE:-0}"
 DMG_LOG_FILE=""
@@ -96,6 +97,12 @@ require_cmd hdiutil
 [[ -f "macos/Runner.xcworkspace/contents.xcworkspacedata" ]] || die "Missing Runner.xcworkspace"
 info "Workspace: $ROOT_DIR"
 info "Output DMG: $DMG_OUTPUT_PATH"
+info "Xcode destination: $XCODE_DESTINATION"
+
+BUILD_DB_DIR="build/macos/Build/Intermediates.noindex/XCBuildData"
+if [[ -f "${BUILD_DB_DIR}/build.db-shm" || -f "${BUILD_DB_DIR}/build.db-wal" ]]; then
+  die "Detected active or stale Xcode build database lock at ${BUILD_DB_DIR}. Stop other builds and retry."
+fi
 
 step "1/4" "Clearing xattrs from app source paths"
 xattr -rc macos/Runner assets lib pubspec.yaml pubspec.lock || true
@@ -116,6 +123,7 @@ if [[ "$VERBOSE" == "1" ]]; then
       -workspace Runner.xcworkspace \
       -scheme Runner \
       -configuration Release \
+      -destination "$XCODE_DESTINATION" \
       -derivedDataPath ../build/macos \
       CODE_SIGNING_ALLOWED=NO \
       CODE_SIGNING_REQUIRED=NO \
@@ -130,6 +138,7 @@ else
       -workspace Runner.xcworkspace \
       -scheme Runner \
       -configuration Release \
+      -destination "$XCODE_DESTINATION" \
       -derivedDataPath ../build/macos \
       CODE_SIGNING_ALLOWED=NO \
       CODE_SIGNING_REQUIRED=NO \
