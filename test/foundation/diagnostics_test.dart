@@ -8,10 +8,63 @@ void main() {
   });
 
   test('diagnosticsEnabled follows debug or environment flag', () {
-    expect(diagnosticsEnabled(isDebugMode: false, envEnabled: false), isFalse);
-    expect(diagnosticsEnabled(isDebugMode: true, envEnabled: false), isTrue);
-    expect(diagnosticsEnabled(isDebugMode: false, envEnabled: true), isTrue);
-    expect(diagnosticsEnabled(isDebugMode: true, envEnabled: true), isTrue);
+    expect(
+      diagnosticsEnabled(
+        isDebugMode: false,
+        envEnabled: false,
+        isDesktop: false,
+        runtimeEnabled: false,
+      ),
+      isFalse,
+    );
+    expect(
+      diagnosticsEnabled(
+        isDebugMode: true,
+        envEnabled: false,
+        isDesktop: false,
+        runtimeEnabled: false,
+      ),
+      isTrue,
+    );
+    expect(
+      diagnosticsEnabled(
+        isDebugMode: false,
+        envEnabled: true,
+        isDesktop: false,
+        runtimeEnabled: false,
+      ),
+      isTrue,
+    );
+    expect(
+      diagnosticsEnabled(
+        isDebugMode: true,
+        envEnabled: true,
+        isDesktop: false,
+        runtimeEnabled: false,
+      ),
+      isTrue,
+    );
+  });
+
+  test('diagnosticsEnabled allows desktop runtime enablement', () {
+    expect(
+      diagnosticsEnabled(
+        isDebugMode: false,
+        envEnabled: false,
+        isDesktop: true,
+        runtimeEnabled: true,
+      ),
+      isTrue,
+    );
+    expect(
+      diagnosticsEnabled(
+        isDebugMode: false,
+        envEnabled: false,
+        isDesktop: false,
+        runtimeEnabled: true,
+      ),
+      isFalse,
+    );
   });
 
   test('redaction removes secret-like fields and url query strings', () {

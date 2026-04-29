@@ -3,14 +3,21 @@ import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart';
 import 'package:talker_flutter/talker_flutter.dart' as talker;
+import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/log.dart' as legacy_log;
 
 const bool _envDiagnosticsEnabled = bool.fromEnvironment(
   'APP_DEBUG_DIAGNOSTICS',
 );
 
-bool diagnosticsEnabled({required bool isDebugMode, required bool envEnabled}) {
-  return isDebugMode || envEnabled;
+bool diagnosticsEnabled({
+  required bool isDebugMode,
+  required bool envEnabled,
+  required bool isDesktop,
+  required bool runtimeEnabled,
+}) {
+  return isDebugMode || envEnabled || (isDesktop && runtimeEnabled);
 }
 
 enum DiagnosticLevel {
@@ -390,6 +397,8 @@ abstract final class DevDiagnosticsApi {
     return diagnosticsEnabled(
       isDebugMode: kDebugMode,
       envEnabled: _envDiagnosticsEnabled,
+      isDesktop: App.isDesktop,
+      runtimeEnabled: appdata.settings['enableDebugDiagnostics'] == true,
     );
   }
 

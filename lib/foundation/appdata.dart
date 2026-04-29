@@ -238,6 +238,7 @@ class Settings with ChangeNotifier {
     'showChapterCommentsAtEnd':
         false, // show chapter comments at end of chapter
     'reader_use_source_ref_resolver': false,
+    'enableDebugDiagnostics': false,
   };
 
   operator [](String key) {

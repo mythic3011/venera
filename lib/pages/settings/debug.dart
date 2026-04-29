@@ -135,6 +135,18 @@ class DebugPageState extends State<DebugPage> {
           title: "Ignore Certificate Errors".tl,
           settingKey: "ignoreBadCertificate",
         ).toSliver(),
+        _SwitchSetting(
+          title: "Enable Diagnostics API".tl,
+          settingKey: "enableDebugDiagnostics",
+          subtitle: App.isDesktop
+              ? "Allow the desktop app to start the local debug diagnostics API without a debug build.".tl
+              : "Desktop only.".tl,
+          onChanged: () {
+            if (mounted) {
+              setState(() {});
+            }
+          },
+        ).toSliver(),
         SliverToBoxAdapter(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

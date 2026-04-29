@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:venera/components/components.dart';
 import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/debug_log_exporter.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/pages/settings/settings_page.dart';
@@ -45,6 +46,7 @@ void main() {
 
   tearDown(() async {
     await exporter.stop();
+    appdata.settings['enableDebugDiagnostics'] = false;
     DevDiagnosticsApi.debugEnabledOverride = null;
     AppDiagnostics.resetForTesting();
   });
@@ -66,6 +68,19 @@ void main() {
     expect(find.text('Open Diagnostics Console'), findsNothing);
     expect(find.text('Start'), findsNothing);
     expect(find.text('Disabled'), findsOneWidget);
+  });
+
+  testWidgets('desktop runtime setting enables diagnostics controls', (
+    tester,
+  ) async {
+    DevDiagnosticsApi.debugEnabledOverride = null;
+    appdata.settings['enableDebugDiagnostics'] = true;
+
+    await pumpDebugRoute(tester);
+
+    expect(find.text('Open Diagnostics Console'), findsOneWidget);
+    expect(find.text('Start'), findsOneWidget);
+    expect(find.text('Disabled'), findsNothing);
   });
 
   testWidgets(
