@@ -169,13 +169,16 @@ abstract class LoadingState<T extends StatefulWidget, S extends Object>
       error = null;
     });
     loadDataWithRetry().then((value) async {
+      if (!mounted) return;
       if (value.success) {
         data = value.data;
         await onDataLoaded();
+        if (!mounted) return;
         setState(() {
           isLoading = false;
         });
       } else {
+        if (!mounted) return;
         setState(() {
           isLoading = false;
           error = value.errorMessage!;
@@ -198,10 +201,12 @@ abstract class LoadingState<T extends StatefulWidget, S extends Object>
         if (value.success) {
           data = value.data;
           await onDataLoaded();
+          if (!mounted) return;
           setState(() {
             isLoading = false;
           });
         } else {
+          if (!mounted) return;
           setState(() {
             isLoading = false;
             error = value.errorMessage!;
