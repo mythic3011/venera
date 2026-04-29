@@ -2,6 +2,7 @@ import 'dart:async' show Future;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_qjs/flutter_qjs.dart';
+import 'package:venera/foundation/log.dart';
 import 'package:venera/foundation/js_engine.dart';
 import 'package:venera/network/images.dart';
 import 'package:venera/utils/io.dart';
@@ -15,6 +16,23 @@ String readerImageFilePathForTesting(String imageKey) {
     return Uri.parse(imageKey).toFilePath();
   }
   return imageKey;
+}
+
+@visibleForTesting
+String readerImageLoadContextForTesting({
+  required String imageKey,
+  String? sourceKey,
+  required String comicId,
+  required String chapterId,
+  required int page,
+}) {
+  final buffer = StringBuffer(
+    'imageKey=$imageKey comicId=$comicId chapterId=$chapterId page=$page',
+  );
+  if (sourceKey != null && sourceKey.isNotEmpty) {
+    buffer.write(' sourceKey=$sourceKey');
+  }
+  return buffer.toString();
 }
 
 class ReaderImageProvider
@@ -38,29 +56,45 @@ class ReaderImageProvider
   @override
   Future<Uint8List> load(chunkEvents, checkStop) async {
     Uint8List? imageBytes;
+    final diagnosticContext = readerImageLoadContextForTesting(
+      imageKey: imageKey,
+      sourceKey: sourceKey,
+      comicId: cid,
+      chapterId: eid,
+      page: page,
+    );
     if (imageKey.startsWith('file://')) {
       var file = File(readerImageFilePathForTesting(imageKey));
       if (await file.exists()) {
         imageBytes = await file.readAsBytes();
       } else {
-        throw "Error: File not found.";
+        throw "Error: File not found: ${file.path} ($diagnosticContext)";
       }
     } else {
-      await for (var event
-        in ImageDownloader.loadComicImage(imageKey, sourceKey, cid, eid)) {
-        checkStop();
-        chunkEvents.add(ImageChunkEvent(
-          cumulativeBytesLoaded: event.currentBytes,
-          expectedTotalBytes: event.totalBytes,
-        ));
-        if (event.imageBytes != null) {
-          imageBytes = event.imageBytes;
-          break;
+      try {
+        await for (var event
+            in ImageDownloader.loadComicImage(imageKey, sourceKey, cid, eid)) {
+          checkStop();
+          chunkEvents.add(ImageChunkEvent(
+            cumulativeBytesLoaded: event.currentBytes,
+            expectedTotalBytes: event.totalBytes,
+          ));
+          if (event.imageBytes != null) {
+            imageBytes = event.imageBytes;
+            break;
+          }
         }
+      } catch (e, s) {
+        Log.error(
+          "ReaderImageProvider",
+          "Failed to load remote image: $diagnosticContext\n$e",
+          s,
+        );
+        rethrow;
       }
     }
     if (imageBytes == null) {
-      throw "Error: Empty response body.";
+      throw "Error: Empty response body. ($diagnosticContext)";
     }
     if (appdata.settings['enableCustomImageProcessing']) {
       var script = appdata.settings['customImageProcessing'].toString();
