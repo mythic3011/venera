@@ -23,6 +23,35 @@ import 'package:venera/utils/translations.dart';
 
 import 'local_comics_page.dart';
 
+List<String> readLocalFavoriteFolderNames() {
+  return LocalFavoritesManager().folderNames;
+}
+
+List<String> readComicSourceNames() {
+  return ComicSource.all().map((e) => e.name).toList();
+}
+
+int countAvailableComicSourceUpdatesFrom({
+  required Map<String, String> availableUpdates,
+  required ComicSource? Function(String key) findSourceByKey,
+}) {
+  var count = 0;
+  availableUpdates.forEach((key, version) {
+    final source = findSourceByKey(key);
+    if (source != null && compareSemVer(version, source.version)) {
+      count++;
+    }
+  });
+  return count;
+}
+
+int countAvailableComicSourceUpdates() {
+  return countAvailableComicSourceUpdatesFrom(
+    availableUpdates: ComicSourceManager().availableUpdates,
+    findSourceByKey: ComicSource.find,
+  );
+}
+
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -228,19 +257,26 @@ class _HistoryState extends State<_History> {
   late List<History> history;
   late int count;
 
+  (List<History>, int) _readHistorySnapshot() {
+    final manager = HistoryManager();
+    return (manager.getRecent(), manager.count());
+  }
+
   void onHistoryChange() {
     if (mounted) {
       setState(() {
-        history = HistoryManager().getRecent();
-        count = HistoryManager().count();
+        final snapshot = _readHistorySnapshot();
+        history = snapshot.$1;
+        count = snapshot.$2;
       });
     }
   }
 
   @override
   void initState() {
-    history = HistoryManager().getRecent();
-    count = HistoryManager().count();
+    final snapshot = _readHistorySnapshot();
+    history = snapshot.$1;
+    count = snapshot.$2;
     HistoryManager().addListener(onHistoryChange);
     super.initState();
   }
@@ -337,18 +373,37 @@ class _Local extends StatefulWidget {
 class _LocalState extends State<_Local> {
   late List<LocalComic> local;
   late int count;
+  late int downloadingTaskCount;
+  late bool firstDownloadingTaskPaused;
+
+  ({List<LocalComic> recent, int count, int taskCount, bool firstTaskPaused})
+      _readLocalSnapshot() {
+    final manager = LocalManager();
+    final tasks = manager.downloadingTasks;
+    return (
+      recent: manager.getRecent(),
+      count: manager.count,
+      taskCount: tasks.length,
+      firstTaskPaused: tasks.isNotEmpty && tasks.first.isPaused,
+    );
+  }
 
   void onLocalComicsChange() {
-    setState(() {
-      local = LocalManager().getRecent();
-      count = LocalManager().count;
-    });
+    if (!mounted) return;
+    setState(_applyLocalSnapshot);
+  }
+
+  void _applyLocalSnapshot() {
+    final snapshot = _readLocalSnapshot();
+    local = snapshot.recent;
+    count = snapshot.count;
+    downloadingTaskCount = snapshot.taskCount;
+    firstDownloadingTaskPaused = snapshot.firstTaskPaused;
   }
 
   @override
   void initState() {
-    local = LocalManager().getRecent();
-    count = LocalManager().count;
+    _applyLocalSnapshot();
     LocalManager().addListener(onLocalComicsChange);
     super.initState();
   }
@@ -429,18 +484,18 @@ class _LocalState extends State<_Local> {
                 ).paddingHorizontal(8),
               Row(
                 children: [
-                  if (LocalManager().downloadingTasks.isNotEmpty)
+                  if (downloadingTaskCount > 0)
                     Button.outlined(
                       child: Row(
                         children: [
-                          if (LocalManager().downloadingTasks.first.isPaused)
+                          if (firstDownloadingTaskPaused)
                             const Icon(Icons.pause_circle_outline, size: 18)
                           else
                             const _AnimatedDownloadingIcon(),
                           const SizedBox(width: 8),
                           Text(
                             "@a Tasks".tlParams({
-                              'a': LocalManager().downloadingTasks.length,
+                              'a': downloadingTaskCount,
                             }),
                           ),
                         ],
@@ -487,7 +542,7 @@ class _ImportComicsWidgetState extends State<_ImportComicsWidget> {
 
   var height = 200.0;
 
-  var folders = LocalFavoritesManager().folderNames;
+  var folders = readLocalFavoriteFolderNames();
 
   String? selectedFolder;
 
@@ -652,13 +707,13 @@ class _ComicSourceWidgetState extends State<_ComicSourceWidget> {
 
   void onComicSourceChange() {
     setState(() {
-      comicSources = ComicSource.all().map((e) => e.name).toList();
+      comicSources = readComicSourceNames();
     });
   }
 
   @override
   void initState() {
-    comicSources = ComicSource.all().map((e) => e.name).toList();
+    comicSources = readComicSourceNames();
     ComicSourceManager().addListener(onComicSourceChange);
     super.initState();
   }
@@ -670,16 +725,7 @@ class _ComicSourceWidgetState extends State<_ComicSourceWidget> {
   }
 
   int get _availableUpdates {
-    int c = 0;
-    ComicSourceManager().availableUpdates.forEach((key, version) {
-      var source = ComicSource.find(key);
-      if (source != null) {
-        if (compareSemVer(version, source.version)) {
-          c++;
-        }
-      }
-    });
-    return c;
+    return countAvailableComicSourceUpdates();
   }
 
   @override

@@ -19,6 +19,61 @@ import 'package:venera/utils/translations.dart';
 import 'comic_details_page/comic_page.dart';
 import 'comic_source_page.dart';
 
+List<String> resolveConfiguredSearchSources({
+  required List<String> availableSourceKeys,
+  required List configuredSources,
+}) {
+  final configuredKeys = configuredSources
+      .whereType<String>()
+      .where(availableSourceKeys.contains)
+      .toList();
+  return configuredKeys;
+}
+
+String resolveSearchTarget({
+  required String currentSearchTarget,
+  required List<String> searchSources,
+}) {
+  if (searchSources.contains(currentSearchTarget)) {
+    return currentSearchTarget;
+  }
+  return searchSources.firstOrNull ?? "";
+}
+
+({bool aggregatedSearch, String searchTarget}) resolveInitialSearchSelection({
+  required Object? defaultSearchTarget,
+  required List<String> searchSources,
+}) {
+  if (defaultSearchTarget == "_aggregated_") {
+    return (aggregatedSearch: true, searchTarget: "");
+  }
+  if (defaultSearchTarget is String && searchSources.contains(defaultSearchTarget)) {
+    return (aggregatedSearch: false, searchTarget: defaultSearchTarget);
+  }
+  return (
+    aggregatedSearch: false,
+    searchTarget: resolveSearchTarget(
+      currentSearchTarget: "",
+      searchSources: searchSources,
+    ),
+  );
+}
+
+List<ComicSource> resolveSearchSourcesByKeys(List<String> searchSources) {
+  return searchSources
+      .map(ComicSource.find)
+      .whereType<ComicSource>()
+      .toList();
+}
+
+SearchPageData? resolveSearchPageData(String searchTarget) {
+  return ComicSource.find(searchTarget)?.searchPageData;
+}
+
+bool shouldEnableTagSuggestions(String searchTarget) {
+  return ComicSource.find(searchTarget)?.enableTagsSuggestions == true;
+}
+
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
@@ -34,7 +89,7 @@ class _SearchPageState extends State<SearchPage> {
   String searchTarget = "";
 
   SearchPageData get currentSearchPageData =>
-      ComicSource.find(searchTarget)!.searchPageData!;
+      resolveSearchPageData(searchTarget)!;
 
   bool aggregatedSearch = false;
 
@@ -102,7 +157,7 @@ class _SearchPageState extends State<SearchPage> {
       }
     }
 
-    if (!ComicSource.find(searchTarget)!.enableTagsSuggestions) {
+    if (!shouldEnableTagSuggestions(searchTarget)) {
       update();
       return;
     }
@@ -149,12 +204,13 @@ class _SearchPageState extends State<SearchPage> {
   @override
   void initState() {
     findSearchSources();
-    var defaultSearchTarget = appdata.settings['defaultSearchTarget'];
-    if (defaultSearchTarget == "_aggregated_") {
-      aggregatedSearch = true;
-    } else if (defaultSearchTarget != null &&
-        searchSources.contains(defaultSearchTarget)) {
-      searchTarget = defaultSearchTarget;
+    final selection = resolveInitialSearchSelection(
+      defaultSearchTarget: appdata.settings['defaultSearchTarget'],
+      searchSources: searchSources,
+    );
+    aggregatedSearch = selection.aggregatedSearch;
+    if (!aggregatedSearch) {
+      searchTarget = selection.searchTarget;
     }
     controller = SearchBarController(
       onSearch: search,
@@ -171,21 +227,19 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   void findSearchSources() {
-    var all = ComicSource.all()
+    final all = ComicSource.all()
         .where((e) => e.searchPageData != null)
         .map((e) => e.key)
         .toList();
-    var settings = appdata.settings['searchSources'] as List;
-    var sources = <String>[];
-    for (var source in settings) {
-      if (all.contains(source)) {
-        sources.add(source);
-      }
-    }
-    searchSources = sources;
-    if (!searchSources.contains(searchTarget)) {
-      searchTarget = searchSources.firstOrNull ?? "";
-    }
+    final configuredSources = appdata.settings['searchSources'] as List;
+    searchSources = resolveConfiguredSearchSources(
+      availableSourceKeys: all,
+      configuredSources: configuredSources,
+    );
+    searchTarget = resolveSearchTarget(
+      currentSearchTarget: searchTarget,
+      searchSources: searchSources,
+    );
   }
 
   void updateSearchSourcesIfNeeded() {
@@ -255,7 +309,7 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   Widget buildSearchTarget() {
-    var sources = searchSources.map((e) => ComicSource.find(e)!).toList();
+    var sources = resolveSearchSourcesByKeys(searchSources);
     return SliverToBoxAdapter(
       child: Container(
         width: double.infinity,

@@ -16,6 +16,111 @@ import 'package:venera/utils/translations.dart';
 import 'package:zip_flutter/zip_flutter.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
+bool canReorderLocalComicPages({
+  required String comicBaseDir,
+  required String localRootPath,
+}) {
+  return comicBaseDir.startsWith(localRootPath);
+}
+
+List<LocalComic> buildChapterMergeCandidates({
+  required LocalComic targetComic,
+  required List<LocalComic> allComics,
+}) {
+  return allComics
+      .where((comic) =>
+          !(comic.id == targetComic.id && comic.comicType == targetComic.comicType))
+      .toList();
+}
+
+List<String> reorderChapterIds({
+  required List<String> chapterIds,
+  required int oldIndex,
+  required int newIndex,
+}) {
+  final reordered = List<String>.from(chapterIds);
+  var targetIndex = newIndex;
+  if (targetIndex > oldIndex) {
+    targetIndex -= 1;
+  }
+  final moved = reordered.removeAt(oldIndex);
+  reordered.insert(targetIndex, moved);
+  return reordered;
+}
+
+Object resolveLocalChapterPageTarget({
+  required bool hasChapters,
+  required String? selectedChapterId,
+}) {
+  return hasChapters ? selectedChapterId! : 0;
+}
+
+String localImageUriToPath(String imageUri) {
+  return imageUri.replaceFirst('file://', '');
+}
+
+class _LocalComicsGateway {
+  LocalManager get _manager => LocalManager();
+
+  void addListener(VoidCallback listener) => _manager.addListener(listener);
+
+  void removeListener(VoidCallback listener) => _manager.removeListener(listener);
+
+  List<LocalComic> getComics(LocalSortType sortType) => _manager.getComics(sortType);
+
+  List<LocalComic> search(String keyword) => _manager.search(keyword);
+
+  LocalComic? findComic(String id, ComicType comicType) =>
+      _manager.find(id, comicType);
+
+  Future<List<String>> loadImages(
+    String comicId,
+    ComicType comicType,
+    Object chapterOrIndex,
+  ) => _manager.getImages(comicId, comicType, chapterOrIndex);
+
+  void renameChapter(LocalComic comic, String chapterId, String newName) =>
+      _manager.renameComicChapter(comic, chapterId, newName);
+
+  void deleteChapters(LocalComic comic, List<String> chapters) =>
+      _manager.deleteComicChapters(comic, chapters);
+
+  void batchDeleteComics(
+    List<LocalComic> comics,
+    bool removeComicFile,
+    bool removeFavoriteAndHistory,
+  ) =>
+      _manager.batchDeleteComics(
+        comics,
+        removeComicFile,
+        removeFavoriteAndHistory,
+      );
+
+  Future<void> reorderPages(
+    LocalComic comic,
+    Object chapterOrIndex,
+    List<String> pageOrder,
+  ) => _manager.reorderComicPages(comic, chapterOrIndex, pageOrder);
+
+  Future<void> setCover(LocalComic comic, String coverPath) =>
+      _manager.setComicCover(comic, coverPath);
+
+  Future<void> addComicsAsChapters(
+    LocalComic comic,
+    List<LocalComic> sources, {
+    required bool deleteSourceComics,
+  }) => _manager.addComicsAsChapters(
+        comic,
+        sources,
+        deleteSourceComics: deleteSourceComics,
+      );
+
+  void reorderChapters(LocalComic comic, List<String> chapterIds) =>
+      _manager.reorderComicChapters(comic, chapterIds);
+
+  String get localRootPath => _manager.path;
+}
+
 class LocalComicsPage extends StatefulWidget {
   const LocalComicsPage({super.key});
 
@@ -24,6 +129,8 @@ class LocalComicsPage extends StatefulWidget {
 }
 
 class _LocalComicsPageState extends State<LocalComicsPage> {
+  final _gateway = _LocalComicsGateway();
+
   late List<LocalComic> comics;
 
   late LocalSortType sortType;
@@ -36,30 +143,31 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
 
   Map<LocalComic, bool> selectedComics = {};
 
-  void update() {
+  List<LocalComic> _loadComicsSnapshot() {
     if (keyword.isEmpty) {
-      setState(() {
-        comics = LocalManager().getComics(sortType);
-      });
-    } else {
-      setState(() {
-        comics = LocalManager().search(keyword);
-      });
+      return _gateway.getComics(sortType);
     }
+    return _gateway.search(keyword);
+  }
+
+  void update() {
+    setState(() {
+      comics = _loadComicsSnapshot();
+    });
   }
 
   @override
   void initState() {
     var sort = appdata.implicitData["local_sort"] ?? "name";
     sortType = LocalSortType.fromString(sort);
-    comics = LocalManager().getComics(sortType);
-    LocalManager().addListener(update);
+    comics = _loadComicsSnapshot();
+    _gateway.addListener(update);
     super.initState();
   }
 
   @override
   void dispose() {
-    LocalManager().removeListener(update);
+    _gateway.removeListener(update);
     super.dispose();
   }
 
@@ -317,8 +425,10 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
                 });
               } else {
                 // prevent dirty data
-                var comic =
-                    LocalManager().find(c.id, ComicType.fromKey(c.sourceKey))!;
+                var comic = _gateway.findComic(
+                  c.id,
+                  ComicType.fromKey(c.sourceKey),
+                )!;
                 comic.read();
               }
             },
@@ -439,7 +549,7 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
               FilledButton(
                 onPressed: () {
                   context.pop();
-                  LocalManager().batchDeleteComics(
+                  _gateway.batchDeleteComics(
                     comics,
                     removeComicFile,
                     removeFavoriteAndHistory,
@@ -603,6 +713,7 @@ Future<void> openComicFolder(LocalComic comic) async {
 }
 
 void showDeleteChaptersPopWindow(BuildContext context, LocalComic comic) {
+  final gateway = _LocalComicsGateway();
   var chapters = <String>[];
 
   showPopUpWidget(
@@ -642,7 +753,7 @@ void showDeleteChaptersPopWindow(BuildContext context, LocalComic comic) {
                   FilledButton(
                     onPressed: () {
                       Future.delayed(const Duration(milliseconds: 200), () {
-                        LocalManager().deleteComicChapters(comic, chapters);
+                        gateway.deleteChapters(comic, chapters);
                       });
                       App.rootContext.pop();
                     },
@@ -723,6 +834,8 @@ class _LocalComicManagePanel extends StatefulWidget {
 
 class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
     with SingleTickerProviderStateMixin {
+  final _gateway = _LocalComicsGateway();
+
   late TabController _tabController;
   LocalComic? current;
   bool loading = true;
@@ -783,8 +896,7 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
   }
 
   Future<void> _reload() async {
-    final refreshed =
-        LocalManager().find(widget.comic.id, widget.comic.comicType);
+    final refreshed = _gateway.findComic(widget.comic.id, widget.comic.comicType);
     if (!mounted) return;
     current = refreshed;
     if (current != null && current!.hasChapters) {
@@ -808,11 +920,13 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
       loadedPageOrder = [];
       return;
     }
-    final ep = comic.hasChapters ? selectedChapterForPages! : 0;
-    final images =
-        await LocalManager().getImages(comic.id, comic.comicType, ep);
+    final ep = resolveLocalChapterPageTarget(
+      hasChapters: comic.hasChapters,
+      selectedChapterId: selectedChapterForPages,
+    );
+    final images = await _gateway.loadImages(comic.id, comic.comicType, ep);
     pageOrder = images
-        .map((e) => File(e.replaceFirst('file://', '')).name)
+        .map((e) => File(localImageUriToPath(e)).name)
         .toList(growable: true);
     loadedPageOrder = List<String>.from(pageOrder);
   }
@@ -825,9 +939,11 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
       selectedCoverPage = null;
       return;
     }
-    final ep = comic.hasChapters ? selectedChapterForCover! : 0;
-    coverPagePaths =
-        await LocalManager().getImages(comic.id, comic.comicType, ep);
+    final ep = resolveLocalChapterPageTarget(
+      hasChapters: comic.hasChapters,
+      selectedChapterId: selectedChapterForCover,
+    );
+    coverPagePaths = await _gateway.loadImages(comic.id, comic.comicType, ep);
     selectedCoverPage = coverPagePaths.isEmpty ? null : coverPagePaths.first;
   }
 
@@ -859,7 +975,7 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
     );
     final comic = current;
     if (comic == null || newName == null || newName!.isEmpty) return;
-    LocalManager().renameComicChapter(comic, id, newName!);
+    _gateway.renameChapter(comic, id, newName!);
     await _reload();
     if (mounted) setState(() {});
   }
@@ -888,7 +1004,7 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
       ),
     );
     if (!confirm) return;
-    LocalManager().deleteComicChapters(comic, [id]);
+    _gateway.deleteChapters(comic, [id]);
     await _reload();
     if (mounted) context.showMessage(message: "Deleted".tl);
   }
@@ -896,7 +1012,10 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
   Future<void> _savePageOrder() async {
     final comic = current;
     if (comic == null) return;
-    if (!comic.baseDir.startsWith(LocalManager().path)) {
+    if (!canReorderLocalComicPages(
+      comicBaseDir: comic.baseDir,
+      localRootPath: _gateway.localRootPath,
+    )) {
       context.showMessage(
         message: "Only app-managed local comics support page reorder".tl,
       );
@@ -906,8 +1025,11 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
       saving = true;
     });
     try {
-      final ep = comic.hasChapters ? selectedChapterForPages! : 0;
-      await LocalManager().reorderComicPages(comic, ep, pageOrder);
+      final ep = resolveLocalChapterPageTarget(
+        hasChapters: comic.hasChapters,
+        selectedChapterId: selectedChapterForPages,
+      );
+      await _gateway.reorderPages(comic, ep, pageOrder);
       loadedPageOrder = List<String>.from(pageOrder);
       if (mounted) context.showMessage(message: "Saved".tl);
     } catch (e) {
@@ -928,10 +1050,7 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
       saving = true;
     });
     try {
-      await LocalManager().setComicCover(
-        comic,
-        selectedCoverPage!.replaceFirst("file://", ""),
-      );
+      await _gateway.setCover(comic, localImageUriToPath(selectedCoverPage!));
       if (mounted) context.showMessage(message: "Saved".tl);
     } catch (e) {
       if (mounted) context.showMessage(message: e.toString());
@@ -948,10 +1067,11 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
     if (saving) return;
     final comic = current;
     if (comic == null) return;
-    final all = LocalManager().getComics(LocalSortType.name);
-    final candidates = all
-        .where((e) => !(e.id == comic.id && e.comicType == comic.comicType))
-        .toList();
+    final all = _gateway.getComics(LocalSortType.name);
+    final candidates = buildChapterMergeCandidates(
+      targetComic: comic,
+      allComics: all,
+    );
     if (candidates.isEmpty) {
       context.showMessage(message: "No other local comics found".tl);
       return;
@@ -1034,7 +1154,7 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
       saving = true;
     });
     try {
-      await LocalManager().addComicsAsChapters(
+      await _gateway.addComicsAsChapters(
         comic,
         selected.toList(),
         deleteSourceComics: deleteSource,
@@ -1106,14 +1226,13 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
                     }
                     final comic = current;
                     if (comic == null) return;
-                    final reordered = List<String>.from(_chapterIds);
-                    if (newIndex > oldIndex) {
-                      newIndex -= 1;
-                    }
-                    final moved = reordered.removeAt(oldIndex);
-                    reordered.insert(newIndex, moved);
+                    final reordered = reorderChapterIds(
+                      chapterIds: _chapterIds,
+                      oldIndex: oldIndex,
+                      newIndex: newIndex,
+                    );
                     try {
-                      LocalManager().reorderComicChapters(comic, reordered);
+                      _gateway.reorderChapters(comic, reordered);
                       await _reload();
                       if (mounted) setState(() {});
                     } catch (e) {

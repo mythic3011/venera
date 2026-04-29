@@ -1,5 +1,73 @@
 part of 'settings_page.dart';
 
+class _AppSettingsGateway {
+  LocalManager get _localManager => LocalManager();
+  CacheManager get _cacheManager => CacheManager();
+
+  String get localComicsPath => _localManager.path;
+
+  Future<String?> setLocalComicsPath(String path) => _localManager.setNewPath(path);
+
+  int get currentCacheSizeBytes => _cacheManager.currentSize;
+
+  Future<void> clearCache() => _cacheManager.clear();
+
+  void setCacheLimitSize(int sizeInMb) => _cacheManager.setLimitSize(sizeInMb);
+
+  int get cacheSizeLimitInMb => appdata.settings['cacheSize'];
+
+  void updateCacheSizeLimitInMb(int sizeInMb) {
+    appdata.settings['cacheSize'] = sizeInMb;
+    appdata.saveData();
+  }
+
+  bool get authorizationRequired => appdata.settings['authorizationRequired'];
+
+  void setAuthorizationRequired(bool value) {
+    appdata.settings['authorizationRequired'] = value;
+    appdata.saveData();
+  }
+
+  List get webdavConfigRaw {
+    final raw = appdata.settings['webdav'];
+    if (raw is List) {
+      return raw;
+    }
+    return [];
+  }
+
+  String get disableSyncFields => appdata.settings['disableSyncFields'];
+
+  void setDisableSyncFields(String value) {
+    appdata.settings['disableSyncFields'] = value;
+  }
+
+  void setWebdavConfig({
+    required String url,
+    required String user,
+    required String pass,
+  }) {
+    appdata.settings['webdav'] = [url, user, pass];
+  }
+
+  void setWebdavConfigRaw(List config) {
+    appdata.settings['webdav'] = config;
+  }
+
+  void clearWebdavConfig() {
+    appdata.settings['webdav'] = [];
+  }
+
+  bool get webdavAutoSync => appdata.implicitData['webdavAutoSync'] ?? true;
+
+  void setWebdavAutoSync(bool value) {
+    appdata.implicitData['webdavAutoSync'] = value;
+    appdata.writeImplicitData();
+  }
+
+  void saveAppData() => appdata.saveData();
+}
+
 class AppSettings extends StatefulWidget {
   const AppSettings({super.key});
 
@@ -8,6 +76,15 @@ class AppSettings extends StatefulWidget {
 }
 
 class _AppSettingsState extends State<AppSettings> {
+  final _gateway = _AppSettingsGateway();
+
+  String get _localComicsStoragePath => _gateway.localComicsPath;
+
+  void _copyLocalComicsStoragePath() {
+    Clipboard.setData(ClipboardData(text: _localComicsStoragePath));
+    context.showMessage(message: "Path copied to clipboard".tl);
+  }
+
   @override
   Widget build(BuildContext context) {
     return SmoothCustomScrollView(
@@ -19,13 +96,10 @@ class _AppSettingsState extends State<AppSettings> {
         ),
         ListTile(
           title: Text("Storage Path for local comics".tl),
-          subtitle: Text(LocalManager().path, softWrap: false),
+          subtitle: Text(_localComicsStoragePath, softWrap: false),
           trailing: IconButton(
             icon: const Icon(Icons.copy),
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: LocalManager().path));
-              context.showMessage(message: "Path copied to clipboard".tl);
-            },
+            onPressed: _copyLocalComicsStoragePath,
           ),
         ).toSliver(),
         _CallbackSetting(
@@ -47,7 +121,7 @@ class _AppSettingsState extends State<AppSettings> {
               barrierDismissible: false,
               allowCancel: false,
             );
-            var res = await LocalManager().setNewPath(result);
+            var res = await _gateway.setLocalComicsPath(result);
             loadingDialog.close();
             if (res != null) {
               context.showMessage(message: res);
@@ -59,7 +133,7 @@ class _AppSettingsState extends State<AppSettings> {
         ).toSliver(),
         ListTile(
           title: Text("Cache Size".tl),
-          subtitle: Text(bytesToReadableString(CacheManager().currentSize)),
+          subtitle: Text(bytesToReadableString(_gateway.currentCacheSizeBytes)),
         ).toSliver(),
         _CallbackSetting(
           title: "Clear Cache".tl,
@@ -70,7 +144,7 @@ class _AppSettingsState extends State<AppSettings> {
               barrierDismissible: false,
               allowCancel: false,
             );
-            await CacheManager().clear();
+            await _gateway.clearCache();
             loadingDialog.close();
             context.showMessage(message: "Cache cleared".tl);
             setState(() {});
@@ -78,7 +152,7 @@ class _AppSettingsState extends State<AppSettings> {
         ).toSliver(),
         _CallbackSetting(
           title: "Cache Limit".tl,
-          subtitle: "${appdata.settings['cacheSize']} MB",
+          subtitle: "${_gateway.cacheSizeLimitInMb} MB",
           callback: () {
             showInputDialog(
               context: context,
@@ -86,10 +160,9 @@ class _AppSettingsState extends State<AppSettings> {
               hintText: "Size in MB".tl,
               inputValidator: RegExp(r"^\d+$"),
               onConfirm: (value) {
-                appdata.settings['cacheSize'] = int.parse(value);
-                appdata.saveData();
+                _gateway.updateCacheSizeLimitInMb(int.parse(value));
                 setState(() {});
-                CacheManager().setLimitSize(appdata.settings['cacheSize']);
+                _gateway.setCacheLimitSize(_gateway.cacheSizeLimitInMb);
                 return null;
               },
             );
@@ -162,7 +235,7 @@ class _AppSettingsState extends State<AppSettings> {
             title: "Authorization Required".tl,
             settingKey: "authorizationRequired",
             onChanged: () async {
-              var current = appdata.settings['authorizationRequired'];
+              var current = _gateway.authorizationRequired;
               if (current) {
                 final auth = LocalAuthentication();
                 final bool canAuthenticateWithBiometrics =
@@ -172,9 +245,8 @@ class _AppSettingsState extends State<AppSettings> {
                 if (!canAuthenticate) {
                   context.showMessage(message: "Biometrics not supported".tl);
                   setState(() {
-                    appdata.settings['authorizationRequired'] = false;
+                    _gateway.setAuthorizationRequired(false);
                   });
-                  appdata.saveData();
                   return;
                 }
               }
@@ -350,6 +422,8 @@ class _WebdavSetting extends StatefulWidget {
 }
 
 class _WebdavSettingState extends State<_WebdavSetting> {
+  final _gateway = _AppSettingsGateway();
+
   String url = "";
   String user = "";
   String pass = "";
@@ -363,27 +437,23 @@ class _WebdavSettingState extends State<_WebdavSetting> {
   @override
   void initState() {
     super.initState();
-    if (appdata.settings['webdav'] is! List) {
-      appdata.settings['webdav'] = [];
+    if (_gateway.disableSyncFields.trim().isNotEmpty) {
+      disableSync = _gateway.disableSyncFields;
     }
-    if (appdata.settings['disableSyncFields'].trim().isNotEmpty) {
-      disableSync = appdata.settings['disableSyncFields'];
-    }
-    var configs = appdata.settings['webdav'] as List;
+    var configs = _gateway.webdavConfigRaw;
     if (configs.whereType<String>().length != 3) {
       return;
     }
     url = configs[0];
     user = configs[1];
     pass = configs[2];
-    autoSync = appdata.implicitData['webdavAutoSync'] ?? true;
+    autoSync = _gateway.webdavAutoSync;
   }
 
   void onAutoSyncChanged(bool value) {
     setState(() {
       autoSync = value;
-      appdata.implicitData['webdavAutoSync'] = value;
-      appdata.writeImplicitData();
+      _gateway.setWebdavAutoSync(value);
     });
   }
 
@@ -533,28 +603,28 @@ class _WebdavSettingState extends State<_WebdavSetting> {
               child: Button.filled(
                 isLoading: isTesting,
                 onPressed: () async {
-                  var oldConfig = appdata.settings['webdav'];
-                  var oldAutoSync = appdata.implicitData['webdavAutoSync'];
+                  var oldConfig = List.of(_gateway.webdavConfigRaw);
+                  var oldAutoSync = _gateway.webdavAutoSync;
+                  var oldDisableSync = _gateway.disableSyncFields;
 
                   if (url.trim().isEmpty &&
                       user.trim().isEmpty &&
                       pass.trim().isEmpty) {
-                    appdata.settings['webdav'] = [];
-                    appdata.implicitData['webdavAutoSync'] = false;
-                    appdata.writeImplicitData();
-                    appdata.saveData();
+                    _gateway.clearWebdavConfig();
+                    _gateway.setDisableSyncFields(disableSync);
+                    _gateway.setWebdavAutoSync(false);
+                    _gateway.saveAppData();
                     context.showMessage(message: "Saved".tl);
                     App.rootPop();
                     return;
                   }
 
-                  appdata.settings['webdav'] = [url, user, pass];
-                  appdata.settings['disableSyncFields'] = disableSync;
-                  appdata.implicitData['webdavAutoSync'] = autoSync;
-                  appdata.writeImplicitData();
+                  _gateway.setWebdavConfig(url: url, user: user, pass: pass);
+                  _gateway.setDisableSyncFields(disableSync);
+                  _gateway.setWebdavAutoSync(autoSync);
 
                   if (!autoSync) {
-                    appdata.saveData();
+                    _gateway.saveAppData();
                     context.showMessage(message: "Saved".tl);
                     App.rootPop();
                     return;
@@ -570,14 +640,14 @@ class _WebdavSettingState extends State<_WebdavSetting> {
                     setState(() {
                       isTesting = false;
                     });
-                    appdata.settings['webdav'] = oldConfig;
-                    appdata.implicitData['webdavAutoSync'] = oldAutoSync;
-                    appdata.writeImplicitData();
-                    appdata.saveData();
+                    _gateway.setWebdavConfigRaw(oldConfig);
+                    _gateway.setDisableSyncFields(oldDisableSync);
+                    _gateway.setWebdavAutoSync(oldAutoSync);
+                    _gateway.saveAppData();
                     context.showMessage(message: testResult.errorMessage!);
                     context.showMessage(message: "Saved Failed".tl);
                   } else {
-                    appdata.saveData();
+                    _gateway.saveAppData();
                     context.showMessage(message: "Saved".tl);
                     App.rootPop();
                   }
