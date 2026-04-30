@@ -808,6 +808,9 @@ class SliverGridComics extends StatefulWidget {
 class _SliverGridComicsState extends State<SliverGridComics> {
   List<Comic> comics = [];
   List<int> heroIDs = [];
+  Map<String, ReaderComicStatus> _loadedStatuses =
+      const <String, ReaderComicStatus>{};
+  int _statusRequestId = 0;
 
   static int _nextHeroID = 0;
 
@@ -828,6 +831,9 @@ class _SliverGridComicsState extends State<SliverGridComics> {
         }
       }
       generateHeroID();
+      _loadStatusesIfNeeded();
+    } else if (oldWidget.statuses != widget.statuses) {
+      _loadStatusesIfNeeded();
     }
     super.didUpdateWidget(oldWidget);
   }
@@ -840,6 +846,7 @@ class _SliverGridComicsState extends State<SliverGridComics> {
       }
     }
     generateHeroID();
+    _loadStatusesIfNeeded();
     super.initState();
   }
 
@@ -852,6 +859,45 @@ class _SliverGridComicsState extends State<SliverGridComics> {
         }
       }
     });
+    _loadStatusesIfNeeded();
+  }
+
+  Future<void> _loadStatusesIfNeeded() async {
+    if (widget.statuses != null) {
+      if (_loadedStatuses.isNotEmpty && mounted) {
+        setState(() {
+          _loadedStatuses = const <String, ReaderComicStatus>{};
+        });
+      }
+      return;
+    }
+    if (!App.isInitialized || comics.isEmpty) {
+      if (_loadedStatuses.isNotEmpty && mounted) {
+        setState(() {
+          _loadedStatuses = const <String, ReaderComicStatus>{};
+        });
+      }
+      return;
+    }
+    final requestId = ++_statusRequestId;
+    try {
+      final statuses = await ReaderStatusRepository(
+        store: App.unifiedComicsStore,
+      ).loadStatusesForComics(comics);
+      if (!mounted || requestId != _statusRequestId) {
+        return;
+      }
+      setState(() {
+        _loadedStatuses = statuses;
+      });
+    } catch (_) {
+      if (!mounted || requestId != _statusRequestId) {
+        return;
+      }
+      setState(() {
+        _loadedStatuses = const <String, ReaderComicStatus>{};
+      });
+    }
   }
 
   @override
@@ -861,7 +907,7 @@ class _SliverGridComicsState extends State<SliverGridComics> {
       comics: comics,
       heroIDs: heroIDs,
       displayMode: displayMode,
-      statuses: widget.statuses,
+      statuses: widget.statuses ?? _loadedStatuses,
       selection: widget.selections,
       onLastItemBuild: widget.onLastItemBuild,
       badgeBuilder: widget.badgeBuilder,
