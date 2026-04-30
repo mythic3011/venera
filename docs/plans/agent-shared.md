@@ -4,6 +4,13 @@ Date: 2026-05-01
 Scope owner: runtime rewrite lane  
 Status: active
 
+## ADR Authority
+
+This execution contract is governed by:
+- `docs/plans/2026-05-01-stop-incremental-runtime-patching-adr.md`
+
+If a task conflicts with that ADR, the ADR wins.
+
 ## Mission
 
 Stop incremental patching of legacy reader runtime.  
