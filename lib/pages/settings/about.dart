@@ -60,20 +60,20 @@ class _AboutSettingsState extends State<AboutSettings> {
         ).toSliver(),
         _SwitchSetting(
           title: "Check for updates on startup".tl,
-          settingKey: "checkUpdateOnStart",
+          settingKey: CommonSettingKeys.checkUpdateOnStart.name,
         ).toSliver(),
         ListTile(
           title: const Text("Github"),
           trailing: const Icon(Icons.open_in_new),
           onTap: () {
-            launchUrlString("https://github.com/mythic3011/venera");
+            launchUrlString(AppUrls.githubRepo);
           },
         ).toSliver(),
         ListTile(
           title: const Text("Telegram"),
           trailing: const Icon(Icons.open_in_new),
           onTap: () {
-            launchUrlString("https://t.me/venera_release");
+            launchUrlString(AppUrls.telegramChannel);
           },
         ).toSliver(),
       ],
@@ -82,9 +82,7 @@ class _AboutSettingsState extends State<AboutSettings> {
 }
 
 Future<bool> checkUpdate() async {
-  var res = await AppDio().get(
-    "https://raw.githubusercontent.com/mythic3011/venera/master/pubspec.yaml",
-  );
+  var res = await AppDio().get(AppUrls.pubspecRaw);
   if (res.statusCode == 200) {
     var data = loadYaml(res.data);
     if (data["version"] != null) {
@@ -116,9 +114,7 @@ Future<void> checkUpdateUi([
               Button.text(
                 onPressed: () {
                   Navigator.pop(context);
-                  launchUrlString(
-                    "https://github.com/mythic3011/venera/releases",
-                  );
+                  launchUrlString(AppUrls.githubReleases);
                 },
                 child: Text("Update".tl),
               ),

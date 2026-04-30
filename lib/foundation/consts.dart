@@ -22,3 +22,12 @@ const importComicDocUrl = "$repoDocsBaseUrl/import_comic.md";
 const comicSourceDocUrl = "$repoDocsBaseUrl/comic_source.md";
 const appDataFieldsDocUrl =
     "$repoBaseUrl/blob/master/lib/foundation/appdata.dart#L138";
+const aggregatedSearchSourceKey = '_aggregated_';
+
+abstract final class AppUrls {
+  static const githubRepo = repoBaseUrl;
+  static const telegramChannel = "https://t.me/venera_release";
+  static const githubReleases = "$repoBaseUrl/releases";
+  static const pubspecRaw =
+      "https://raw.githubusercontent.com/mythic3011/venera/master/pubspec.yaml";
+}
