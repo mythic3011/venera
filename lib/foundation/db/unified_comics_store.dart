@@ -448,6 +448,74 @@ class HistoryEventRecord {
   final String? createdAt;
 }
 
+class ReaderSessionRecord {
+  const ReaderSessionRecord({
+    required this.id,
+    required this.comicId,
+    this.activeTabId,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  final String id;
+  final String comicId;
+  final String? activeTabId;
+  final String? createdAt;
+  final String? updatedAt;
+}
+
+class ReaderTabRecord {
+  const ReaderTabRecord({
+    required this.id,
+    required this.sessionId,
+    required this.comicId,
+    required this.chapterId,
+    required this.pageIndex,
+    required this.sourceRefJson,
+    this.pageOrderId,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  final String id;
+  final String sessionId;
+  final String comicId;
+  final String chapterId;
+  final int pageIndex;
+  final String sourceRefJson;
+  final String? pageOrderId;
+  final String? createdAt;
+  final String? updatedAt;
+}
+
+class RemoteMatchCandidateRecord {
+  const RemoteMatchCandidateRecord({
+    required this.id,
+    required this.comicId,
+    required this.sourcePlatformId,
+    required this.sourceComicId,
+    required this.sourceUrl,
+    required this.sourceTitle,
+    required this.confidence,
+    required this.metadataJson,
+    required this.status,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  final String id;
+  final String comicId;
+  final String sourcePlatformId;
+  final String sourceComicId;
+  final String sourceUrl;
+  final String sourceTitle;
+  final double confidence;
+  final String metadataJson;
+  final String status;
+  final String? createdAt;
+  final String? updatedAt;
+}
+
 class ResolvedSourcePlatform {
   const ResolvedSourcePlatform({
     required this.platformId,
@@ -515,7 +583,7 @@ class UnifiedComicsStore extends GeneratedDatabase {
   Iterable<TableInfo<Table, Object?>> get allTables => const [];
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   Future<void> init() async {
     await customStatement('''
@@ -890,6 +958,77 @@ class UnifiedComicsStore extends GeneratedDatabase {
     await customStatement('''
       CREATE INDEX IF NOT EXISTS idx_history_events_comic_time
       ON history_events(comic_id, event_time DESC);
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS reader_sessions (
+        id TEXT PRIMARY KEY,
+        comic_id TEXT NOT NULL,
+        active_tab_id TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (comic_id)
+          REFERENCES comics(id)
+          ON DELETE CASCADE,
+        FOREIGN KEY (active_tab_id)
+          REFERENCES reader_tabs(id)
+          ON DELETE SET NULL
+      );
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_reader_sessions_comic_updated
+      ON reader_sessions(comic_id, updated_at DESC, created_at DESC, id ASC);
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS reader_tabs (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        comic_id TEXT NOT NULL,
+        chapter_id TEXT NOT NULL,
+        page_index INTEGER NOT NULL,
+        source_ref_json TEXT NOT NULL,
+        page_order_id TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (session_id)
+          REFERENCES reader_sessions(id)
+          ON DELETE CASCADE,
+        FOREIGN KEY (comic_id)
+          REFERENCES comics(id)
+          ON DELETE CASCADE,
+        UNIQUE(session_id, chapter_id, source_ref_json)
+      );
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_reader_tabs_session_updated
+      ON reader_tabs(session_id, updated_at DESC, created_at DESC, id ASC);
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS remote_match_candidates (
+        id TEXT PRIMARY KEY,
+        comic_id TEXT NOT NULL,
+        source_platform_id TEXT NOT NULL,
+        source_comic_id TEXT NOT NULL,
+        source_url TEXT NOT NULL,
+        source_title TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        metadata_json TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (
+          status IN ('pending', 'accepted', 'rejected')
+        ),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (comic_id)
+          REFERENCES comics(id)
+          ON DELETE CASCADE,
+        FOREIGN KEY (source_platform_id)
+          REFERENCES source_platforms(id)
+          ON DELETE RESTRICT,
+        UNIQUE(comic_id, source_platform_id, source_comic_id)
+      );
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_remote_match_candidates_comic_updated
+      ON remote_match_candidates(comic_id, updated_at DESC, created_at DESC, id ASC);
     ''');
   }
 
@@ -1891,6 +2030,202 @@ class UnifiedComicsStore extends GeneratedDatabase {
     );
   }
 
+  Future<void> upsertReaderSession(ReaderSessionRecord record) {
+    return customStatement(
+      '''
+      INSERT INTO reader_sessions (
+        id,
+        comic_id,
+        active_tab_id,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
+      ON CONFLICT(id) DO UPDATE SET
+        comic_id = excluded.comic_id,
+        active_tab_id = excluded.active_tab_id,
+        updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP);
+      ''',
+      [
+        record.id,
+        record.comicId,
+        record.activeTabId,
+        record.createdAt,
+        record.updatedAt,
+      ],
+    );
+  }
+
+  Future<void> upsertReaderTab(ReaderTabRecord record) {
+    return customStatement(
+      '''
+      INSERT INTO reader_tabs (
+        id,
+        session_id,
+        comic_id,
+        chapter_id,
+        page_index,
+        source_ref_json,
+        page_order_id,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
+      ON CONFLICT(id) DO UPDATE SET
+        session_id = excluded.session_id,
+        comic_id = excluded.comic_id,
+        chapter_id = excluded.chapter_id,
+        page_index = excluded.page_index,
+        source_ref_json = excluded.source_ref_json,
+        page_order_id = excluded.page_order_id,
+        updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP);
+      ''',
+      [
+        record.id,
+        record.sessionId,
+        record.comicId,
+        record.chapterId,
+        record.pageIndex,
+        record.sourceRefJson,
+        record.pageOrderId,
+        record.createdAt,
+        record.updatedAt,
+      ],
+    );
+  }
+
+  Future<void> setReaderSessionActiveTab({
+    required String sessionId,
+    required String? activeTabId,
+  }) async {
+    if (activeTabId != null) {
+      final exists = await customSelect(
+        '''
+        SELECT COUNT(*) AS c
+        FROM reader_tabs
+        WHERE session_id = ?
+          AND id = ?;
+        ''',
+        variables: [Variable<String>(sessionId), Variable<String>(activeTabId)],
+      ).getSingle();
+      if (exists.read<int>('c') == 0) {
+        throw StateError(
+          'Reader tab $activeTabId does not exist in session $sessionId.',
+        );
+      }
+    }
+    await customStatement(
+      '''
+      UPDATE reader_sessions
+      SET active_tab_id = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?;
+      ''',
+      [activeTabId, sessionId],
+    );
+  }
+
+  Future<ReaderSessionRecord?> loadReaderSessionByComic(String comicId) async {
+    final row = await customSelect(
+      '''
+      SELECT * FROM reader_sessions
+      WHERE comic_id = ?
+      ORDER BY updated_at DESC, created_at DESC, id ASC
+      LIMIT 1;
+      ''',
+      variables: [Variable<String>(comicId)],
+    ).getSingleOrNull();
+    if (row == null) {
+      return null;
+    }
+    return _readerSessionRecordFromRow(row);
+  }
+
+  Future<List<ReaderTabRecord>> loadReaderTabsForSession(String sessionId) async {
+    final rows = await customSelect(
+      '''
+      SELECT * FROM reader_tabs
+      WHERE session_id = ?
+      ORDER BY updated_at DESC, created_at DESC, id ASC;
+      ''',
+      variables: [Variable<String>(sessionId)],
+    ).get();
+    return rows.map(_readerTabRecordFromRow).toList();
+  }
+
+  Future<void> deleteReaderSession(String sessionId) {
+    return customStatement('DELETE FROM reader_sessions WHERE id = ?;', [
+      sessionId,
+    ]);
+  }
+
+  Future<void> deleteReaderTab(String tabId) {
+    return customStatement('DELETE FROM reader_tabs WHERE id = ?;', [tabId]);
+  }
+
+  Future<void> upsertRemoteMatchCandidate(RemoteMatchCandidateRecord record) {
+    return customStatement(
+      '''
+      INSERT INTO remote_match_candidates (
+        id,
+        comic_id,
+        source_platform_id,
+        source_comic_id,
+        source_url,
+        source_title,
+        confidence,
+        metadata_json,
+        status,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
+      ON CONFLICT(comic_id, source_platform_id, source_comic_id) DO UPDATE SET
+        id = excluded.id,
+        source_url = excluded.source_url,
+        source_title = excluded.source_title,
+        confidence = excluded.confidence,
+        metadata_json = excluded.metadata_json,
+        status = excluded.status,
+        updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP);
+      ''',
+      [
+        record.id,
+        record.comicId,
+        record.sourcePlatformId,
+        record.sourceComicId,
+        record.sourceUrl,
+        record.sourceTitle,
+        record.confidence,
+        record.metadataJson,
+        record.status,
+        record.createdAt,
+        record.updatedAt,
+      ],
+    );
+  }
+
+  Future<List<RemoteMatchCandidateRecord>> loadRemoteMatchCandidates(
+    String comicId,
+  ) async {
+    final rows = await customSelect(
+      '''
+      SELECT * FROM remote_match_candidates
+      WHERE comic_id = ?
+      ORDER BY updated_at DESC, created_at DESC, id ASC;
+      ''',
+      variables: [Variable<String>(comicId)],
+    ).get();
+    return rows.map(_remoteMatchCandidateRecordFromRow).toList();
+  }
+
+  Future<void> deleteRemoteMatchCandidate(String candidateId) {
+    return customStatement(
+      'DELETE FROM remote_match_candidates WHERE id = ?;',
+      [candidateId],
+    );
+  }
+
   Future<UnifiedComicSnapshot?> loadComicSnapshot(String comicId) async {
     final comicRow = await customSelect(
       'SELECT * FROM comics WHERE id = ? LIMIT 1;',
@@ -2282,6 +2617,46 @@ class UnifiedComicsStore extends GeneratedDatabase {
       readEpisode: row.read<String>('read_episode'),
       maxPage: row.read<int?>('max_page'),
       createdAt: row.read<String>('created_at'),
+    );
+  }
+
+  ReaderSessionRecord _readerSessionRecordFromRow(QueryRow row) {
+    return ReaderSessionRecord(
+      id: row.read<String>('id'),
+      comicId: row.read<String>('comic_id'),
+      activeTabId: row.read<String?>('active_tab_id'),
+      createdAt: row.read<String>('created_at'),
+      updatedAt: row.read<String>('updated_at'),
+    );
+  }
+
+  ReaderTabRecord _readerTabRecordFromRow(QueryRow row) {
+    return ReaderTabRecord(
+      id: row.read<String>('id'),
+      sessionId: row.read<String>('session_id'),
+      comicId: row.read<String>('comic_id'),
+      chapterId: row.read<String>('chapter_id'),
+      pageIndex: row.read<int>('page_index'),
+      sourceRefJson: row.read<String>('source_ref_json'),
+      pageOrderId: row.read<String?>('page_order_id'),
+      createdAt: row.read<String>('created_at'),
+      updatedAt: row.read<String>('updated_at'),
+    );
+  }
+
+  RemoteMatchCandidateRecord _remoteMatchCandidateRecordFromRow(QueryRow row) {
+    return RemoteMatchCandidateRecord(
+      id: row.read<String>('id'),
+      comicId: row.read<String>('comic_id'),
+      sourcePlatformId: row.read<String>('source_platform_id'),
+      sourceComicId: row.read<String>('source_comic_id'),
+      sourceUrl: row.read<String>('source_url'),
+      sourceTitle: row.read<String>('source_title'),
+      confidence: row.read<double>('confidence'),
+      metadataJson: row.read<String>('metadata_json'),
+      status: row.read<String>('status'),
+      createdAt: row.read<String>('created_at'),
+      updatedAt: row.read<String>('updated_at'),
     );
   }
 
