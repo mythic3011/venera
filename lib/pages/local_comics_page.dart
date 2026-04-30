@@ -63,6 +63,13 @@ ComicDetailPage buildLocalComicDetailEntry(LocalComic comic) {
   return ComicDetailPage(comicId: comic.id, title: comic.title);
 }
 
+String formatLocalChapterDisplayLabel({
+  required int index,
+  required String title,
+}) {
+  return "${index + 1}. $title";
+}
+
 String localImageUriToPath(String imageUri) {
   return imageUri.replaceFirst('file://', '');
 }
@@ -986,6 +993,35 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
     return current?.chapters?.allChapters[id] ?? "Unknown Chapter";
   }
 
+  String _chapterLabelAt(List<String> ids, int index) {
+    final id = ids[index];
+    return formatLocalChapterDisplayLabel(
+      index: index,
+      title: _chapterTitle(id),
+    );
+  }
+
+  List<String> _chapterLabels(List<String> ids) {
+    return [
+      for (final entry in ids.indexed)
+        formatLocalChapterDisplayLabel(
+          index: entry.$1,
+          title: _chapterTitle(entry.$2),
+        ),
+    ];
+  }
+
+  String? _selectedChapterLabel(String? selectedChapterId, List<String> ids) {
+    if (selectedChapterId == null) {
+      return null;
+    }
+    final index = ids.indexOf(selectedChapterId);
+    if (index < 0) {
+      return null;
+    }
+    return _chapterLabelAt(ids, index);
+  }
+
   Future<void> _reload() async {
     final refreshed = _gateway.findComic(
       widget.comic.id,
@@ -1335,8 +1371,12 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
                     final id = ids[index];
                     return ListTile(
                       key: ValueKey(id),
-                      title: Text("${index + 1}. ${_chapterTitle(id)}"),
-                      subtitle: Text("ID: $id"),
+                      title: Text(
+                        formatLocalChapterDisplayLabel(
+                          index: index,
+                          title: _chapterTitle(id),
+                        ),
+                      ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -1370,8 +1410,11 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
             contentPadding: const EdgeInsets.symmetric(horizontal: 12),
             title: Text("Chapter".tl),
             trailing: Select(
-              current: selectedChapterForPages,
-              values: comic.downloadedChapters,
+              current: _selectedChapterLabel(
+                selectedChapterForPages,
+                comic.downloadedChapters,
+              ),
+              values: _chapterLabels(comic.downloadedChapters),
               minWidth: 220,
               onTap: (index) async {
                 if (saving) {
@@ -1440,8 +1483,11 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
             contentPadding: const EdgeInsets.symmetric(horizontal: 12),
             title: Text("Chapter".tl),
             trailing: Select(
-              current: selectedChapterForCover,
-              values: comic.downloadedChapters,
+              current: _selectedChapterLabel(
+                selectedChapterForCover,
+                comic.downloadedChapters,
+              ),
+              values: _chapterLabels(comic.downloadedChapters),
               minWidth: 220,
               onTap: (index) async {
                 if (saving) {

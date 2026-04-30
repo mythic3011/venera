@@ -91,4 +91,14 @@ void main() {
     expect(page.sourceKey, localSourceKey);
     expect(page.title, 'Legacy Alpha');
   });
+
+  test('local chapter labels use order and title without raw ids', () {
+    final label = formatLocalChapterDisplayLabel(
+      index: 1,
+      title: 'Imported Chapter',
+    );
+
+    expect(label, '2. Imported Chapter');
+    expect(label, isNot(contains('chapter-raw-id')));
+  });
 }

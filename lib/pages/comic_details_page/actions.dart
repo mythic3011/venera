@@ -482,14 +482,15 @@ abstract mixin class _ComicPageActions {
           context.showMessage(message: "Copied".tl);
         },
       ),
-      MenuEntry(
-        icon: Icons.copy_rounded,
-        text: "Copy ID".tl,
-        onClick: () {
-          Clipboard.setData(ClipboardData(text: comic.id));
-          context.showMessage(message: "Copied".tl);
-        },
-      ),
+      if (!isLocalSourceKey(comic.sourceKey))
+        MenuEntry(
+          icon: Icons.copy_rounded,
+          text: "Copy ID".tl,
+          onClick: () {
+            Clipboard.setData(ClipboardData(text: comic.id));
+            context.showMessage(message: "Copied".tl);
+          },
+        ),
       if (canonicalComicId != null)
         MenuEntry(
           icon: Icons.sell_outlined,
