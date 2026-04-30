@@ -16,6 +16,18 @@ import 'dart:io' as io;
 export 'package:flutter_inappwebview/flutter_inappwebview.dart'
     show WebUri, URLRequest;
 
+abstract interface class AppWebviewController {
+  Future<String?> currentUrl();
+
+  Future<String?> userAgent();
+
+  Future<String?> evaluateJavascript(String source);
+
+  Future<Map<String, String>> cookiesFor(String url);
+
+  Future<void> close();
+}
+
 extension WebviewExtension on InAppWebViewController {
   Future<List<io.Cookie>> getCookies(String url) async {
     final normalized = url.trim();
@@ -57,6 +69,40 @@ extension WebviewExtension on InAppWebViewController {
     }
     return text;
   }
+}
+
+class InAppWebviewControllerAdapter implements AppWebviewController {
+  final InAppWebViewController controller;
+
+  InAppWebviewControllerAdapter(this.controller);
+
+  @override
+  Future<String?> currentUrl() async {
+    final url = await controller.getUrl();
+    return url?.toString();
+  }
+
+  @override
+  Future<String?> userAgent() => controller.getUA();
+
+  @override
+  Future<String?> evaluateJavascript(String source) async {
+    final result = await controller.evaluateJavascript(source: source);
+    return result?.toString();
+  }
+
+  @override
+  Future<Map<String, String>> cookiesFor(String url) async {
+    final cookies = await controller.getCookies(url);
+    final res = <String, String>{};
+    for (final cookie in cookies) {
+      res[cookie.name] = cookie.value;
+    }
+    return res;
+  }
+
+  @override
+  Future<void> close() => controller.stopLoading();
 }
 
 class AppWebview extends StatefulWidget {
@@ -255,7 +301,7 @@ class _AppWebviewState extends State<AppWebview> {
   }
 }
 
-class DesktopWebview {
+class DesktopWebview implements AppWebviewController {
   static Future<bool> isAvailable() => WebviewWindow.isWebviewAvailable();
 
   final String initialUrl;
@@ -342,7 +388,7 @@ class DesktopWebview {
     _handleMessage(message);
   }
 
-  String? get userAgent => _ua;
+  String? get cachedUserAgent => _ua;
 
   Timer? timer;
 
@@ -427,12 +473,23 @@ class DesktopWebview {
     return s;
   }
 
+  @override
   Future<String?> evaluateJavascript(String source) {
     final webview = _webview;
     if (_isClosed || webview == null) {
       return Future.value(null);
     }
     return webview.evaluateJavaScript(source);
+  }
+
+  @override
+  Future<String?> currentUrl() async {
+    return _lastNavigationUrl ?? initialUrl;
+  }
+
+  @override
+  Future<String?> userAgent() async {
+    return _ua;
   }
 
   Future<Map<String, String>> getCookies(String url) async {
@@ -454,6 +511,9 @@ class DesktopWebview {
     return res;
   }
 
+  @override
+  Future<Map<String, String>> cookiesFor(String url) => getCookies(url);
+
   String _removeCode0(String s) {
     var codeUints = List<int>.from(s.codeUnits);
     codeUints.removeWhere((e) => e == 0);
@@ -472,7 +532,8 @@ class DesktopWebview {
     return cleanHost == cleanDomain || cleanHost.endsWith('.$cleanDomain');
   }
 
-  void close() {
+  @override
+  Future<void> close() async {
     _isClosed = true;
     _webview?.close();
     _webview = null;
