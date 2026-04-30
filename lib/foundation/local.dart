@@ -20,6 +20,7 @@ import 'package:venera/utils/import_sort.dart';
 import 'package:venera/utils/io.dart';
 
 import 'app.dart';
+import 'appdata.dart';
 import 'history.dart';
 
 String localPageImageKey(File file) => file.uri.toString();
@@ -186,6 +187,8 @@ class LocalComic with HistoryMixin implements Comic {
 }
 
 class LocalManager with ChangeNotifier {
+  static const _localPathFilename = 'local_path';
+  static const _iosLocalDirectoryBookmarkKey = 'localDirectoryBookmark';
   static LocalManager? _instance;
 
   LocalManager._();
@@ -215,8 +218,22 @@ class LocalManager with ChangeNotifier {
     }
   }
 
+  String get _localPathFilePath =>
+      FilePath.join(App.dataPath, _localPathFilename);
+
+  String? get _iosLocalDirectoryBookmark {
+    final bookmark = appdata.implicitData[_iosLocalDirectoryBookmarkKey];
+    if (bookmark is String && bookmark.isNotEmpty) {
+      return bookmark;
+    }
+    return null;
+  }
+
   // return error message if failed
-  Future<String?> setNewPath(String newPath) async {
+  Future<String?> setNewPath(String newPath, {String? iosBookmark}) async {
+    if (App.isIOS && (iosBookmark == null || iosBookmark.isEmpty)) {
+      return "Missing directory bookmark";
+    }
     var newDir = Directory(newPath);
     if (!await newDir.exists()) {
       return "Directory does not exist";
@@ -226,9 +243,11 @@ class LocalManager with ChangeNotifier {
     }
     try {
       await copyDirectoryIsolate(directory, newDir);
-      await File(
-        FilePath.join(App.dataPath, 'local_path'),
-      ).writeAsString(newPath);
+      await File(_localPathFilePath).writeAsString(newPath);
+      if (App.isIOS) {
+        appdata.implicitData[_iosLocalDirectoryBookmarkKey] = iosBookmark;
+        appdata.writeImplicitData();
+      }
     } catch (e, s) {
       Log.error("IO", e, s);
       return e.toString();
@@ -316,12 +335,18 @@ class LocalManager with ChangeNotifier {
         PRIMARY KEY (id, comic_type)
       );
     ''');
-    if (File(FilePath.join(App.dataPath, 'local_path')).existsSync()) {
-      path = File(FilePath.join(App.dataPath, 'local_path')).readAsStringSync();
+    if (App.isIOS) {
+      final restoredPath = await _restoreIosExternalPath();
+      if (restoredPath != null) {
+        path = restoredPath;
+      }
+    }
+    if (!_hasResolvedPath() && File(_localPathFilePath).existsSync()) {
+      path = File(_localPathFilePath).readAsStringSync();
       if (!directory.existsSync()) {
         path = await findDefaultPath();
       }
-    } else {
+    } else if (!_hasResolvedPath()) {
       path = await findDefaultPath();
     }
     try {
@@ -342,6 +367,36 @@ class LocalManager with ChangeNotifier {
     }
     restoreDownloadingTasks();
     _isInitialized = true;
+  }
+
+  bool _hasResolvedPath() {
+    try {
+      return path.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<String?> _restoreIosExternalPath() async {
+    final bookmark = _iosLocalDirectoryBookmark;
+    if (bookmark == null) {
+      return null;
+    }
+    final permission = await startAccessingDirectoryIOS(bookmark);
+    if (permission == null) {
+      Log.error(
+        "IO",
+        "Failed to restore bookmarked local directory. Falling back to default path.",
+      );
+      return null;
+    }
+    if (permission.isStale) {
+      Log.info(
+        "IO",
+        "Bookmarked local directory resolved with a stale bookmark.",
+      );
+    }
+    return permission.path;
   }
 
   String _metadataSeriesKey(LocalComic comic) {
@@ -752,6 +807,10 @@ class LocalManager with ChangeNotifier {
     return LocalComic.fromRow(res.first);
   }
 
+  LocalComic? findBySourceKey(String id, String sourceKey) {
+    return find(id, ComicType.fromKey(sourceKey));
+  }
+
   @override
   void dispose() {
     super.dispose();
@@ -833,6 +892,14 @@ class LocalManager with ChangeNotifier {
       return naturalCompare(a.name, b.name);
     });
     return files.map(localPageImageKey).toList();
+  }
+
+  Future<List<String>> getImagesBySourceKey(
+    String id,
+    String sourceKey,
+    Object ep,
+  ) {
+    return getImages(id, ComicType.fromKey(sourceKey), ep);
   }
 
   Future<void> reorderComicPages(
@@ -931,6 +998,15 @@ class LocalManager with ChangeNotifier {
     return comic.downloadedChapters.contains(
       (chapters ?? comic.chapters)!.ids.elementAtOrNull(ep - 1),
     );
+  }
+
+  bool isDownloadedBySourceKey(
+    String id,
+    String sourceKey, [
+    int? ep,
+    ComicChapters? chapters,
+  ]) {
+    return isDownloaded(id, ComicType.fromKey(sourceKey), ep, chapters);
   }
 
   List<DownloadTask> downloadingTasks = [];

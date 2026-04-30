@@ -220,14 +220,15 @@ class _ReaderImagesState extends State<_ReaderImages> {
         _shouldLoadReaderPagesLocally(
           type: reader.type,
           comicId: reader.cid,
-          isDownloaded: (comicId, type) => LocalManager().isDownloaded(
-            comicId,
-            type,
-            reader.chapter,
-            reader.widget.chapters,
-          ),
+          isDownloaded: (comicId, type) =>
+              LocalManager().isDownloadedBySourceKey(
+                comicId,
+                type.sourceKey,
+                reader.chapter,
+                reader.widget.chapters,
+              ),
           hasLocalComic: (comicId) =>
-              LocalManager().find(comicId, ComicType.local) != null,
+              LocalManager().findBySourceKey(comicId, localSourceKey) != null,
         )
         ? 'local'
         : 'remote';
@@ -389,8 +390,10 @@ class _ReaderImagesState extends State<_ReaderImages> {
       }
       return switch (existingRef.type) {
         SourceRefType.local => SourceRef.fromLegacyLocal(
-          localType: existingRef.params['localType']?.toString() ?? localSourceKey,
-          localComicId: existingRef.params['localComicId']?.toString() ?? reader.cid,
+          localType:
+              existingRef.params['localType']?.toString() ?? localSourceKey,
+          localComicId:
+              existingRef.params['localComicId']?.toString() ?? reader.cid,
           chapterId: chapterId,
         ),
         SourceRefType.remote => SourceRef.fromLegacyRemote(
@@ -407,7 +410,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
           type: reader.type,
           comicId: reader.cid,
           hasLocalComic: (comicId) =>
-              LocalManager().find(comicId, ComicType.local) != null,
+              LocalManager().findBySourceKey(comicId, localSourceKey) != null,
         ),
         localComicId: reader.cid,
         chapterId: chapterId,
