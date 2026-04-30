@@ -237,20 +237,13 @@ class _ReaderImagesState extends State<_ReaderImages> {
       if (loadMode == 'local') {
         final targetChapterId =
             sourceRef.params['chapterId']?.toString() ??
-            reader.widget.chapters?.ids.elementAtOrNull(reader.chapter - 1) ??
-            reader.chapter.toString();
+            reader.widget.chapters?.ids.elementAtOrNull(reader.chapter - 1);
         return Res(
-          await LocalManager().getImages(
-            reader.cid,
-            ComicType.fromKey(
-              _readerLocalTypeKey(
-                type: reader.type,
-                comicId: reader.cid,
-                hasLocalComic: (comicId) =>
-                    LocalManager().find(comicId, ComicType.local) != null,
-              ),
-            ),
-            targetChapterId,
+          await CanonicalReaderPages(
+            store: App.unifiedComicsStore,
+          ).loadLocalPages(
+            localComicId: reader.cid,
+            chapterId: targetChapterId,
           ),
         );
       }
@@ -273,17 +266,14 @@ class _ReaderImagesState extends State<_ReaderImages> {
             required String localComicId,
             String? chapterId,
           }) async {
-            final type = ComicType.fromKey(localType);
             final targetChapterId =
                 chapterId ??
-                reader.widget.chapters?.ids.elementAtOrNull(
-                  reader.chapter - 1,
-                ) ??
-                reader.chapter.toString();
-            return LocalManager().getImages(
-              localComicId,
-              type,
-              targetChapterId,
+                reader.widget.chapters?.ids.elementAtOrNull(reader.chapter - 1);
+            return CanonicalReaderPages(
+              store: App.unifiedComicsStore,
+            ).loadLocalPages(
+              localComicId: localComicId,
+              chapterId: targetChapterId,
             );
           },
       loadRemotePages:

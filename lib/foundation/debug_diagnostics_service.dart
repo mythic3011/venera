@@ -2,6 +2,7 @@ import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/log.dart';
 import 'package:venera/foundation/log_diagnostics.dart';
+import 'package:venera/foundation/reader/reader_debug_snapshot.dart';
 import 'package:venera/foundation/reader/reader_diagnostics.dart';
 
 class DebugDiagnosticsService {
@@ -61,6 +62,10 @@ class DebugDiagnosticsService {
     final newestWarningsAndErrors = DevDiagnosticsApi.recent(
       minLevel: DiagnosticLevel.warn,
     ).reversed.take(20).map((event) => event.toJson()).toList(growable: false);
+    final readerDiagnostics = ReaderDiagnostics.toDiagnosticsJson();
+    final readerDebugSnapshot = await _readerDebugSnapshotPayload(
+      readerDiagnostics,
+    );
     return {
       'platform': {'os': platform, 'isDesktop': App.isDesktop},
       'runtime': {'appVersion': App.version},
@@ -91,8 +96,57 @@ class DebugDiagnosticsService {
         'persistedErrorCount': errorSnapshot.persistedErrorCount,
         'newestErrors': errorSnapshot.logs,
       },
-      ...ReaderDiagnostics.toDiagnosticsJson(),
+      ...readerDiagnostics,
+      if (readerDebugSnapshot != null)
+        'readerDebugSnapshot': readerDebugSnapshot,
     };
+  }
+
+  Future<Map<String, Object?>?> _readerDebugSnapshotPayload(
+    Map<String, dynamic> readerDiagnostics,
+  ) async {
+    if (!App.isInitialized) {
+      return null;
+    }
+    final trace = readerDiagnostics['readerTrace'];
+    if (trace is! Map<String, dynamic>) {
+      return null;
+    }
+    final currentReader = trace['currentReader'];
+    if (currentReader is! Map<String, dynamic>) {
+      return null;
+    }
+    final comicId = currentReader['comicId'];
+    final loadMode = currentReader['loadMode'];
+    if (comicId is! String || comicId.isEmpty) {
+      return null;
+    }
+    if (loadMode is! String || loadMode.isEmpty) {
+      return null;
+    }
+    final chapterId = currentReader['chapterId'];
+    final lifecycle = currentReader['lifecycle'];
+    try {
+      final snapshot =
+          await ReaderDebugSnapshotService(store: App.unifiedComicsStore).build(
+            comicId: comicId,
+            chapterId: chapterId is String && chapterId.isNotEmpty
+                ? chapterId
+                : null,
+            loadMode: loadMode,
+            controllerLifecycle: lifecycle is String && lifecycle.isNotEmpty
+                ? lifecycle
+                : 'unknown',
+          );
+      return snapshot.toJson();
+    } catch (error) {
+      return {
+        'error': error.toString(),
+        'comicId': comicId,
+        if (chapterId is String && chapterId.isNotEmpty) 'chapterId': chapterId,
+        'loadMode': loadMode,
+      };
+    }
   }
 
   DiagnosticLevel? _diagnosticLevelFromLogFilter(String level) {

@@ -33,6 +33,7 @@ import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/log.dart';
 import 'package:venera/foundation/res.dart';
 import 'package:venera/foundation/reader/reader_diagnostics.dart';
+import 'package:venera/foundation/reader/canonical_reader_pages.dart';
 import 'package:venera/foundation/reader/reader_page_loader.dart';
 import 'package:venera/foundation/source_ref.dart';
 import 'package:venera/foundation/source_identity/source_identity.dart';
