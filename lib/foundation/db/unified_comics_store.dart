@@ -510,6 +510,24 @@ class ReaderActivityRecord {
   final String lastReadAt;
 }
 
+class ReaderStatusRecord {
+  const ReaderStatusRecord({
+    required this.comicId,
+    required this.isFavorite,
+    this.sourceRefJson,
+    this.chapterId,
+    this.pageIndex,
+    this.maxPage,
+  });
+
+  final String comicId;
+  final bool isFavorite;
+  final String? sourceRefJson;
+  final String? chapterId;
+  final int? pageIndex;
+  final int? maxPage;
+}
+
 class RemoteMatchCandidateRecord {
   const RemoteMatchCandidateRecord({
     required this.id,
@@ -2240,6 +2258,46 @@ class UnifiedComicsStore extends GeneratedDatabase {
     return customStatement('DELETE FROM reader_sessions;');
   }
 
+  Future<Map<String, ReaderStatusRecord>> loadReaderStatusesForComics(
+    List<String> comicIds,
+  ) async {
+    if (comicIds.isEmpty) {
+      return const <String, ReaderStatusRecord>{};
+    }
+    final placeholders = List.filled(comicIds.length, '?').join(', ');
+    final rows = await customSelect(
+      '''
+      SELECT
+        c.id AS comic_id,
+        EXISTS(
+          SELECT 1
+          FROM favorites f
+          WHERE f.comic_id = c.id
+        ) AS is_favorite,
+        rt.source_ref_json,
+        rt.chapter_id,
+        rt.page_index,
+        (
+          SELECT COUNT(*)
+          FROM pages p
+          WHERE p.chapter_id = rt.chapter_id
+        ) AS max_page
+      FROM comics c
+      LEFT JOIN reader_sessions rs
+        ON rs.comic_id = c.id
+      LEFT JOIN reader_tabs rt
+        ON rt.session_id = rs.id
+       AND rt.id = rs.active_tab_id
+      WHERE c.id IN ($placeholders);
+      ''',
+      variables: comicIds.map(Variable<String>.new).toList(growable: false),
+    ).get();
+    return {
+      for (final row in rows)
+        row.read<String>('comic_id'): _readerStatusRecordFromRow(row),
+    };
+  }
+
   Future<void> upsertRemoteMatchCandidate(RemoteMatchCandidateRecord record) {
     return customStatement(
       '''
@@ -2731,6 +2789,17 @@ class UnifiedComicsStore extends GeneratedDatabase {
       chapterId: row.read<String>('chapter_id'),
       pageIndex: row.read<int>('page_index'),
       lastReadAt: row.read<String>('last_read_at'),
+    );
+  }
+
+  ReaderStatusRecord _readerStatusRecordFromRow(QueryRow row) {
+    return ReaderStatusRecord(
+      comicId: row.read<String>('comic_id'),
+      isFavorite: row.read<int>('is_favorite') > 0,
+      sourceRefJson: row.read<String?>('source_ref_json'),
+      chapterId: row.read<String?>('chapter_id'),
+      pageIndex: row.read<int?>('page_index'),
+      maxPage: row.read<int?>('max_page'),
     );
   }
 

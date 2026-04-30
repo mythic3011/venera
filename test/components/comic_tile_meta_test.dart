@@ -6,6 +6,8 @@ import 'package:venera/components/components.dart';
 import 'package:venera/foundation/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/history.dart';
+import 'package:venera/foundation/reader/reader_status_repository.dart';
+import 'package:venera/foundation/source_ref.dart';
 
 void main() {
   test('ComicTileMeta normalizes zero history page outside build', () {
@@ -40,6 +42,36 @@ void main() {
     expect(meta.isFavorite, isFalse);
     expect(meta.history, isNull);
     expect(meta.localCoverFile, isNull);
+  });
+
+  test('ReaderComicStatus builds compatibility history from canonical metadata', () {
+    final comic = Comic(
+      'Title',
+      '',
+      'comic-1',
+      '',
+      const <String>[],
+      '',
+      'remote-source',
+      null,
+      null,
+    );
+    final status = ReaderComicStatus(
+      isFavorite: true,
+      sourceRef: SourceRef.fromLegacy(
+        comicId: 'comic-1',
+        sourceKey: 'remote-source',
+      ),
+      chapterId: 'chapter-2',
+      pageIndex: 7,
+      maxPage: 12,
+    );
+
+    final history = status.buildCompatibilityHistory(comic);
+
+    expect(history, isNotNull);
+    expect(history!.page, 7);
+    expect(history.maxPage, 12);
   });
 
   testWidgets('ComicTile local source uses only supplied localCoverFile metadata',
@@ -100,5 +132,12 @@ void main() {
     expect(animatedImage.image, isA<FileImage>());
     final fileImage = animatedImage.image as FileImage;
     expect(fileImage.file.path, file.path);
+  });
+
+  test('readerStatusMapKey is deterministic for caller-supplied metadata', () {
+    expect(
+      readerStatusMapKey(comicId: 'comic-1', sourceKey: 'local'),
+      'local@@comic-1',
+    );
   });
 }
