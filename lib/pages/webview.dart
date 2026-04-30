@@ -10,7 +10,6 @@ import 'package:venera/components/components.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
 import 'package:venera/network/proxy.dart';
-import 'package:venera/utils/ext.dart';
 import 'package:venera/utils/translations.dart';
 import 'dart:io' as io;
 
@@ -18,37 +17,45 @@ export 'package:flutter_inappwebview/flutter_inappwebview.dart'
     show WebUri, URLRequest;
 
 extension WebviewExtension on InAppWebViewController {
-  Future<List<io.Cookie>?> getCookies(String url) async {
-    if (url.contains("https://")) {
-      url.replaceAll("https://", "");
+  Future<List<io.Cookie>> getCookies(String url) async {
+    final normalized = url.trim();
+    if (normalized.isEmpty) {
+      return <io.Cookie>[];
     }
-    if (url[url.length - 1] == '/') {
-      url = url.substring(0, url.length - 1);
-    }
-    CookieManager cookieManager = CookieManager.instance(
+    final uri = WebUri(normalized);
+    final cookieManager = CookieManager.instance(
       webViewEnvironment: AppWebview.webViewEnvironment,
     );
     final cookies = await cookieManager.getCookies(
-      url: WebUri(url),
+      url: uri,
       webViewController: this,
     );
-    var res = <io.Cookie>[];
-    for (var cookie in cookies) {
-      var c = io.Cookie(cookie.name, cookie.value);
-      c.domain = cookie.domain;
-      res.add(c);
-    }
-    return res;
+    return cookies.map((cookie) {
+      final c = io.Cookie(cookie.name, cookie.value);
+      if (cookie.domain != null) {
+        c.domain = cookie.domain;
+      }
+      if (cookie.path != null) {
+        c.path = cookie.path!;
+      }
+      c.secure = cookie.isSecure ?? false;
+      c.httpOnly = cookie.isHttpOnly ?? false;
+      return c;
+    }).toList();
   }
 
   Future<String?> getUA() async {
-    var res = await evaluateJavascript(source: "navigator.userAgent");
-    if (res is String) {
-      if (res[0] == "'" || res[0] == "\"") {
-        res = res.substring(1, res.length - 1);
-      }
+    final res = await evaluateJavascript(source: "navigator.userAgent");
+    if (res == null) {
+      return null;
     }
-    return res is String ? res : null;
+    var text = res.toString();
+    if (text.length >= 2 &&
+        ((text.startsWith("'") && text.endsWith("'")) ||
+            (text.startsWith('"') && text.endsWith('"')))) {
+      text = text.substring(1, text.length - 1);
+    }
+    return text;
   }
 }
 
@@ -86,11 +93,14 @@ class AppWebview extends StatefulWidget {
 class _AppWebviewState extends State<AppWebview> {
   InAppWebViewController? controller;
 
+  static Future<bool>? _environmentFuture;
+
   String title = "Webview";
 
   double _progress = 0;
 
-  late var future = _createWebviewEnvironment();
+  late final Future<bool> future =
+      _environmentFuture ??= _createWebviewEnvironment();
 
   Future<bool> _createWebviewEnvironment() async {
     var proxy = appdata.settings['proxy'].toString();
@@ -132,15 +142,24 @@ class _AppWebviewState extends State<AppWebview> {
               MenuEntry(
                 icon: Icons.open_in_browser,
                 text: "Open in browser".tl,
-                onClick: () async =>
-                    launchUrlString((await controller?.getUrl())!.toString()),
+                onClick: () async {
+                  final url = await _currentUrl();
+                  if (url == null || url.isEmpty) {
+                    return;
+                  }
+                  await launchUrlString(url);
+                },
               ),
               MenuEntry(
                 icon: Icons.copy,
                 text: "Copy link".tl,
-                onClick: () async => Clipboard.setData(
-                  ClipboardData(text: (await controller?.getUrl())!.toString()),
-                ),
+                onClick: () async {
+                  final url = await _currentUrl();
+                  if (url == null || url.isEmpty) {
+                    return;
+                  }
+                  await Clipboard.setData(ClipboardData(text: url));
+                },
               ),
               MenuEntry(
                 icon: Icons.refresh,
@@ -185,18 +204,28 @@ class _AppWebviewState extends State<AppWebview> {
     );
   }
 
+  Future<String?> _currentUrl() async {
+    final c = controller;
+    if (c == null) {
+      return null;
+    }
+    final url = await c.getUrl();
+    return url?.toString();
+  }
+
   Widget createWebviewWithEnvironment(WebViewEnvironment? e) {
     return InAppWebView(
       webViewEnvironment: e,
       initialSettings: InAppWebViewSettings(isInspectable: true),
       initialUrlRequest: URLRequest(url: WebUri(widget.initialUrl)),
       onTitleChanged: (c, t) {
+        final nextTitle = t ?? "Webview";
         if (mounted) {
           setState(() {
-            title = t ?? "Webview";
+            title = nextTitle;
           });
         }
-        widget.onTitleChange?.call(title, controller!);
+        widget.onTitleChange?.call(nextTitle, c);
       },
       shouldOverrideUrlLoading: (c, r) async {
         var res =
@@ -317,10 +346,13 @@ class DesktopWebview {
 
   Timer? timer;
 
+  bool _isClosed = false;
+
   void _runTimer() {
     _cancelTimer();
     timer = Timer.periodic(const Duration(seconds: 2), (t) async {
-      if (_webview == null || _hasDocumentCreated) {
+      final webview = _webview;
+      if (_isClosed || webview == null || _hasDocumentCreated) {
         _cancelTimer();
         return;
       }
@@ -341,15 +373,16 @@ class DesktopWebview {
         }
         collect();
       ''';
-      final webview = _webview;
-      if (webview != null) {
-        _handleMessage(await webview.evaluateJavaScript(js) ?? '');
-      }
+      _handleMessage(await webview.evaluateJavaScript(js) ?? '');
     });
   }
 
-  void open() async {
-    _webview = await WebviewWindow.create(
+  Future<void> open() async {
+    if (_webview != null && !_isClosed) {
+      return;
+    }
+    _isClosed = false;
+    final webview = await WebviewWindow.create(
       configuration: CreateConfiguration(
         useWindowPositionAndSize: true,
         userDataFolderWindows: "${App.dataPath}\\webview",
@@ -357,39 +390,64 @@ class DesktopWebview {
         proxy: await getProxy(),
       ),
     );
-    _webview!.addOnWebMessageReceivedCallback(onMessage);
-    _webview!.setOnNavigation((s) {
-      if (s.length >= 2) {
-        s = s.substring(1, s.length - 1);
-      }
+    _webview = webview;
+    webview.addOnWebMessageReceivedCallback(onMessage);
+    webview.setOnNavigation((raw) {
+      final s = _normalizeNavigationUrl(raw);
       if (_lastNavigationUrl != s) {
         _lastNavigationUrl = s;
         _hasDocumentCreated = false;
         _restartTimer();
       }
-      return onNavigation?.call(s, this);
+      if (!_isClosed) {
+        onNavigation?.call(s, this);
+      }
     });
-    _webview!.launch(initialUrl, triggerOnUrlRequestEvent: false);
+    webview.launch(initialUrl, triggerOnUrlRequestEvent: false);
     _runTimer();
-    _webview!.onClose.then((value) {
+    unawaited(webview.onClose.then((value) {
+      _isClosed = true;
       _webview = null;
       _cancelTimer();
       onClose?.call();
-    });
-    Future.delayed(const Duration(milliseconds: 200), () {
+    }));
+    await Future.delayed(const Duration(milliseconds: 200));
+    if (!_isClosed) {
       onStarted?.call(this);
-    });
+    }
+  }
+
+  String _normalizeNavigationUrl(String raw) {
+    final s = raw.trim();
+    if (s.length >= 2 &&
+        ((s.startsWith('"') && s.endsWith('"')) ||
+            (s.startsWith("'") && s.endsWith("'")))) {
+      return s.substring(1, s.length - 1);
+    }
+    return s;
   }
 
   Future<String?> evaluateJavascript(String source) {
-    return _webview!.evaluateJavaScript(source);
+    final webview = _webview;
+    if (_isClosed || webview == null) {
+      return Future.value(null);
+    }
+    return webview.evaluateJavaScript(source);
   }
 
   Future<Map<String, String>> getCookies(String url) async {
-    var allCookies = await _webview!.getAllCookies();
-    var res = <String, String>{};
-    for (var c in allCookies) {
-      if (_cookieMatch(url, c.domain)) {
+    final webview = _webview;
+    if (_isClosed || webview == null) {
+      return <String, String>{};
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.host.isEmpty) {
+      return <String, String>{};
+    }
+    final allCookies = await webview.getAllCookies();
+    final res = <String, String>{};
+    for (final c in allCookies) {
+      if (_cookieMatchHost(uri.host, c.domain)) {
         res[_removeCode0(c.name)] = _removeCode0(c.value);
       }
     }
@@ -402,23 +460,20 @@ class DesktopWebview {
     return String.fromCharCodes(codeUints);
   }
 
-  bool _cookieMatch(String url, String domain) {
-    domain = _removeCode0(domain);
-    var host = Uri.parse(url).host;
-    var acceptedHost = _getAcceptedDomains(host);
-    return acceptedHost.contains(domain.removeAllBlank);
-  }
-
-  List<String> _getAcceptedDomains(String host) {
-    var acceptedDomains = <String>[host];
-    var hostParts = host.split(".");
-    for (var i = 0; i < hostParts.length - 1; i++) {
-      acceptedDomains.add(".${hostParts.sublist(i).join(".")}");
+  bool _cookieMatchHost(String host, String domain) {
+    final cleanHost = host.trim().toLowerCase();
+    final cleanDomain = _removeCode0(domain)
+        .trim()
+        .toLowerCase()
+        .replaceFirst(RegExp(r'^\.+'), '');
+    if (cleanHost.isEmpty || cleanDomain.isEmpty) {
+      return false;
     }
-    return acceptedDomains;
+    return cleanHost == cleanDomain || cleanHost.endsWith('.$cleanDomain');
   }
 
   void close() {
+    _isClosed = true;
     _webview?.close();
     _webview = null;
     _cancelTimer();
