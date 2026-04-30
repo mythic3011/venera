@@ -1256,7 +1256,7 @@ class _LoginPageState extends State<_LoginPage> {
     void validate(InAppWebViewController c) async {
       if (widget.config.checkLoginStatus != null &&
           widget.config.checkLoginStatus!(url, title)) {
-        var cookies = (await c.getCookies(url)) ?? [];
+        var cookies = await c.getCookies(url);
         var localStorageItems = await c.webStorage.localStorage.getItems();
         var mappedLocalStorage = <String, dynamic>{};
         for (var item in localStorageItems) {

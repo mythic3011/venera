@@ -143,10 +143,8 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
             "Cloudflare is passed due to there is no challenge css",
           );
           var ua = controller.userAgent;
-          if (ua != null) {
-            appdata.implicitData['ua'] = ua;
-            appdata.writeImplicitData();
-          }
+          appdata.implicitData['ua'] = ua;
+          appdata.writeImplicitData();
           var cookiesMap = await controller.getCookies(url);
           if (cookiesMap['cf_clearance'] == null) {
             return;
@@ -182,7 +180,7 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
           appdata.implicitData['ua'] = ua;
           appdata.writeImplicitData();
         }
-        var cookies = await controller.getCookies(url) ?? [];
+        var cookies = await controller.getCookies(url);
         if (cookies.firstWhereOrNull(
                 (element) => element.name == 'cf_clearance') ==
             null) {
@@ -212,7 +210,7 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
             appdata.implicitData['ua'] = ua;
             appdata.writeImplicitData();
           }
-          var cookies = await controller.getCookies(url) ?? [];
+          var cookies = await controller.getCookies(url);
           SingleInstanceCookieJar.instance?.saveFromResponse(uri, cookies);
         },
       ),
