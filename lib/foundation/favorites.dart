@@ -354,6 +354,81 @@ class LocalFavoritesManager with ChangeNotifier {
     });
   }
 
+  void _syncCanonicalFolderUpsert({
+    required String folderName,
+    int orderValue = 0,
+    String? sourceKey,
+    String? sourceFolder,
+  }) {
+    Future.microtask(() async {
+      await App.unifiedComicsStore.upsertFavoriteFolder(
+        FavoriteFolderRecord(
+          folderName: folderName,
+          orderValue: orderValue,
+          sourceKey: sourceKey,
+          sourceFolder: sourceFolder,
+        ),
+      );
+    });
+  }
+
+  void _syncCanonicalFolderDelete(String folderName) {
+    Future.microtask(() async {
+      await App.unifiedComicsStore.deleteFavoriteFolder(folderName);
+    });
+  }
+
+  void _syncCanonicalFolderRename({
+    required String before,
+    required String after,
+  }) {
+    Future.microtask(() async {
+      await App.unifiedComicsStore.renameFavoriteFolder(
+        before: before,
+        after: after,
+      );
+    });
+  }
+
+  void _syncCanonicalFolderOrder(List<String> folders) {
+    Future.microtask(() async {
+      await App.unifiedComicsStore.replaceFavoriteFolderOrder(folders);
+    });
+  }
+
+  void _syncCanonicalFolderItemUpsert({
+    required String folderName,
+    required String comicId,
+    required ComicType type,
+    required int displayOrder,
+  }) {
+    Future.microtask(() async {
+      await App.unifiedComicsStore.upsertFavoriteFolderItem(
+        FavoriteFolderItemRecord(
+          folderName: folderName,
+          comicId: _canonicalComicIdForFavorite(
+            comicId: comicId,
+            type: type,
+          ),
+          displayOrder: displayOrder,
+        ),
+      );
+    });
+  }
+
+  void _syncCanonicalFolderItemDelete({
+    required String folderName,
+    required String comicId,
+    required ComicType type,
+  }) {
+    Future.microtask(() async {
+      await App.unifiedComicsStore.deleteFavoriteFolderItem(
+        folderName: folderName,
+        comicId: _canonicalComicIdForFavorite(comicId: comicId, type: type),
+      );
+    });
+  }
+
   void _syncCanonicalFavoriteDeleteIfOrphan({
     required String comicId,
     required ComicType type,
@@ -446,6 +521,7 @@ class LocalFavoritesManager with ChangeNotifier {
         [folders[i], i],
       );
     }
+    _syncCanonicalFolderOrder(folders);
     notifyListeners();
   }
 
@@ -584,6 +660,7 @@ class LocalFavoritesManager with ChangeNotifier {
     """);
     notifyListeners();
     counts[name] = 0;
+    _syncCanonicalFolderUpsert(folderName: name);
     return name;
   }
 
@@ -594,6 +671,15 @@ class LocalFavoritesManager with ChangeNotifier {
       values (?, ?, ?);
     """,
       [folder, source, networkFolder],
+    );
+    _syncCanonicalFolderUpsert(
+      folderName: folder,
+      orderValue: folderNames
+          .indexOf(folder)
+          .clamp(0, folderNames.length)
+          .toInt(),
+      sourceKey: source,
+      sourceFolder: networkFolder,
     );
   }
 
@@ -713,6 +799,12 @@ class LocalFavoritesManager with ChangeNotifier {
     var hash = comic.id.hashCode ^ comic.type.value;
     _hashedIds[hash] = (_hashedIds[hash] ?? 0) + 1;
     _syncCanonicalFavoriteAdd(comic);
+    _syncCanonicalFolderItemUpsert(
+      folderName: folder,
+      comicId: comic.id,
+      type: comic.type,
+      displayOrder: displayOrder,
+    );
     notifyListeners();
     return true;
   }
@@ -740,6 +832,18 @@ class LocalFavoritesManager with ChangeNotifier {
       id,
       type.value,
       _store.minDisplayOrder(targetFolder) - 1,
+    );
+
+    _syncCanonicalFolderItemDelete(
+      folderName: sourceFolder,
+      comicId: id,
+      type: type,
+    );
+    _syncCanonicalFolderItemUpsert(
+      folderName: targetFolder,
+      comicId: id,
+      type: type,
+      displayOrder: _store.minDisplayOrder(targetFolder),
     );
 
     notifyListeners();
@@ -776,6 +880,21 @@ class LocalFavoritesManager with ChangeNotifier {
             .toList(),
         _store.maxDisplayOrder(targetFolder) + 1,
       );
+      final baseOrder = _store.maxDisplayOrder(targetFolder);
+      for (var i = 0; i < items.length; i++) {
+        final item = items[i];
+        _syncCanonicalFolderItemDelete(
+          folderName: sourceFolder,
+          comicId: item.id,
+          type: item.type,
+        );
+        _syncCanonicalFolderItemUpsert(
+          folderName: targetFolder,
+          comicId: item.id,
+          type: item.type,
+          displayOrder: baseOrder + i + 1,
+        );
+      }
       notifyListeners();
     } catch (e) {
       Log.error("Batch Move Favorites", e.toString());
@@ -821,6 +940,16 @@ class LocalFavoritesManager with ChangeNotifier {
             .toList(),
         _store.maxDisplayOrder(targetFolder) + 1,
       );
+      final baseOrder = _store.maxDisplayOrder(targetFolder);
+      for (var i = 0; i < items.length; i++) {
+        final item = items[i];
+        _syncCanonicalFolderItemUpsert(
+          folderName: targetFolder,
+          comicId: item.id,
+          type: item.type,
+          displayOrder: baseOrder + i + 1,
+        );
+      }
       notifyListeners();
     } catch (e) {
       Log.error("Batch Copy Favorites", e.toString());
@@ -848,6 +977,7 @@ class LocalFavoritesManager with ChangeNotifier {
     );
     counts.remove(name);
     refreshHashedIds();
+    _syncCanonicalFolderDelete(name);
     notifyListeners();
   }
 
@@ -860,6 +990,11 @@ class LocalFavoritesManager with ChangeNotifier {
       counts[folder] = count(folder);
     }
     reduceHashedId(id, type.value);
+    _syncCanonicalFolderItemDelete(
+      folderName: folder,
+      comicId: id,
+      type: type,
+    );
     _syncCanonicalFavoriteDeleteIfOrphan(comicId: id, type: type);
     notifyListeners();
   }
@@ -911,6 +1046,11 @@ class LocalFavoritesManager with ChangeNotifier {
     }
     for (var comic in comics) {
       reduceHashedId(comic.id, comic.type.value);
+      _syncCanonicalFolderItemDelete(
+        folderName: folder,
+        comicId: comic.id,
+        type: comic.type,
+      );
       _syncCanonicalFavoriteDeleteIfOrphan(comicId: comic.id, type: comic.type);
     }
     notifyListeners();
@@ -946,6 +1086,14 @@ class LocalFavoritesManager with ChangeNotifier {
         comicId: comic.id,
         type: ComicType(comic.type.value),
       );
+      Future.microtask(() async {
+        await App.unifiedComicsStore.deleteFavoriteFolderItemsByComic(
+          _canonicalComicIdForFavorite(
+            comicId: comic.id,
+            type: ComicType(comic.type.value),
+          ),
+        );
+      });
     }
     notifyListeners();
   }
@@ -1028,6 +1176,7 @@ class LocalFavoritesManager with ChangeNotifier {
     );
     counts[after] = counts[before] ?? 0;
     counts.remove(before);
+    _syncCanonicalFolderRename(before: before, after: after);
     notifyListeners();
   }
 

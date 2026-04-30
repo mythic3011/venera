@@ -294,6 +294,38 @@ class FavoriteRecord {
   final String? createdAt;
 }
 
+class FavoriteFolderRecord {
+  const FavoriteFolderRecord({
+    required this.folderName,
+    this.orderValue = 0,
+    this.sourceKey,
+    this.sourceFolder,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  final String folderName;
+  final int orderValue;
+  final String? sourceKey;
+  final String? sourceFolder;
+  final String? createdAt;
+  final String? updatedAt;
+}
+
+class FavoriteFolderItemRecord {
+  const FavoriteFolderItemRecord({
+    required this.folderName,
+    required this.comicId,
+    this.displayOrder = 0,
+    this.addedAt,
+  });
+
+  final String folderName;
+  final String comicId;
+  final int displayOrder;
+  final String? addedAt;
+}
+
 class ChapterRecord {
   const ChapterRecord({
     required this.id,
@@ -895,6 +927,36 @@ class UnifiedComicsStore extends GeneratedDatabase {
     await customStatement('''
       CREATE INDEX IF NOT EXISTS idx_favorites_source_key
       ON favorites(source_key, created_at DESC);
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS favorite_folders (
+        folder_name TEXT PRIMARY KEY,
+        order_value INTEGER NOT NULL DEFAULT 0,
+        source_key TEXT,
+        source_folder TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_favorite_folders_order
+      ON favorite_folders(order_value ASC, folder_name ASC);
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS favorite_folder_items (
+        folder_name TEXT NOT NULL,
+        comic_id TEXT NOT NULL,
+        display_order INTEGER NOT NULL DEFAULT 0,
+        added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (folder_name, comic_id),
+        FOREIGN KEY (folder_name)
+          REFERENCES favorite_folders(folder_name)
+          ON DELETE CASCADE
+      );
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_favorite_folder_items_folder_order
+      ON favorite_folder_items(folder_name, display_order ASC, added_at ASC);
     ''');
     await customStatement('''
       CREATE TABLE IF NOT EXISTS chapters (
@@ -1877,6 +1939,124 @@ class UnifiedComicsStore extends GeneratedDatabase {
     return customStatement('DELETE FROM favorites WHERE comic_id = ?;', [
       comicId,
     ]);
+  }
+
+  Future<void> upsertFavoriteFolder(FavoriteFolderRecord record) {
+    return customStatement(
+      '''
+      INSERT INTO favorite_folders (
+        folder_name,
+        order_value,
+        source_key,
+        source_folder,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
+      ON CONFLICT(folder_name) DO UPDATE SET
+        order_value = excluded.order_value,
+        source_key = excluded.source_key,
+        source_folder = excluded.source_folder,
+        updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP);
+      ''',
+      [
+        record.folderName,
+        record.orderValue,
+        record.sourceKey,
+        record.sourceFolder,
+        record.createdAt,
+        record.updatedAt,
+      ],
+    );
+  }
+
+  Future<void> deleteFavoriteFolder(String folderName) {
+    return customStatement(
+      'DELETE FROM favorite_folders WHERE folder_name = ?;',
+      [folderName],
+    );
+  }
+
+  Future<void> renameFavoriteFolder({
+    required String before,
+    required String after,
+  }) async {
+    await transaction(() async {
+      await customStatement(
+        '''
+        UPDATE favorite_folders
+        SET folder_name = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE folder_name = ?;
+        ''',
+        [after, before],
+      );
+      await customStatement(
+        '''
+        UPDATE favorite_folder_items
+        SET folder_name = ?
+        WHERE folder_name = ?;
+        ''',
+        [after, before],
+      );
+    });
+  }
+
+  Future<void> replaceFavoriteFolderOrder(List<String> folders) async {
+    await transaction(() async {
+      for (var i = 0; i < folders.length; i++) {
+        await customStatement(
+          '''
+          UPDATE favorite_folders
+          SET order_value = ?,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE folder_name = ?;
+          ''',
+          [i, folders[i]],
+        );
+      }
+    });
+  }
+
+  Future<void> upsertFavoriteFolderItem(FavoriteFolderItemRecord record) {
+    return customStatement(
+      '''
+      INSERT INTO favorite_folder_items (
+        folder_name,
+        comic_id,
+        display_order,
+        added_at
+      )
+      VALUES (?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+      ON CONFLICT(folder_name, comic_id) DO UPDATE SET
+        display_order = excluded.display_order;
+      ''',
+      [
+        record.folderName,
+        record.comicId,
+        record.displayOrder,
+        record.addedAt,
+      ],
+    );
+  }
+
+  Future<void> deleteFavoriteFolderItem({
+    required String folderName,
+    required String comicId,
+  }) {
+    return customStatement(
+      '''
+      DELETE FROM favorite_folder_items
+      WHERE folder_name = ? AND comic_id = ?;
+      ''',
+      [folderName, comicId],
+    );
+  }
+
+  Future<void> deleteFavoriteFolderItemsByComic(String comicId) {
+    return customStatement(
+      'DELETE FROM favorite_folder_items WHERE comic_id = ?;',
+      [comicId],
+    );
   }
 
   Future<void> upsertChapter(ChapterRecord record) {

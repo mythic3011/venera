@@ -2,9 +2,9 @@ import 'package:venera/foundation/comic_source/comic_source.dart';
 import 'package:venera/foundation/db/remote_comic_sync.dart';
 import 'package:venera/foundation/res.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
-import 'package:venera/foundation/reader/reader_session_repository.dart';
+import 'package:venera/features/reader/data/reader_session_repository.dart';
 
-import 'models.dart';
+import 'package:venera/features/comic_detail/data/comic_detail_models.dart';
 
 typedef ComicDetailLoader =
     Future<ComicDetailViewModel?> Function(String comicId);

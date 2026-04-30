@@ -6,11 +6,11 @@ import 'package:venera/foundation/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/history.dart';
-import 'package:venera/foundation/reader/reader_activity_repository.dart';
-import 'package:venera/foundation/reader/reader_session_repository.dart';
-import 'package:venera/foundation/reader/reader_resume_service.dart';
-import 'package:venera/foundation/reader/reader_runtime_context.dart';
-import 'package:venera/foundation/reader/reader_session_persistence.dart';
+import 'package:venera/features/reader/data/reader_activity_repository.dart';
+import 'package:venera/features/reader/data/reader_session_repository.dart';
+import 'package:venera/features/reader/data/reader_resume_service.dart';
+import 'package:venera/features/reader/data/reader_runtime_context.dart';
+import 'package:venera/features/reader/data/reader_session_persistence.dart';
 import 'package:venera/foundation/source_ref.dart';
 import 'package:venera/pages/reader/reader.dart';
 

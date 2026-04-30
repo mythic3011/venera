@@ -6,7 +6,7 @@ import 'package:venera/components/components.dart';
 import 'package:venera/foundation/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/history.dart';
-import 'package:venera/foundation/reader/reader_status_repository.dart';
+import 'package:venera/features/reader/data/reader_status_repository.dart';
 import 'package:venera/foundation/source_ref.dart';
 
 void main() {

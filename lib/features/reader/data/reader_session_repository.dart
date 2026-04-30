@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:venera/foundation/comic_detail/models.dart';
+import 'package:venera/features/comic_detail/data/comic_detail_models.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/source_ref.dart';
 
