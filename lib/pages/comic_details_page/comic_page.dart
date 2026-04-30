@@ -73,6 +73,18 @@ class ComicPage extends StatefulWidget {
   State<ComicPage> createState() => _ComicPageState();
 }
 
+class ComicDetailPage extends ComicPage {
+  const ComicDetailPage({
+    super.key,
+    required String comicId,
+    super.cover,
+    super.title,
+    super.heroID,
+  }) : super(id: comicId, sourceKey: localSourceKey);
+
+  String get comicId => id;
+}
+
 class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
     with _ComicPageActions {
   bool get _isLocalSource => isLocalSourceKey(widget.sourceKey);
@@ -124,7 +136,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
       "description": detail.primarySource?.sourceTitle ?? "",
       "tags": tags,
       "chapters": chapters?.toJson(),
-      "sourceKey": "local",
+      "sourceKey": localSourceKey,
       "comicId": detail.comicId,
       "thumbnails": null,
       "recommend": null,

@@ -5,8 +5,26 @@ import 'package:venera/foundation/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_detail/comic_detail.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/res.dart';
+import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/pages/comic_details_page/comic_page.dart';
 
 void main() {
+  test('canonical local detail page uses local source compatibility route', () {
+    const page = ComicDetailPage(
+      comicId: 'comic-1',
+      cover: 'cover.jpg',
+      title: 'Canonical Local',
+      heroID: 7,
+    );
+
+    expect(page.comicId, 'comic-1');
+    expect(page.id, 'comic-1');
+    expect(page.sourceKey, localSourceKey);
+    expect(page.cover, 'cover.jpg');
+    expect(page.title, 'Canonical Local');
+    expect(page.heroID, 7);
+  });
+
   test('static repository returns mapped detail for comic id', () async {
     final repository = StaticComicDetailRepository({
       'comic-1': ComicDetailViewModel.scaffold(
