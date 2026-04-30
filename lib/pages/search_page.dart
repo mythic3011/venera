@@ -580,9 +580,9 @@ class SearchOptionWidget extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(option.label.ts(sourceKey)),
+        Padding(
+          padding: const EdgeInsets.only(top: 8, bottom: 10),
+          child: Text(option.label.ts(sourceKey), style: ts.s16),
         ),
         if (option.type == 'select')
           Wrap(

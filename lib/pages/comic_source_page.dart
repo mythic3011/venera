@@ -216,9 +216,15 @@ class _BodyState extends State<_Body> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              title: Text("Add comic source".tl),
-              leading: const Icon(Icons.dashboard_customize),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.dashboard_customize),
+                  const SizedBox(width: 12),
+                  Text("Add comic source".tl, style: ts.s16),
+                ],
+              ),
             ),
             TextField(
               decoration: InputDecoration(

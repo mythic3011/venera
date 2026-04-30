@@ -454,9 +454,9 @@ class _SearchSettingsDialogState extends State<_SearchSettingsDialog> {
       title: "Settings".tl,
       content: Column(
         children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-            title: Text("Search in".tl),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+            child: Text("Search in".tl, style: ts.s16),
           ),
           Wrap(
             spacing: 8,
