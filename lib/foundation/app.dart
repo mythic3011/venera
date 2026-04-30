@@ -7,16 +7,12 @@ import 'package:venera/features/comic_detail/data/comic_detail_remote_match_repo
 import 'package:venera/features/comic_detail/data/comic_detail_repository.dart';
 import 'package:venera/features/reader/data/reader_activity_repository.dart';
 import 'package:venera/features/reader/data/reader_session_repository.dart';
-import 'package:venera/features/reader/data/reader_status_repository.dart';
 import 'package:venera/foundation/db/adapters/unified_comic_detail_store_adapter.dart';
 import 'package:venera/foundation/db/adapters/unified_local_library_browse_store_adapter.dart';
 import 'package:venera/foundation/db/adapters/unified_reader_activity_store_adapter.dart';
 import 'package:venera/foundation/db/adapters/unified_reader_session_store_adapter.dart';
-import 'package:venera/foundation/db/adapters/unified_reader_status_store_adapter.dart';
 import 'package:venera/foundation/db/adapters/unified_remote_match_store_adapter.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
-import 'package:venera/foundation/ports/comic_detail_store_port.dart';
-import 'package:venera/foundation/repositories/comic_user_tags_repository.dart';
 import 'package:venera/foundation/repositories/local_library_repository.dart';
 
 import 'appdata.dart';
@@ -120,9 +116,6 @@ class _App {
             _unifiedComicsStore.seedDefaultSourcePlatforms)();
       }(),
     ]);
-    final comicDetailStore = UnifiedComicDetailStoreAdapter(
-      _unifiedComicsStore,
-    );
     repositories = AppRepositories(
       readerSession: ReaderSessionRepository(
         store: UnifiedReaderSessionStoreAdapter(_unifiedComicsStore),
@@ -130,14 +123,9 @@ class _App {
       readerActivity: ReaderActivityRepository(
         store: UnifiedReaderActivityStoreAdapter(_unifiedComicsStore),
       ),
-      readerStatus: ReaderStatusRepository(
-        store: UnifiedReaderStatusStoreAdapter(_unifiedComicsStore),
-      ),
       comicDetail: UnifiedCanonicalComicDetailRepository(
-        store: comicDetailStore,
+        store: UnifiedComicDetailStoreAdapter(_unifiedComicsStore),
       ),
-      comicUserTags: ComicUserTagsRepository(store: comicDetailStore),
-      comicDetailStore: comicDetailStore,
       remoteMatch: RemoteMatchRepository(
         store: UnifiedRemoteMatchStoreAdapter(_unifiedComicsStore),
       ),
@@ -161,20 +149,14 @@ class _App {
 class AppRepositories {
   final ReaderSessionRepository readerSession;
   final ReaderActivityRepository readerActivity;
-  final ReaderStatusRepository readerStatus;
   final ComicDetailRepository comicDetail;
-  final ComicUserTagsRepository comicUserTags;
-  final ComicDetailStorePort comicDetailStore;
   final RemoteMatchRepository remoteMatch;
   final LocalLibraryRepository localLibrary;
 
   const AppRepositories({
     required this.readerSession,
     required this.readerActivity,
-    required this.readerStatus,
     required this.comicDetail,
-    required this.comicUserTags,
-    required this.comicDetailStore,
     required this.remoteMatch,
     required this.localLibrary,
   });

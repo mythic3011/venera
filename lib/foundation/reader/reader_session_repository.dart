@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:venera/features/comic_detail/data/comic_detail_models.dart';
-import 'package:venera/foundation/db/store_records.dart'
+import 'package:venera/foundation/db/unified_comics_store.dart'
     show ReaderSessionRecord, ReaderTabRecord;
 import 'package:venera/foundation/ports/reader_session_store_port.dart';
 import 'package:venera/foundation/source_ref.dart';

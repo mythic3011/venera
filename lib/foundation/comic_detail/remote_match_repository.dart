@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:venera/foundation/db/store_records.dart';
+import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/ports/remote_match_store_port.dart';
 
 String buildPromotedComicSourceLinkId({
