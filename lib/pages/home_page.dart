@@ -9,6 +9,8 @@ import 'package:venera/foundation/favorites.dart';
 import 'package:venera/foundation/history.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/log.dart';
+import 'package:venera/foundation/reader/reader_activity_models.dart';
+import 'package:venera/foundation/reader/reader_activity_repository.dart';
 import 'package:venera/pages/comic_details_page/comic_page.dart';
 import 'package:venera/pages/comic_source_page.dart';
 import 'package:venera/pages/downloading_page.dart';
@@ -50,6 +52,15 @@ int countAvailableComicSourceUpdates() {
     availableUpdates: ComicSourceManager().availableUpdates,
     findSourceByKey: ComicSource.find,
   );
+}
+
+Future<({List<ReaderActivityItem> recent, int count})>
+loadHomeReaderActivitySnapshot(
+  ReaderActivityRepository repository,
+) async {
+  final recent = await repository.loadRecent();
+  final count = await repository.count();
+  return (recent: recent, count: count);
 }
 
 class HomePage extends StatelessWidget {
@@ -254,37 +265,27 @@ class _History extends StatefulWidget {
 }
 
 class _HistoryState extends State<_History> {
-  late List<History> history;
-  late int count;
-
-  (List<History>, int) _readHistorySnapshot() {
-    final manager = HistoryManager();
-    return (manager.getRecent(), manager.count());
-  }
-
-  void onHistoryChange() {
-    if (mounted) {
-      setState(() {
-        final snapshot = _readHistorySnapshot();
-        history = snapshot.$1;
-        count = snapshot.$2;
-      });
-    }
-  }
+  List<ReaderActivityItem> history = const [];
+  int count = 0;
+  late final ReaderActivityRepository _repository;
 
   @override
   void initState() {
-    final snapshot = _readHistorySnapshot();
-    history = snapshot.$1;
-    count = snapshot.$2;
-    HistoryManager().addListener(onHistoryChange);
     super.initState();
+    _repository = ReaderActivityRepository(store: App.unifiedComicsStore);
+    _refreshHistoryActivity();
   }
 
   @override
-  void dispose() {
-    HistoryManager().removeListener(onHistoryChange);
-    super.dispose();
+  Future<void> _refreshHistoryActivity() async {
+    final snapshot = await loadHomeReaderActivitySnapshot(_repository);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      history = snapshot.recent;
+      count = snapshot.count;
+    });
   }
 
   @override
@@ -301,8 +302,11 @@ class _HistoryState extends State<_History> {
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(8),
-          onTap: () {
-            context.to(() => const HistoryPage());
+          onTap: () async {
+            await context.to(() => const HistoryPage());
+            if (mounted) {
+              await _refreshHistoryActivity();
+            }
           },
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -344,7 +348,7 @@ class _HistoryState extends State<_History> {
                           context.to(
                             () => ComicPage(
                               id: history[index].id,
-                              sourceKey: history[index].type.sourceKey,
+                              sourceKey: history[index].sourceKey,
                               cover: history[index].cover,
                               title: history[index].title,
                               heroID: heroID,
