@@ -5,7 +5,7 @@ import 'package:venera/foundation/reader/reader_diagnostics.dart';
 import 'package:venera/features/reader/data/reader_runtime_context.dart';
 import 'package:venera/foundation/reader/reader_trace_recorder.dart';
 import 'package:venera/foundation/source_ref.dart';
-import 'package:venera/pages/reader/reader.dart';
+import 'package:venera/features/reader/presentation/reader.dart';
 
 void main() {
   setUp(() {

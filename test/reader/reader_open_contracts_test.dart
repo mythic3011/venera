@@ -3,7 +3,7 @@ import 'package:venera/features/comic_detail/data/comic_detail_models.dart';
 import 'package:venera/foundation/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/history.dart';
-import 'package:venera/pages/reader/reader.dart';
+import 'package:venera/features/reader/presentation/reader.dart';
 import 'package:venera/foundation/source_ref.dart';
 
 class _TestHistoryModel with HistoryMixin {
