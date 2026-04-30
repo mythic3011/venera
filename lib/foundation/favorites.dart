@@ -336,9 +336,17 @@ class LocalFavoritesManager with ChangeNotifier {
     return canonicalRemoteComicId(sourceKey: type.sourceKey, comicId: comicId);
   }
 
+  void _runCanonicalSync(Future<void> Function(UnifiedComicsStore store) action) {
+    final store = App.unifiedComicsStoreOrNull;
+    if (store == null) {
+      return;
+    }
+    Future.microtask(() => action(store));
+  }
+
   void _syncCanonicalFavoriteAdd(FavoriteItem comic) {
-    Future.microtask(() async {
-      await App.unifiedComicsStore.upsertFavorite(
+    _runCanonicalSync((store) async {
+      await store.upsertFavorite(
         FavoriteRecord(
           comicId: _canonicalComicIdForFavorite(
             comicId: comic.id,
@@ -357,8 +365,8 @@ class LocalFavoritesManager with ChangeNotifier {
     String? sourceKey,
     String? sourceFolder,
   }) {
-    Future.microtask(() async {
-      await App.unifiedComicsStore.upsertFavoriteFolder(
+    _runCanonicalSync((store) async {
+      await store.upsertFavoriteFolder(
         FavoriteFolderRecord(
           folderName: folderName,
           orderValue: orderValue,
@@ -370,8 +378,8 @@ class LocalFavoritesManager with ChangeNotifier {
   }
 
   void _syncCanonicalFolderDelete(String folderName) {
-    Future.microtask(() async {
-      await App.unifiedComicsStore.deleteFavoriteFolder(folderName);
+    _runCanonicalSync((store) async {
+      await store.deleteFavoriteFolder(folderName);
     });
   }
 
@@ -379,8 +387,8 @@ class LocalFavoritesManager with ChangeNotifier {
     required String before,
     required String after,
   }) {
-    Future.microtask(() async {
-      await App.unifiedComicsStore.renameFavoriteFolder(
+    _runCanonicalSync((store) async {
+      await store.renameFavoriteFolder(
         before: before,
         after: after,
       );
@@ -388,8 +396,8 @@ class LocalFavoritesManager with ChangeNotifier {
   }
 
   void _syncCanonicalFolderOrder(List<String> folders) {
-    Future.microtask(() async {
-      await App.unifiedComicsStore.replaceFavoriteFolderOrder(folders);
+    _runCanonicalSync((store) async {
+      await store.replaceFavoriteFolderOrder(folders);
     });
   }
 
@@ -399,8 +407,8 @@ class LocalFavoritesManager with ChangeNotifier {
     required ComicType type,
     required int displayOrder,
   }) {
-    Future.microtask(() async {
-      await App.unifiedComicsStore.upsertFavoriteFolderItem(
+    _runCanonicalSync((store) async {
+      await store.upsertFavoriteFolderItem(
         FavoriteFolderItemRecord(
           folderName: folderName,
           comicId: _canonicalComicIdForFavorite(comicId: comicId, type: type),
@@ -415,8 +423,8 @@ class LocalFavoritesManager with ChangeNotifier {
     required String comicId,
     required ComicType type,
   }) {
-    Future.microtask(() async {
-      await App.unifiedComicsStore.deleteFavoriteFolderItem(
+    _runCanonicalSync((store) async {
+      await store.deleteFavoriteFolderItem(
         folderName: folderName,
         comicId: _canonicalComicIdForFavorite(comicId: comicId, type: type),
       );
@@ -431,8 +439,8 @@ class LocalFavoritesManager with ChangeNotifier {
     if (_hashedIds.containsKey(hash)) {
       return;
     }
-    Future.microtask(() async {
-      await App.unifiedComicsStore.deleteFavorite(
+    _runCanonicalSync((store) async {
+      await store.deleteFavorite(
         _canonicalComicIdForFavorite(comicId: comicId, type: type),
       );
     });
@@ -1076,8 +1084,8 @@ class LocalFavoritesManager with ChangeNotifier {
         comicId: comic.id,
         type: ComicType(comic.type.value),
       );
-      Future.microtask(() async {
-        await App.unifiedComicsStore.deleteFavoriteFolderItemsByComic(
+      _runCanonicalSync((store) async {
+        await store.deleteFavoriteFolderItemsByComic(
           _canonicalComicIdForFavorite(
             comicId: comic.id,
             type: ComicType(comic.type.value),

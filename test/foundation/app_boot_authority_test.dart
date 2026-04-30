@@ -21,6 +21,7 @@ void main() {
 
     await App.initRuntimeComponents(
       initAppData: () async {},
+      canonicalStore: store,
       initCanonicalStore: store.init,
       seedSourcePlatforms: store.seedDefaultSourcePlatforms,
     );

@@ -75,11 +75,24 @@ class _App {
 
   late AppRepositories repositories;
   late final UnifiedComicsStore _unifiedComicsStore;
+  UnifiedComicsStore? _runtimeCanonicalStoreOverride;
+  bool _hasUnifiedComicsStore = false;
 
   @Deprecated(
     'Use App.repositories instead. Direct store access is allowed only for bootstrap, migrations, imports, and legacy compatibility code.',
   )
-  UnifiedComicsStore get unifiedComicsStore => _unifiedComicsStore;
+  UnifiedComicsStore get unifiedComicsStore =>
+      _runtimeCanonicalStoreOverride ?? _unifiedComicsStore;
+
+  UnifiedComicsStore? get unifiedComicsStoreOrNull {
+    if (_runtimeCanonicalStoreOverride != null) {
+      return _runtimeCanonicalStoreOverride;
+    }
+    if (_hasUnifiedComicsStore) {
+      return _unifiedComicsStore;
+    }
+    return null;
+  }
 
   void rootPop() {
     rootNavigatorKey.currentState?.maybePop();
@@ -97,6 +110,8 @@ class _App {
     cachePath = (await getApplicationCacheDirectory()).path;
     dataPath = (await getApplicationSupportDirectory()).path;
     _unifiedComicsStore = UnifiedComicsStore.atCanonicalPath(dataPath);
+    _hasUnifiedComicsStore = true;
+    _runtimeCanonicalStoreOverride = null;
     if (isAndroid) {
       externalStoragePath = (await getExternalStorageDirectory())!.path;
     }
@@ -109,29 +124,31 @@ class _App {
 
   Future<void> initRuntimeComponents({
     Future<void> Function()? initAppData,
+    UnifiedComicsStore? canonicalStore,
     Future<void> Function()? initCanonicalStore,
     Future<void> Function()? seedSourcePlatforms,
   }) async {
+    final runtimeStore = canonicalStore ?? _unifiedComicsStore;
+    _runtimeCanonicalStoreOverride = canonicalStore;
     await Future.wait([
       (initAppData ?? data.init)(),
       () async {
-        await (initCanonicalStore ?? _unifiedComicsStore.init)();
-        await (seedSourcePlatforms ??
-            _unifiedComicsStore.seedDefaultSourcePlatforms)();
+        await (initCanonicalStore ?? runtimeStore.init)();
+        await (seedSourcePlatforms ?? runtimeStore.seedDefaultSourcePlatforms)();
       }(),
     ]);
     final comicDetailStore = UnifiedComicDetailStoreAdapter(
-      _unifiedComicsStore,
+      runtimeStore,
     );
     repositories = AppRepositories(
       readerSession: ReaderSessionRepository(
-        store: UnifiedReaderSessionStoreAdapter(_unifiedComicsStore),
+        store: UnifiedReaderSessionStoreAdapter(runtimeStore),
       ),
       readerActivity: ReaderActivityRepository(
-        store: UnifiedReaderActivityStoreAdapter(_unifiedComicsStore),
+        store: UnifiedReaderActivityStoreAdapter(runtimeStore),
       ),
       readerStatus: ReaderStatusRepository(
-        store: UnifiedReaderStatusStoreAdapter(_unifiedComicsStore),
+        store: UnifiedReaderStatusStoreAdapter(runtimeStore),
       ),
       comicDetail: UnifiedCanonicalComicDetailRepository(
         store: comicDetailStore,
@@ -139,10 +156,10 @@ class _App {
       comicUserTags: ComicUserTagsRepository(store: comicDetailStore),
       comicDetailStore: comicDetailStore,
       remoteMatch: RemoteMatchRepository(
-        store: UnifiedRemoteMatchStoreAdapter(_unifiedComicsStore),
+        store: UnifiedRemoteMatchStoreAdapter(runtimeStore),
       ),
       localLibrary: LocalLibraryRepository(
-        store: UnifiedLocalLibraryBrowseStoreAdapter(_unifiedComicsStore),
+        store: UnifiedLocalLibraryBrowseStoreAdapter(runtimeStore),
       ),
     );
   }

@@ -580,7 +580,7 @@ class LocalManager with ChangeNotifier {
 
   Future<void> add(LocalComic comic, [String? id]) async {
     var old = find(id ?? comic.id, comic.comicType);
-    var downloaded = comic.downloadedChapters;
+    var downloaded = List<String>.from(comic.downloadedChapters);
     if (old != null) {
       downloaded.addAll(old.downloadedChapters);
     }
