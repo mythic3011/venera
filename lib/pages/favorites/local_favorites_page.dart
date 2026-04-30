@@ -47,6 +47,8 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
   late String readFilterSelect;
 
   var searchResults = <FavoriteItem>[];
+  Map<String, ReaderComicStatus> _statuses = const <String, ReaderComicStatus>{};
+  int _statusRequestId = 0;
 
   void updateSearchResult() {
     setState(() {
@@ -71,6 +73,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
       var totalComics = manager.totalComics;
       if (totalComics < _asyncDataFetchLimit) {
         comics = manager.getAllComics();
+        unawaited(_loadStatuses(comics));
       } else {
         isLoading = true;
         manager
@@ -82,6 +85,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
               isLoading = false;
               comics = value;
             });
+            unawaited(_loadStatuses(value));
           }
         });
       }
@@ -89,6 +93,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
       var folderComics = manager.folderComics(widget.folder);
       if (folderComics < _asyncDataFetchLimit) {
         comics = manager.getFolderComics(widget.folder);
+        unawaited(_loadStatuses(comics));
       } else {
         isLoading = true;
         manager
@@ -100,6 +105,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
               isLoading = false;
               comics = value;
             });
+            unawaited(_loadStatuses(value));
           }
         });
       }
@@ -107,14 +113,54 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
     setState(() {});
   }
 
+  Future<void> _loadStatuses(List<FavoriteItem> target) async {
+    final requestId = ++_statusRequestId;
+    if (target.isEmpty) {
+      if (!mounted || requestId != _statusRequestId) {
+        return;
+      }
+      setState(() {
+        _statuses = const <String, ReaderComicStatus>{};
+      });
+      return;
+    }
+    try {
+      final statuses = await ReaderStatusRepository(
+        store: App.unifiedComicsStore,
+      ).loadStatusesForComics(target);
+      if (!mounted || requestId != _statusRequestId) {
+        return;
+      }
+      setState(() {
+        _statuses = statuses;
+      });
+    } catch (_) {
+      if (!mounted || requestId != _statusRequestId) {
+        return;
+      }
+      setState(() {
+        _statuses = const <String, ReaderComicStatus>{};
+      });
+    }
+  }
+
   List<FavoriteItem> filterComics(List<FavoriteItem> curComics) {
     return curComics.where((comic) {
-      var history =
-          HistoryManager().find(comic.id, ComicType.fromKey(comic.sourceKey));
+      final status = _statuses[readerStatusMapKey(
+        comicId: comic.id,
+        sourceKey: comic.sourceKey,
+      )];
+      final pageIndex = status?.pageIndex;
+      final maxPage = status?.maxPage;
+      final isCompleted =
+          pageIndex != null &&
+          maxPage != null &&
+          maxPage > 0 &&
+          pageIndex >= maxPage;
       if (readFilterSelect == "UnCompleted") {
-        return history == null || history.page != history.maxPage;
+        return !isCompleted;
       } else if (readFilterSelect == "Completed") {
-        return history != null && history.page == history.maxPage;
+        return isCompleted;
       }
       return true;
     }).toList();
@@ -233,13 +279,18 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
     });
   }
 
-  bool downloadComic(FavoriteItem c) {
+  Future<bool> downloadComic(FavoriteItem c) async {
     var source = c.type.comicSource;
     if (source != null) {
-      bool isDownloaded = LocalManager().isDownloaded(
-        c.id,
-        (c).type,
+      final canonicalComicId = canonicalComicIdForStatus(
+        comicId: c.id,
+        sourceKey: c.sourceKey,
       );
+      final isDownloaded =
+          await App.unifiedComicsStore.loadPrimaryLocalLibraryItem(
+            canonicalComicId,
+          ) !=
+          null;
       if (isDownloaded) {
         return false;
       }
@@ -253,10 +304,10 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
     return false;
   }
 
-  void downloadSelected() {
+  Future<void> downloadSelected() async {
     int count = 0;
     for (var c in selectedComics.keys) {
-      if (downloadComic(c as FavoriteItem)) {
+      if (await downloadComic(c as FavoriteItem)) {
         count++;
       }
     }
@@ -548,7 +599,9 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                 MenuEntry(
                   icon: Icons.download,
                   text: "Download".tl,
-                  onClick: downloadSelected,
+                  onClick: () {
+                    unawaited(downloadSelected());
+                  },
                 ),
                 if (selectedComics.length == 1)
                   MenuEntry(
@@ -674,7 +727,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                   icon: Icons.download,
                   text: "Download".tl,
                   onClick: () {
-                    downloadComic(c as FavoriteItem);
+                    unawaited(downloadComic(c as FavoriteItem));
                     context.showMessage(
                       message: "Download started".tl,
                     );
