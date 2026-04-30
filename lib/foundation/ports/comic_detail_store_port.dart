@@ -13,5 +13,19 @@ abstract class ComicDetailStorePort {
   Future<int> countPagesForChapter(String chapterId);
   Future<HistoryEventRecord?> loadLatestHistoryEvent(String comicId);
   Future<PageOrderSummaryRecord> loadPageOrderSummary(String comicId);
+  Future<List<PageRecord>> loadActivePageOrderPages(String chapterId);
+  Future<PageOrderRecord?> loadActivePageOrderForChapter(String chapterId);
+  Future<void> upsertUserTag(UserTagRecord record);
+  Future<void> attachUserTagToComic(ComicUserTagRecord record);
+  Future<void> removeUserTagFromComic({
+    required String comicId,
+    required String userTagId,
+  });
   Future<String> syncRemoteComic(ComicDetails detail);
+  Future<void> syncRemoteChapterPages({
+    required String sourceKey,
+    required String comicId,
+    required String chapterId,
+    required List<String> pageKeys,
+  });
 }
