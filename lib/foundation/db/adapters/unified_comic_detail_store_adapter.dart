@@ -51,7 +51,50 @@ class UnifiedComicDetailStoreAdapter implements ComicDetailStorePort {
   }
 
   @override
+  Future<List<PageRecord>> loadActivePageOrderPages(String chapterId) {
+    return store.loadActivePageOrderPages(chapterId);
+  }
+
+  @override
+  Future<PageOrderRecord?> loadActivePageOrderForChapter(String chapterId) {
+    return store.loadActivePageOrderForChapter(chapterId);
+  }
+
+  @override
+  Future<void> upsertUserTag(UserTagRecord record) {
+    return store.upsertUserTag(record);
+  }
+
+  @override
+  Future<void> attachUserTagToComic(ComicUserTagRecord record) {
+    return store.attachUserTagToComic(record);
+  }
+
+  @override
+  Future<void> removeUserTagFromComic({
+    required String comicId,
+    required String userTagId,
+  }) {
+    return store.removeUserTagFromComic(comicId: comicId, userTagId: userTagId);
+  }
+
+  @override
   Future<String> syncRemoteComic(ComicDetails detail) {
     return RemoteComicCanonicalSyncService(store: store).syncComic(detail);
+  }
+
+  @override
+  Future<void> syncRemoteChapterPages({
+    required String sourceKey,
+    required String comicId,
+    required String chapterId,
+    required List<String> pageKeys,
+  }) {
+    return RemoteComicCanonicalSyncService(store: store).syncChapterPages(
+      sourceKey: sourceKey,
+      comicId: comicId,
+      chapterId: chapterId,
+      pageKeys: pageKeys,
+    );
   }
 }

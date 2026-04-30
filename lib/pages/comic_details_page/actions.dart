@@ -121,7 +121,7 @@ abstract mixin class _ComicPageActions {
   /// [group] the chapter group number, start from 1
   Future<void> read([int? ep, int? page, int? group]) async {
     final resumeSourceRef = await ReaderResumeService(
-      readerSessions: ReaderSessionRepository(store: App.unifiedComicsStore),
+      readerSessions: App.repositories.readerSession,
     ).loadPreferredResumeSourceRef(comic.id, comic.comicType);
     final sourceRef = resolveReaderTargetSourceRef(
       comicId: comic.id,
@@ -333,7 +333,7 @@ abstract mixin class _ComicPageActions {
     if (targetComicId == null) {
       return;
     }
-    final existing = await App.unifiedComicsStore.loadUserTagsForComic(
+    final existing = await App.repositories.comicUserTags.loadUserTagsForComic(
       targetComicId,
     );
     final tags = existing.map((tag) => tag.name).toList(growable: true);
@@ -434,36 +434,10 @@ abstract mixin class _ComicPageActions {
     String targetComicId,
     List<String> tags,
   ) async {
-    final existing = await App.unifiedComicsStore.loadUserTagsForComic(
-      targetComicId,
+    await App.repositories.comicUserTags.saveComicTags(
+      comicId: targetComicId,
+      tags: tags,
     );
-    final existingByNormalized = {
-      for (final tag in existing) _normalizeUserTag(tag.name): tag,
-    };
-    final nextByNormalized = {
-      for (final tag in tags)
-        if (_normalizeUserTag(tag).isNotEmpty)
-          _normalizeUserTag(tag): tag.trim(),
-    };
-
-    for (final entry in existingByNormalized.entries) {
-      if (!nextByNormalized.containsKey(entry.key)) {
-        await App.unifiedComicsStore.removeUserTagFromComic(
-          comicId: targetComicId,
-          userTagId: entry.value.id,
-        );
-      }
-    }
-
-    for (final entry in nextByNormalized.entries) {
-      final id = existingByNormalized[entry.key]?.id ?? 'user_tag:${entry.key}';
-      await App.unifiedComicsStore.upsertUserTag(
-        UserTagRecord(id: id, name: entry.value, normalizedName: entry.key),
-      );
-      await App.unifiedComicsStore.attachUserTagToComic(
-        ComicUserTagRecord(comicId: targetComicId, userTagId: id),
-      );
-    }
   }
 
   void showMoreActions() {
@@ -586,5 +560,3 @@ abstract mixin class _ComicPageActions {
     );
   }
 }
-
-String _normalizeUserTag(String value) => value.trim().toLowerCase();

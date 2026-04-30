@@ -193,9 +193,7 @@ class _ReaderWithLoadingState
     final resumeSourceRef = sourceKey == null
         ? null
         : await ReaderResumeService(
-            readerSessions: ReaderSessionRepository(
-              store: App.unifiedComicsStore,
-            ),
+            readerSessions: App.repositories.readerSession,
           ).loadPreferredResumeSourceRef(
             widget.id,
             ComicType.fromKey(sourceKey),
@@ -212,9 +210,7 @@ class _ReaderWithLoadingState
     }
     final resolvedSourceRef = resolvedRefResult.data;
     final type = ComicType.fromKey(resolvedSourceRef.sourceKey);
-    final readerSessions = ReaderSessionRepository(
-      store: App.unifiedComicsStore,
-    );
+    final readerSessions = App.repositories.readerSession;
     final canonicalComicId = buildReaderRuntimeContext(
       comicId: widget.id,
       type: type,
@@ -229,7 +225,7 @@ class _ReaderWithLoadingState
 
     if (resolvedSourceRef.type == SourceRefType.local) {
       final localDetail = await UnifiedLocalComicDetailRepository(
-        store: App.unifiedComicsStore,
+        store: App.repositories.comicDetailStore,
       ).getComicDetail(widget.id);
       if (localDetail == null) {
         return Res.error("LOCAL_ASSET_MISSING");

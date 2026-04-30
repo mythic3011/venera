@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-import 'package:venera/foundation/db/unified_comics_store.dart'
+import 'package:venera/foundation/db/store_records.dart'
     show ReaderActivityRecord;
 import 'package:venera/foundation/ports/reader_activity_store_port.dart';
 import 'package:venera/features/reader/data/reader_activity_models.dart';

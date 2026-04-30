@@ -241,7 +241,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
             reader.widget.chapters?.ids.elementAtOrNull(reader.chapter - 1);
         return Res(
           await CanonicalReaderPages(
-            store: App.unifiedComicsStore,
+            store: App.repositories.comicDetailStore,
           ).loadLocalPages(
             localComicId: reader.cid,
             chapterId: targetChapterId,
@@ -271,7 +271,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
                 chapterId ??
                 reader.widget.chapters?.ids.elementAtOrNull(reader.chapter - 1);
             return CanonicalReaderPages(
-              store: App.unifiedComicsStore,
+              store: App.repositories.comicDetailStore,
             ).loadLocalPages(
               localComicId: localComicId,
               chapterId: targetChapterId,
@@ -292,7 +292,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
           },
       canonicalRemotePageProviderFactory: (_) => CanonicalRemotePageProvider(
         canonicalReaderPages: CanonicalReaderPages(
-          store: App.unifiedComicsStore,
+          store: App.repositories.comicDetailStore,
         ),
       ),
       sourceExists: (sourceKey) => ComicSource.find(sourceKey) != null,
@@ -342,9 +342,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
             sourceRef.params['chapterId']?.toString() ??
             reader.chapter.toString();
         try {
-          await RemoteComicCanonicalSyncService(
-            store: App.unifiedComicsStore,
-          ).syncChapterPages(
+          await App.repositories.comicDetailStore.syncRemoteChapterPages(
             sourceKey: sourceRef.sourceKey,
             comicId: remoteComicId,
             chapterId: remoteChapterId,

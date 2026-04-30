@@ -1,6 +1,6 @@
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/res.dart';
-import 'package:venera/foundation/db/unified_comics_store.dart';
+import 'package:venera/foundation/db/store_records.dart';
 import 'package:venera/foundation/ports/comic_detail_store_port.dart';
 import 'package:venera/foundation/ports/reader_session_store_port.dart';
 import 'package:venera/features/reader/data/reader_session_repository.dart';
@@ -94,6 +94,7 @@ class UnifiedCanonicalComicDetailRepository implements ComicDetailRepository {
       'ReaderSessionRepository must be provided when comic detail store does not implement ReaderSessionStorePort.',
     );
   }
+
   final ReaderSessionRepository? _readerSessions;
 
   @override

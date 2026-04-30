@@ -1,5 +1,6 @@
 import 'package:venera/foundation/comic_detail/comic_detail.dart';
 import 'package:venera/foundation/comic_type.dart';
+import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/db/local_comic_sync.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/favorites.dart';
@@ -58,15 +59,18 @@ void legacyAddDownloadTask(DownloadTask task) {
 
 Future<CanonicalLocalDetailRecord?> loadCanonicalLocalDetailRecord({
   required String comicId,
-  required UnifiedComicsStore store,
+  UnifiedComicsStore? store,
 }) async {
+  final targetStore = store ?? App.unifiedComicsStore;
   final localComic = legacyFindLocalComic(comicId, ComicType.local);
   if (localComic == null) {
     return null;
   }
-  await LocalComicCanonicalSyncService(store: store).syncComic(localComic);
+  await LocalComicCanonicalSyncService(
+    store: targetStore,
+  ).syncComic(localComic);
   final detail = await UnifiedLocalComicDetailRepository(
-    store: store,
+    store: targetStore,
   ).getComicDetail(comicId);
   if (detail == null) {
     return null;

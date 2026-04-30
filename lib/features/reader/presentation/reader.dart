@@ -31,7 +31,6 @@ import 'package:venera/foundation/image_provider/cached_image.dart';
 import 'package:venera/foundation/image_provider/reader_image.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/log.dart';
-import 'package:venera/foundation/db/remote_comic_sync.dart';
 import 'package:venera/foundation/res.dart';
 import 'package:venera/foundation/reader/reader_diagnostics.dart';
 import 'package:venera/foundation/reader/canonical_reader_pages.dart';
@@ -40,7 +39,6 @@ import 'package:venera/foundation/reader/reader_page_loader.dart';
 import 'package:venera/features/reader/data/reader_resume_service.dart';
 import 'package:venera/features/reader/data/reader_runtime_context.dart';
 import 'package:venera/features/reader/data/reader_session_persistence.dart';
-import 'package:venera/features/reader/data/reader_session_repository.dart';
 import 'package:venera/foundation/source_ref.dart';
 import 'package:venera/foundation/source_identity/source_identity.dart';
 import 'package:venera/network/images.dart';
@@ -331,7 +329,7 @@ class _ReaderState extends State<Reader>
     final context = currentReaderContext(pageOverride: pageOverride);
     unawaited(
       ReaderSessionPersistenceService(
-        repository: ReaderSessionRepository(store: App.unifiedComicsStore),
+        repository: App.repositories.readerSession,
         recordEvent: recordReaderSessionDiagnosticEvent,
       ).persistCurrentLocation(context),
     );

@@ -45,7 +45,8 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
   late String readFilterSelect;
 
   var searchResults = <FavoriteItem>[];
-  Map<String, ReaderComicStatus> _statuses = const <String, ReaderComicStatus>{};
+  Map<String, ReaderComicStatus> _statuses =
+      const <String, ReaderComicStatus>{};
   int _statusRequestId = 0;
 
   void updateSearchResult() {
@@ -78,14 +79,14 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
             .getAllComicsAsync()
             .minTime(const Duration(milliseconds: 200))
             .then((value) {
-          if (mounted) {
-            setState(() {
-              isLoading = false;
-              comics = value;
+              if (mounted) {
+                setState(() {
+                  isLoading = false;
+                  comics = value;
+                });
+                unawaited(_loadStatuses(value));
+              }
             });
-            unawaited(_loadStatuses(value));
-          }
-        });
       }
     } else {
       var folderComics = favoritesRepo.folderComics(widget.folder);
@@ -98,14 +99,14 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
             .getFolderComicsAsync(widget.folder)
             .minTime(const Duration(milliseconds: 200))
             .then((value) {
-          if (mounted) {
-            setState(() {
-              isLoading = false;
-              comics = value;
+              if (mounted) {
+                setState(() {
+                  isLoading = false;
+                  comics = value;
+                });
+                unawaited(_loadStatuses(value));
+              }
             });
-            unawaited(_loadStatuses(value));
-          }
-        });
       }
     }
     setState(() {});
@@ -123,9 +124,8 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
       return;
     }
     try {
-      final statuses = await ReaderStatusRepository(
-        store: App.unifiedComicsStore,
-      ).loadStatusesForComics(target);
+      final statuses = await App.repositories.readerStatus
+          .loadStatusesForComics(target);
       if (!mounted || requestId != _statusRequestId) {
         return;
       }
@@ -144,10 +144,11 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
 
   List<FavoriteItem> filterComics(List<FavoriteItem> curComics) {
     return curComics.where((comic) {
-      final status = _statuses[readerStatusMapKey(
-        comicId: comic.id,
-        sourceKey: comic.sourceKey,
-      )];
+      final status =
+          _statuses[readerStatusMapKey(
+            comicId: comic.id,
+            sourceKey: comic.sourceKey,
+          )];
       final pageIndex = status?.pageIndex;
       final maxPage = status?.maxPage;
       final isCompleted =
@@ -170,12 +171,14 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
       if (k.isEmpty) continue;
       if (checkKeyWordMatch(k, comic.title, false)) {
         continue;
-      } else if (comic.subtitle != null && checkKeyWordMatch(k, comic.subtitle!, false)) {
+      } else if (comic.subtitle != null &&
+          checkKeyWordMatch(k, comic.subtitle!, false)) {
         continue;
       } else if (comic.tags.any((tag) {
         if (checkKeyWordMatch(k, tag, true)) {
           return true;
-        } else if (tag.contains(':') && checkKeyWordMatch(k, tag.split(':')[1], true)) {
+        } else if (tag.contains(':') &&
+            checkKeyWordMatch(k, tag.split(':')[1], true)) {
           return true;
         } else if (App.locale.languageCode != 'en' &&
             checkKeyWordMatch(k, tag.translateTagsToCN, true)) {
@@ -199,10 +202,11 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
       temp = temp.toLowerCase();
     }
     if (needEqual) {
-      return  keyword == temp;
+      return keyword == temp;
     }
     return temp.contains(keyword);
   }
+
   // Convert keyword to traditional Chinese to match comics
   bool matchKeywordT(String keyword, FavoriteItem comic) {
     if (!OpenCC.hasChineseSimplified(keyword)) {
@@ -220,9 +224,11 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
     keyword = OpenCC.traditionalToSimplified(keyword);
     return matchKeyword(keyword, comic);
   }
+
   @override
   void initState() {
-    readFilterSelect = appdata.implicitData["local_favorites_read_filter"] ??
+    readFilterSelect =
+        appdata.implicitData["local_favorites_read_filter"] ??
         readFilterList[0];
     favPage = context.findAncestorStateOfType<_FavoritesPageState>()!;
     if (!isAllFolder) {
@@ -285,18 +291,16 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
         sourceKey: c.sourceKey,
       );
       final isDownloaded =
-          await App.unifiedComicsStore.loadPrimaryLocalLibraryItem(
+          await App.repositories.localLibrary.loadPrimaryLocalLibraryItem(
             canonicalComicId,
           ) !=
           null;
       if (isDownloaded) {
         return false;
       }
-      LocalManager().addTask(ImagesDownloadTask(
-        source: source,
-        comicId: c.id,
-        comicTitle: c.title,
-      ));
+      LocalManager().addTask(
+        ImagesDownloadTask(source: source, comicId: c.id, comicTitle: c.title),
+      );
       return true;
     }
     return false;
@@ -356,7 +360,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                   child: Flyout(
                     flyoutBuilder: (context) {
                       final GlobalKey<_SelectUpdatePageNumState>
-                          selectUpdatePageNumKey =
+                      selectUpdatePageNumKey =
                           GlobalKey<_SelectUpdatePageNumState>();
                       var updatePageWidget = _SelectUpdatePageNum(
                         networkSource: networkSource!,
@@ -374,27 +378,28 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                               importNetworkFolder(
                                 networkSource!,
                                 selectUpdatePageNumKey
-                                    .currentState!.updatePageNum,
+                                    .currentState!
+                                    .updatePageNum,
                                 widget.folder,
                                 networkFolder!,
-                              ).then(
-                                (value) {
-                                  updateComics();
-                                },
-                              );
+                              ).then((value) {
+                                updateComics();
+                              });
                             },
                           ),
                         ],
                       );
                     },
-                    child: Builder(builder: (context) {
-                      return IconButton(
-                        icon: const Icon(Icons.sync),
-                        onPressed: () {
-                          Flyout.of(context).show();
-                        },
-                      );
-                    }),
+                    child: Builder(
+                      builder: (context) {
+                        return IconButton(
+                          icon: const Icon(Icons.sync),
+                          onPressed: () {
+                            Flyout.of(context).show();
+                          },
+                        );
+                      },
+                    ),
                   ),
                 ),
               Tooltip(
@@ -466,31 +471,26 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                       icon: Icons.reorder,
                       text: "Reorder".tl,
                       onClick: () {
-                        context.to(
-                          () {
-                            return _ReorderComicsPage(
-                              widget.folder,
-                              (comics) {
+                        context
+                            .to(() {
+                              return _ReorderComicsPage(widget.folder, (
+                                comics,
+                              ) {
                                 this.comics = comics;
-                              },
-                            );
-                          },
-                        ).then(
-                          (value) {
-                            if (mounted) {
-                              setState(() {});
-                            }
-                          },
-                        );
+                              });
+                            })
+                            .then((value) {
+                              if (mounted) {
+                                setState(() {});
+                              }
+                            });
                       },
                     ),
                     MenuEntry(
                       icon: Icons.upload_file,
                       text: "Export".tl,
                       onClick: () {
-                        var json = favoritesRepo.folderToJson(
-                          widget.folder,
-                        );
+                        var json = favoritesRepo.folderToJson(widget.folder);
                         saveFile(
                           data: utf8.encode(json),
                           filename: "${widget.folder}.json",
@@ -552,33 +552,40 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
               ),
             ),
             title: Text(
-                "Selected @c comics".tlParams({"c": selectedComics.length})),
+              "Selected @c comics".tlParams({"c": selectedComics.length}),
+            ),
             actions: [
-              MenuButton(entries: [
-                if (!isAllFolder)
-                  MenuEntry(
+              MenuButton(
+                entries: [
+                  if (!isAllFolder)
+                    MenuEntry(
                       icon: Icons.drive_file_move,
                       text: "Move to folder".tl,
-                      onClick: () => favoriteOption('move')),
-                if (!isAllFolder)
-                  MenuEntry(
+                      onClick: () => favoriteOption('move'),
+                    ),
+                  if (!isAllFolder)
+                    MenuEntry(
                       icon: Icons.copy,
                       text: "Copy to folder".tl,
-                      onClick: () => favoriteOption('add')),
-                MenuEntry(
+                      onClick: () => favoriteOption('add'),
+                    ),
+                  MenuEntry(
                     icon: Icons.select_all,
                     text: "Select All".tl,
-                    onClick: selectAll),
-                MenuEntry(
+                    onClick: selectAll,
+                  ),
+                  MenuEntry(
                     icon: Icons.deselect,
                     text: "Deselect".tl,
-                    onClick: _cancel),
-                MenuEntry(
+                    onClick: _cancel,
+                  ),
+                  MenuEntry(
                     icon: Icons.flip,
                     text: "Invert Selection".tl,
-                    onClick: invertSelection),
-                if (!isAllFolder)
-                  MenuEntry(
+                    onClick: invertSelection,
+                  ),
+                  if (!isAllFolder)
+                    MenuEntry(
                       icon: Icons.delete_outline,
                       text: "Delete Comic".tl,
                       color: context.colorScheme.error,
@@ -586,63 +593,61 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                         showConfirmDialog(
                           context: context,
                           title: "Delete".tl,
-                          content: "Delete @c comics?"
-                              .tlParams({"c": selectedComics.length}),
+                          content: "Delete @c comics?".tlParams({
+                            "c": selectedComics.length,
+                          }),
                           btnColor: context.colorScheme.error,
                           onConfirm: () {
                             _deleteComicWithId();
                           },
                         );
-                      }),
-                MenuEntry(
-                  icon: Icons.download,
-                  text: "Download".tl,
-                  onClick: () {
-                    unawaited(downloadSelected());
-                  },
-                ),
-                if (selectedComics.length == 1)
+                      },
+                    ),
                   MenuEntry(
-                    icon: Icons.copy,
-                    text: "Copy Title".tl,
+                    icon: Icons.download,
+                    text: "Download".tl,
                     onClick: () {
-                      Clipboard.setData(
-                        ClipboardData(
-                          text: selectedComics.keys.first.title,
-                        ),
-                      );
-                      context.showMessage(
-                        message: "Copied".tl,
-                      );
+                      unawaited(downloadSelected());
                     },
                   ),
-                if (selectedComics.length == 1)
-                  MenuEntry(
-                    icon: Icons.chrome_reader_mode_outlined,
-                    text: "Read".tl,
-                    onClick: () {
-                      final c = selectedComics.keys.first as FavoriteItem;
-                      App.rootContext.to(() => ReaderWithLoading(
+                  if (selectedComics.length == 1)
+                    MenuEntry(
+                      icon: Icons.copy,
+                      text: "Copy Title".tl,
+                      onClick: () {
+                        Clipboard.setData(
+                          ClipboardData(text: selectedComics.keys.first.title),
+                        );
+                        context.showMessage(message: "Copied".tl);
+                      },
+                    ),
+                  if (selectedComics.length == 1)
+                    MenuEntry(
+                      icon: Icons.chrome_reader_mode_outlined,
+                      text: "Read".tl,
+                      onClick: () {
+                        final c = selectedComics.keys.first as FavoriteItem;
+                        App.rootContext.to(
+                          () => ReaderWithLoading(
                             id: c.id,
                             sourceKey: c.sourceKey,
-                          )
-                      );
-                    },
-                  ),
-                if (selectedComics.length == 1)
-                  MenuEntry(
-                    icon: Icons.arrow_forward_ios,
-                    text: "Jump to Detail".tl,
-                    onClick: () {
-                      final c = selectedComics.keys.first as FavoriteItem;
-                      App.mainNavigatorKey?.currentContext?.to(() => ComicPage(
-                            id: c.id,
-                            sourceKey: c.sourceKey,
-                          )
-                      );
-                    },
-                  ),
-              ]),
+                          ),
+                        );
+                      },
+                    ),
+                  if (selectedComics.length == 1)
+                    MenuEntry(
+                      icon: Icons.arrow_forward_ios,
+                      text: "Jump to Detail".tl,
+                      onClick: () {
+                        final c = selectedComics.keys.first as FavoriteItem;
+                        App.mainNavigatorKey?.currentContext?.to(
+                          () => ComicPage(id: c.id, sourceKey: c.sourceKey),
+                        );
+                      },
+                    ),
+                ],
+              ),
             ],
           )
         else if (searchMode)
@@ -680,9 +685,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
           SliverToBoxAdapter(
             child: SizedBox(
               height: 200,
-              child: const Center(
-                child: CircularProgressIndicator(),
-              ),
+              child: const Center(child: CircularProgressIndicator()),
             ),
           )
         else
@@ -726,9 +729,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                   text: "Download".tl,
                   onClick: () {
                     unawaited(downloadComic(c as FavoriteItem));
-                    context.showMessage(
-                      message: "Download started".tl,
-                    );
+                    context.showMessage(message: "Download started".tl);
                   },
                 ),
                 if (appdata.settings["onClickFavorite"] == "viewDetail")
@@ -737,10 +738,8 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                     text: "Read".tl,
                     onClick: () {
                       App.mainNavigatorKey?.currentContext?.to(
-                        () => ReaderWithLoading(
-                          id: c.id,
-                          sourceKey: c.sourceKey,
-                        )
+                        () =>
+                            ReaderWithLoading(id: c.id, sourceKey: c.sourceKey),
                       );
                     },
                   ),
@@ -765,7 +764,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                     cover: c.cover,
                     title: c.title,
                     heroID: heroID,
-                  )
+                  ),
                 );
               } else {
                 App.mainNavigatorKey?.currentContext?.to(
@@ -839,8 +838,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
   }
 
   void favoriteOption(String option) {
-    var targetFolders = favoritesRepo
-        .folderNames
+    var targetFolders = favoritesRepo.folderNames
         .where((folder) => folder != favPage.folder)
         .toList();
 
@@ -853,8 +851,10 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
             body: Padding(
               padding: EdgeInsets.only(bottom: context.padding.bottom + 16),
               child: Container(
-                constraints:
-                    const BoxConstraints(maxHeight: 700, maxWidth: 500),
+                constraints: const BoxConstraints(
+                  maxHeight: 700,
+                  maxWidth: 500,
+                ),
                 child: Column(
                   children: [
                     Expanded(
@@ -871,8 +871,10 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                                       setState(() {
                                         targetFolders = favoritesRepo
                                             .folderNames
-                                            .where((folder) =>
-                                                folder != favPage.folder)
+                                            .where(
+                                              (folder) =>
+                                                  folder != favPage.folder,
+                                            )
                                             .toList();
                                       });
                                     });
@@ -985,7 +987,9 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
   }
 
   void _deleteComicWithId() {
-    var toBeDeleted = selectedComics.keys.map((e) => e as FavoriteItem).toList();
+    var toBeDeleted = selectedComics.keys
+        .map((e) => e as FavoriteItem)
+        .toList();
     favoritesRepo.batchDeleteComics(widget.folder, toBeDeleted);
     _cancel();
   }
@@ -1014,8 +1018,8 @@ class _ReorderComicsPageState extends State<_ReorderComicsPage> {
   }
 
   Color lightenColor(Color color, double lightenValue) {
-    int red =
-        (_floatToInt8(color.r) + ((255 - color.r) * lightenValue)).round();
+    int red = (_floatToInt8(color.r) + ((255 - color.r) * lightenValue))
+        .round();
     int green = (_floatToInt8(color.g) * 255 + ((255 - color.g) * lightenValue))
         .round();
     int blue = (_floatToInt8(color.b) * 255 + ((255 - color.b) * lightenValue))
@@ -1038,29 +1042,26 @@ class _ReorderComicsPageState extends State<_ReorderComicsPage> {
   @override
   Widget build(BuildContext context) {
     var type = appdata.settings['comicDisplayMode'];
-    var tiles = comics.map(
-      (e) {
-        var comicSource = e.type.comicSource;
-        return ComicTile(
-          key: Key(e.hashCode.toString()),
-          enableLongPressed: false,
-          comic: Comic(
-            e.name,
-            e.coverPath,
-            e.id,
-            e.author,
-            e.tags,
-            type == 'detailed'
-                ? "${e.time} | ${comicSource?.name ?? "Unknown"}"
-                : "${e.type.comicSource?.name ?? "Unknown"} | ${e.time}",
-            comicSource?.key ??
-                (e.type == ComicType.local ? "local" : "Unknown"),
-            null,
-            null,
-          ),
-        );
-      },
-    ).toList();
+    var tiles = comics.map((e) {
+      var comicSource = e.type.comicSource;
+      return ComicTile(
+        key: Key(e.hashCode.toString()),
+        enableLongPressed: false,
+        comic: Comic(
+          e.name,
+          e.coverPath,
+          e.id,
+          e.author,
+          e.tags,
+          type == 'detailed'
+              ? "${e.time} | ${comicSource?.name ?? "Unknown"}"
+              : "${e.type.comicSource?.name ?? "Unknown"} | ${e.time}",
+          comicSource?.key ?? (e.type == ComicType.local ? "local" : "Unknown"),
+          null,
+          null,
+        ),
+      );
+    }).toList();
     return Scaffold(
       appBar: Appbar(
         title: Text("Reorder".tl),
@@ -1089,7 +1090,7 @@ class _ReorderComicsPageState extends State<_ReorderComicsPage> {
                 });
               },
             ),
-          )
+          ),
         ],
       ),
       body: ReorderableBuilder<FavoriteItem>(
@@ -1145,8 +1146,18 @@ class _SelectUpdatePageNumState extends State<_SelectUpdatePageNum> {
 
   String get _allPageText => 'All'.tl;
 
-  List<String> get pageNumList =>
-      ['1', '2', '3', '5', '10', '20', '50', '100', '200', _allPageText];
+  List<String> get pageNumList => [
+    '1',
+    '2',
+    '3',
+    '5',
+    '10',
+    '20',
+    '50',
+    '100',
+    '200',
+    _allPageText,
+  ];
 
   @override
   void initState() {
@@ -1168,9 +1179,7 @@ class _SelectUpdatePageNumState extends State<_SelectUpdatePageNum> {
 
     return Column(
       children: [
-        Row(
-          children: [Text(text)],
-        ),
+        Row(children: [Text(text)]),
         Row(
           children: [
             Text("Update the page number by the latest collection".tl),
@@ -1183,15 +1192,17 @@ class _SelectUpdatePageNumState extends State<_SelectUpdatePageNum> {
               minWidth: 48,
               onTap: (index) {
                 setState(() {
-                  updatePageNum = int.parse(pageNumList[index] == _allPageText
-                      ? '9999999'
-                      : pageNumList[index]);
+                  updatePageNum = int.parse(
+                    pageNumList[index] == _allPageText
+                        ? '9999999'
+                        : pageNumList[index],
+                  );
                   appdata.implicitData["local_favorites_update_page_num"] =
                       updatePageNum;
                   appdata.writeImplicitData();
                 });
               },
-            )
+            ),
           ],
         ),
       ],
@@ -1235,25 +1246,27 @@ class _LocalFavoritesFilterDialogState
           mainAxisSize: MainAxisSize.min,
           children: [
             tabBar,
-            TabViewBody(children: [
-              Column(
-                children: [
-                  ListTile(
-                    title: Text("Filter reading status".tl),
-                    trailing: Select(
-                      current: readFilter.tl,
-                      values: readFilterList.map((e) => e.tl).toList(),
-                      minWidth: 64,
-                      onTap: (index) {
-                        setState(() {
-                          readFilter = readFilterList[index];
-                        });
-                      },
+            TabViewBody(
+              children: [
+                Column(
+                  children: [
+                    ListTile(
+                      title: Text("Filter reading status".tl),
+                      trailing: Select(
+                        current: readFilter.tl,
+                        values: readFilterList.map((e) => e.tl).toList(),
+                        minWidth: 64,
+                        onTap: (index) {
+                          setState(() {
+                            readFilter = readFilterList[index];
+                          });
+                        },
+                      ),
                     ),
-                  )
-                ],
-              )
-            ]),
+                  ],
+                ),
+              ],
+            ),
           ],
         ),
       ),

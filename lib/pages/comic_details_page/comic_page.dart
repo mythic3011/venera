@@ -19,13 +19,11 @@ import 'package:venera/foundation/favorites.dart';
 import 'package:venera/foundation/history.dart';
 import 'package:venera/foundation/image_provider/cached_image.dart';
 import 'package:venera/foundation/local.dart';
-import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/comic_detail/comic_detail.dart';
 import 'package:venera/foundation/source_ref.dart';
 import 'package:venera/foundation/source_identity/source_identity.dart';
 import 'package:venera/foundation/reader/reader_open_target.dart';
 import 'package:venera/features/reader/data/reader_resume_service.dart';
-import 'package:venera/features/reader/data/reader_session_repository.dart';
 import 'package:venera/foundation/res.dart';
 import 'package:venera/network/download.dart';
 import 'package:venera/network/cache.dart';
@@ -259,9 +257,9 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
     if (canonicalId == null || detail == null || model == null) {
       return;
     }
-    final activeTab = await ReaderSessionRepository(
-      store: App.unifiedComicsStore,
-    ).loadActiveReaderTab(canonicalId);
+    final activeTab = await App.repositories.readerSession.loadActiveReaderTab(
+      canonicalId,
+    );
     if (!mounted) {
       return;
     }
@@ -362,7 +360,6 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
     if (_isLocalSource) {
       final localRecord = await loadCanonicalLocalDetailRecord(
         comicId: widget.id,
-        store: App.unifiedComicsStore,
       );
       if (localRecord == null) {
         return const Res.error('Local comic not found');
@@ -391,7 +388,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
     );
     final remoteDetail =
         await CanonicalRemoteComicDetailRepository(
-          store: App.unifiedComicsStore,
+          store: App.repositories.comicDetailStore,
         ).getRemoteComicDetail(
           comicId: widget.id,
           loadComicInfo: comicSource.loadComicInfo!,
@@ -400,9 +397,9 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
       return Res.fromErrorRes(remoteDetail, subData: remoteDetail.subData);
     }
     _canonicalComicId = remoteDetail.data.canonicalComicId;
-    _canonicalDetailVm = await UnifiedCanonicalComicDetailRepository(
-      store: App.unifiedComicsStore,
-    ).getComicDetail(_canonicalComicId!);
+    _canonicalDetailVm = await App.repositories.comicDetail.getComicDetail(
+      _canonicalComicId!,
+    );
     history = buildComicDetailCompatibilityHistoryForTesting(
       model: remoteDetail.data.detail,
       chapters: remoteDetail.data.detail.chapters,
