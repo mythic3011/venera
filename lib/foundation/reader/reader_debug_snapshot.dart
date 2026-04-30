@@ -6,8 +6,11 @@ class ReaderDebugSnapshot {
     required this.comicId,
     required this.loadMode,
     required this.controllerLifecycle,
+    required this.linkStatus,
     this.localLibraryItemId,
     this.comicSourceId,
+    this.sourcePlatformId,
+    this.sourceComicId,
     this.readerTabId,
     this.pageOrderId,
     this.chapterId,
@@ -17,8 +20,11 @@ class ReaderDebugSnapshot {
   final String comicId;
   final String loadMode;
   final String controllerLifecycle;
+  final String linkStatus;
   final String? localLibraryItemId;
   final String? comicSourceId;
+  final String? sourcePlatformId;
+  final String? sourceComicId;
   final String? readerTabId;
   final String? pageOrderId;
   final String? chapterId;
@@ -29,6 +35,9 @@ class ReaderDebugSnapshot {
       'comicId': comicId,
       'localLibraryItemId': localLibraryItemId,
       'comicSourceId': comicSourceId,
+      'sourcePlatformId': sourcePlatformId,
+      'sourceComicId': sourceComicId,
+      'linkStatus': linkStatus,
       'readerTabId': readerTabId,
       'pageOrderId': pageOrderId,
       'chapterId': chapterId,
@@ -63,6 +72,7 @@ class ReaderDebugSnapshotService {
     if (isLocal && chapterId != null && pageOrder == null) {
       throw StateError('CANONICAL_PAGE_ORDER_NOT_FOUND:$chapterId');
     }
+    final sourceLink = await store.loadPrimaryComicSourceLink(comicId);
 
     return ReaderDebugSnapshot(
       generatedAt: DateTime.now(),
@@ -70,6 +80,9 @@ class ReaderDebugSnapshotService {
       loadMode: loadMode,
       controllerLifecycle: controllerLifecycle,
       localLibraryItemId: localItem?.id,
+      sourcePlatformId: sourceLink?.sourcePlatformId,
+      sourceComicId: sourceLink?.sourceComicId,
+      linkStatus: sourceLink == null ? 'missing' : sourceLink.linkStatus,
       pageOrderId: pageOrder?.id,
       chapterId: chapterId,
     );

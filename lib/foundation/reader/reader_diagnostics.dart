@@ -8,6 +8,7 @@ class ReaderDiagnostics {
 
   static int _nextCallId = 0;
   static final Map<String, DateTime> _callStarts = {};
+  static final Map<String, String> _callCorrelationIds = {};
 
   static Map<String, dynamic> toDiagnosticsJson() {
     return readerTraceRecorder.toDiagnosticsJson();
@@ -18,6 +19,7 @@ class ReaderDiagnostics {
     required ReaderTracePhase phase,
     String? loadMode,
     String? sourceKey,
+    String? sourceRefId,
     String? comicId,
     String? chapterId,
     int? chapterIndex,
@@ -25,7 +27,17 @@ class ReaderDiagnostics {
     String? imageKey,
   }) {
     final callId = '${DateTime.now().microsecondsSinceEpoch}-${_nextCallId++}';
+    final correlationId = _buildCorrelationId(
+      functionName: functionName,
+      phase: phase,
+      loadMode: loadMode,
+      sourceKey: sourceKey,
+      sourceRefId: sourceRefId,
+      comicId: comicId,
+      chapterId: chapterId,
+    );
     _callStarts[callId] = DateTime.now();
+    _callCorrelationIds[callId] = correlationId;
     readerTraceRecorder.record(
       ReaderTraceEvent(
         event: 'call.start',
@@ -56,6 +68,7 @@ class ReaderDiagnostics {
         'chapterIndex': chapterIndex,
         'page': page,
         'imageKey': imageKey,
+        'correlationId': correlationId,
       },
     );
     return callId;
@@ -67,6 +80,7 @@ class ReaderDiagnostics {
     required ReaderTracePhase phase,
     String? loadMode,
     String? sourceKey,
+    String? sourceRefId,
     String? comicId,
     String? chapterId,
     int? chapterIndex,
@@ -74,6 +88,16 @@ class ReaderDiagnostics {
     String? resultSummary,
   }) {
     final durationMs = _durationMs(callId);
+    final correlationId = _resolveCorrelationId(
+      callId: callId,
+      functionName: functionName,
+      phase: phase,
+      loadMode: loadMode,
+      sourceKey: sourceKey,
+      sourceRefId: sourceRefId,
+      comicId: comicId,
+      chapterId: chapterId,
+    );
     readerTraceRecorder.record(
       ReaderTraceEvent(
         event: 'call.end',
@@ -106,8 +130,10 @@ class ReaderDiagnostics {
         'chapterIndex': chapterIndex,
         'page': page,
         'resultSummary': resultSummary,
+        'correlationId': correlationId,
       },
     );
+    _callCorrelationIds.remove(callId);
   }
 
   static void failCall({
@@ -118,6 +144,7 @@ class ReaderDiagnostics {
     String? errorCode,
     String? loadMode,
     String? sourceKey,
+    String? sourceRefId,
     String? comicId,
     String? chapterId,
     int? chapterIndex,
@@ -125,6 +152,16 @@ class ReaderDiagnostics {
     String? imageKey,
   }) {
     final durationMs = _durationMs(callId);
+    final correlationId = _resolveCorrelationId(
+      callId: callId,
+      functionName: functionName,
+      phase: phase,
+      loadMode: loadMode,
+      sourceKey: sourceKey,
+      sourceRefId: sourceRefId,
+      comicId: comicId,
+      chapterId: chapterId,
+    );
     readerTraceRecorder.record(
       ReaderTraceEvent(
         event: 'call.error',
@@ -161,8 +198,10 @@ class ReaderDiagnostics {
         'imageKey': imageKey,
         'errorCode': errorCode,
         'errorMessage': errorMessage,
+        'correlationId': correlationId,
       },
     );
+    _callCorrelationIds.remove(callId);
   }
 
   static void updateReaderState({
@@ -292,6 +331,7 @@ class ReaderDiagnostics {
       phase: ReaderTracePhase.pageList,
       loadMode: loadMode,
       sourceKey: sourceRef.sourceKey,
+      sourceRefId: sourceRef.id,
       comicId: comicId,
       chapterId: sourceRef.params['chapterId']?.toString(),
       chapterIndex: chapterIndex,
@@ -326,6 +366,7 @@ class ReaderDiagnostics {
       errorCode: errorCode,
       loadMode: loadMode,
       sourceKey: sourceRef.sourceKey,
+      sourceRefId: sourceRef.id,
       comicId: comicId,
       chapterId: sourceRef.params['chapterId']?.toString(),
       chapterIndex: chapterIndex,
@@ -541,5 +582,67 @@ class ReaderDiagnostics {
       return null;
     }
     return DateTime.now().difference(start).inMilliseconds;
+  }
+
+  static String _resolveCorrelationId({
+    required String callId,
+    required String functionName,
+    required ReaderTracePhase phase,
+    String? loadMode,
+    String? sourceKey,
+    String? sourceRefId,
+    String? comicId,
+    String? chapterId,
+  }) {
+    final existing = _callCorrelationIds[callId];
+    if (existing != null && existing.isNotEmpty) {
+      return existing;
+    }
+    return _buildCorrelationId(
+      functionName: functionName,
+      phase: phase,
+      loadMode: loadMode,
+      sourceKey: sourceKey,
+      sourceRefId: sourceRefId,
+      comicId: comicId,
+      chapterId: chapterId,
+    );
+  }
+
+  static String _buildCorrelationId({
+    required String functionName,
+    required ReaderTracePhase phase,
+    String? loadMode,
+    String? sourceKey,
+    String? sourceRefId,
+    String? comicId,
+    String? chapterId,
+  }) {
+    final normalizedRef = _normalizeCorrelationPart(sourceRefId);
+    final normalizedContext = [
+      _normalizeCorrelationPart(loadMode),
+      _normalizeCorrelationPart(sourceKey),
+      _normalizeCorrelationPart(comicId),
+      _normalizeCorrelationPart(chapterId),
+    ].whereType<String>().join('|');
+    final keyPart = normalizedRef != null && normalizedRef.isNotEmpty
+        ? 'ref:$normalizedRef'
+        : 'ctx:$normalizedContext';
+    return [
+      _normalizeCorrelationPart(functionName) ?? 'unknownFunction',
+      _normalizeCorrelationPart(phase.name) ?? 'unknownPhase',
+      keyPart,
+    ].join('::');
+  }
+
+  static String? _normalizeCorrelationPart(String? value) {
+    if (value == null) {
+      return null;
+    }
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+    return trimmed.replaceAll(RegExp(r'\s+'), '_');
   }
 }
