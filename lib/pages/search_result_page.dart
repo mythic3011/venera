@@ -2,12 +2,55 @@ import 'package:flutter/material.dart';
 import 'package:venera/components/components.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/global_state.dart';
 import 'package:venera/pages/search_page.dart';
 import 'package:venera/utils/ext.dart';
 import 'package:venera/utils/tags_translation.dart';
 import 'package:venera/utils/translations.dart';
+
+String applyAutoLanguageFilter({
+  required String query,
+  required SearchPageData? searchPageData,
+  required String setting,
+}) {
+  if (setting == 'none') {
+    return query;
+  }
+  if (!supportsAutoLanguageFilter(searchPageData)) {
+    return query;
+  }
+  final hasLanguageToken = RegExp(r'(^|\s)language\s*:', caseSensitive: false)
+      .hasMatch(query);
+  if (hasLanguageToken) {
+    return query;
+  }
+  final trimmed = query.trim();
+  if (trimmed.isEmpty) {
+    return 'language:$setting';
+  }
+  return '$trimmed language:$setting';
+}
+
+bool supportsAutoLanguageFilter(SearchPageData? searchPageData) {
+  final searchOptions = searchPageData?.searchOptions;
+  if (searchOptions == null || searchOptions.isEmpty) {
+    return false;
+  }
+  for (final option in searchOptions) {
+    final label = option.label.trim().toLowerCase();
+    if (label == 'language' || label == 'languages') {
+      return true;
+    }
+    final hasLanguageNamespace = option.options.keys.any(
+      (key) => key.trim().toLowerCase().startsWith('language:'),
+    );
+    if (hasLanguageNamespace) {
+      return true;
+    }
+  }
+  return false;
+}
 
 class SearchResultPage extends StatefulWidget {
   const SearchResultPage({
@@ -94,23 +137,12 @@ class _SearchResultPageState extends State<SearchResultPage> {
   }
 
   String checkAutoLanguage(String text) {
-    var setting = appdata.settings["autoAddLanguageFilter"] ?? 'none';
-    if (setting == 'none') {
-      return text;
-    }
-    var searchSource = sourceKey;
-    // TODO: Move it to a better place
-    const enabledSources = [
-      'nhentai',
-      'ehentai',
-    ];
-    if (!enabledSources.contains(searchSource)) {
-      return text;
-    }
-    if (!text.contains('language:')) {
-      return '$text language:$setting';
-    }
-    return text;
+    final setting = appdata.settings["autoAddLanguageFilter"] ?? 'none';
+    return applyAutoLanguageFilter(
+      query: text,
+      searchPageData: ComicSource.find(sourceKey)?.searchPageData,
+      setting: setting,
+    );
   }
 
   @override
@@ -349,18 +381,24 @@ class _SuggestionsState extends State<_Suggestions> {
 
     return Column(
       children: [
-        ListTile(
-          leading: const Icon(Icons.hub_outlined),
-          title: Text("Suggestions".tl),
-          trailing: Tooltip(
-            message: "Clear".tl,
-            child: IconButton(
-              icon: const Icon(Icons.clear_all),
-              onPressed: () {
-                widget.controller.suggestions.clear();
-                widget.controller.remove();
-              },
-            ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+          child: Row(
+            children: [
+              const Icon(Icons.hub_outlined),
+              const SizedBox(width: 12),
+              Expanded(child: Text("Suggestions".tl, style: ts.s16)),
+              Tooltip(
+                message: "Clear".tl,
+                child: IconButton(
+                  icon: const Icon(Icons.clear_all),
+                  onPressed: () {
+                    widget.controller.suggestions.clear();
+                    widget.controller.remove();
+                  },
+                ),
+              ),
+            ],
           ),
         ),
         Expanded(
@@ -454,9 +492,9 @@ class _SearchSettingsDialogState extends State<_SearchSettingsDialog> {
       title: "Settings".tl,
       content: Column(
         children: [
-          ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-            title: Text("Search in".tl),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+            child: Text("Search in".tl, style: ts.s16),
           ),
           Wrap(
             spacing: 8,

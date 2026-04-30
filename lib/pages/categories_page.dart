@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:venera/components/components.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/pages/ranking_page.dart';
 import 'package:venera/pages/settings/settings_page.dart';
 import 'package:venera/utils/ext.dart';

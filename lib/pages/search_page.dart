@@ -6,7 +6,7 @@ import 'package:sliver_tools/sliver_tools.dart';
 import 'package:venera/components/components.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/global_state.dart';
 import 'package:venera/pages/aggregated_search_page.dart';
 import 'package:venera/pages/search_result_page.dart';
@@ -580,9 +580,9 @@ class SearchOptionWidget extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: Text(option.label.ts(sourceKey)),
+        Padding(
+          padding: const EdgeInsets.only(top: 8, bottom: 10),
+          child: Text(option.label.ts(sourceKey), style: ts.s16),
         ),
         if (option.type == 'select')
           Wrap(

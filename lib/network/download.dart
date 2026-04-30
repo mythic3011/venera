@@ -5,7 +5,7 @@ import 'package:flutter/widgets.dart' show ChangeNotifier;
 import 'package:flutter_saf/flutter_saf.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/log.dart';

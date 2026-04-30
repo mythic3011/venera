@@ -1,11 +1,11 @@
-import 'package:venera/foundation/history.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/reader/reader_diagnostics.dart';
+import 'package:venera/features/reader/data/reader_runtime_context.dart';
 import 'package:venera/foundation/reader/reader_trace_recorder.dart';
 import 'package:venera/foundation/source_ref.dart';
-import 'package:venera/pages/reader/reader.dart';
+import 'package:venera/features/reader/presentation/reader.dart';
 
 void main() {
   setUp(() {
@@ -203,7 +203,9 @@ void main() {
         (ReaderDiagnostics.toDiagnosticsJson()['readerTrace']
                 as Map<String, dynamic>)['events'][0]
             as Map<String, dynamic>;
-    final structured = DevDiagnosticsApi.recent(channel: 'reader.session').single;
+    final structured = DevDiagnosticsApi.recent(
+      channel: 'reader.session',
+    ).single;
 
     expect(traceEvent['event'], 'reader.session.upsert.success');
     expect(traceEvent['sourceKey'], 'local');
@@ -213,61 +215,68 @@ void main() {
     expect(structured.data['tabId'], isNotNull);
   });
 
-  test('normalized reader context stays stable across page list image provider and dispose', () {
-    readerTraceRecorder.clear();
-    final context = buildReaderRuntimeContextForTesting(
-      comicId: 'comic-10',
-      type: ComicType.local,
-      chapterIndex: 1,
-      page: 3,
-      chapterId: null,
-      sourceRef: SourceRef.fromLegacyLocal(
-        localType: 'local',
-        localComicId: 'comic-10',
+  test(
+    'normalized reader context stays stable across page list image provider and dispose',
+    () {
+      readerTraceRecorder.clear();
+      final context = buildReaderRuntimeContextForTesting(
+        comicId: 'comic-10',
+        type: ComicType.local,
+        chapterIndex: 1,
+        page: 3,
         chapterId: null,
-      ),
-    );
+        sourceRef: SourceRef.fromLegacyLocal(
+          localType: 'local',
+          localComicId: 'comic-10',
+          chapterId: null,
+        ),
+      );
 
-    ReaderDiagnostics.beginPageListLoad(
-      loadMode: context.loadMode,
-      sourceKey: context.sourceKey,
-      comicId: context.comicId,
-      chapterId: context.chapterId,
-      chapterIndex: context.chapterIndex,
-      page: context.page,
-    );
-    ReaderDiagnostics.recordImageProviderCreated(
-      type: ComicType.local,
-      comicId: context.comicId,
-      chapterId: context.chapterId,
-      chapterIndex: context.chapterIndex,
-      page: context.page,
-      imageKey: 'file:///tmp/page-3.jpg',
-    );
-    ReaderDiagnostics.recordReaderLifecycle(
-      event: 'reader.dispose',
-      type: ComicType.local,
-      comicId: context.comicId,
-      chapterId: context.chapterId,
-      chapterIndex: context.chapterIndex,
-      page: context.page,
-      sourceKey: context.sourceKey,
-      loadMode: context.loadMode,
-    );
+      ReaderDiagnostics.beginPageListLoad(
+        loadMode: context.loadMode,
+        sourceKey: context.sourceKey,
+        comicId: context.comicId,
+        chapterId: context.chapterId,
+        chapterIndex: context.chapterIndex,
+        page: context.page,
+      );
+      ReaderDiagnostics.recordImageProviderCreated(
+        type: ComicType.local,
+        comicId: context.comicId,
+        chapterId: context.chapterId,
+        chapterIndex: context.chapterIndex,
+        page: context.page,
+        imageKey: 'file:///tmp/page-3.jpg',
+      );
+      ReaderDiagnostics.recordReaderLifecycle(
+        event: 'reader.dispose',
+        type: ComicType.local,
+        comicId: context.comicId,
+        chapterId: context.chapterId,
+        chapterIndex: context.chapterIndex,
+        page: context.page,
+        sourceKey: context.sourceKey,
+        loadMode: context.loadMode,
+      );
 
-    final events =
-        (ReaderDiagnostics.toDiagnosticsJson()['readerTrace']
-                as Map<String, dynamic>)['events']
-            as List<dynamic>;
+      final events =
+          (ReaderDiagnostics.toDiagnosticsJson()['readerTrace']
+                  as Map<String, dynamic>)['events']
+              as List<dynamic>;
 
-    expect(
-      events.every((event) => (event as Map<String, dynamic>)['sourceKey'] == 'local'),
-      isTrue,
-    );
-    expect(
-      events.every((event) => (event as Map<String, dynamic>)['chapterId'] == '0'),
-      isTrue,
-    );
-    expect(normalizeReaderChapterIdForTesting(null), '0');
-  });
+      expect(
+        events.every(
+          (event) => (event as Map<String, dynamic>)['sourceKey'] == 'local',
+        ),
+        isTrue,
+      );
+      expect(
+        events.every(
+          (event) => (event as Map<String, dynamic>)['chapterId'] == '0',
+        ),
+        isTrue,
+      );
+      expect(normalizeReaderChapterIdForTesting(null), '0');
+    },
+  );
 }

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/comments/comment_filter.dart';
 
 Comment _comment(String content) {

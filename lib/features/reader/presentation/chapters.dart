@@ -23,7 +23,10 @@ class _ChaptersViewState extends State<_ChaptersView> {
     _scrollController = ScrollController(
       initialScrollOffset: (epIndex * 48.0 + 52).clamp(0, double.infinity),
     );
-    var local = LocalManager().find(widget.reader.cid, widget.reader.type);
+    var local = LocalManager().findBySourceKey(
+      widget.reader.cid,
+      widget.reader.type.sourceKey,
+    );
     if (local != null) {
       downloaded = local.downloadedChapters;
     }
@@ -132,7 +135,10 @@ class _GroupedChaptersViewState extends State<_GroupedChaptersView>
     _scrollController = ScrollController(
       initialScrollOffset: (epIndexAtGroup * 48.0).clamp(0, double.infinity),
     );
-    var local = LocalManager().find(widget.reader.cid, widget.reader.type);
+    var local = LocalManager().findBySourceKey(
+      widget.reader.cid,
+      widget.reader.type.sourceKey,
+    );
     if (local != null) {
       downloaded = local.downloadedChapters;
     }

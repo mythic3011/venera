@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/reader/local_page_provider.dart';
 import 'package:venera/foundation/reader/source_ref_diagnostics.dart';
 import 'package:venera/foundation/reader/source_ref_resolver.dart';
 import 'package:venera/foundation/res.dart';
 import 'package:venera/foundation/source_ref.dart';
-import 'package:venera/pages/reader/reader.dart';
+import 'package:venera/features/reader/presentation/reader.dart';
 
 ComicSource _fakeSource({LoadComicPagesFunc? loadComicPages}) {
   return ComicSource(

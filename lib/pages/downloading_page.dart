@@ -1,8 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:venera/components/components.dart';
 import 'package:venera/foundation/app.dart';
+import 'package:venera/features/downloads/data/download_queue_repository.dart';
 import 'package:venera/foundation/image_provider/cached_image.dart';
-import 'package:venera/foundation/local.dart';
 import 'package:venera/network/download.dart';
 import 'package:venera/utils/io.dart';
 import 'package:venera/utils/translations.dart';
@@ -16,45 +18,68 @@ class DownloadingPage extends StatefulWidget {
 
 class _DownloadingPageState extends State<DownloadingPage> {
   DownloadTask? firstTask;
+  bool _isReady = false;
+  final downloadQueue = const DownloadQueueRepository();
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    firstTask = LocalManager().downloadingTasks.firstOrNull;
+    if (!_isReady) {
+      return;
+    }
+    firstTask = downloadQueue.firstTask;
     firstTask?.addListener(update);
   }
 
   @override
   void initState() {
-    LocalManager().addListener(update);
     super.initState();
+    unawaited(_initialize());
+  }
+
+  Future<void> _initialize() async {
+    await downloadQueue.ensureInitialized();
+    if (!mounted) {
+      return;
+    }
+    downloadQueue.addListener(update);
+    firstTask = downloadQueue.firstTask;
+    firstTask?.addListener(update);
+    setState(() {
+      _isReady = true;
+    });
   }
 
   @override
   void dispose() {
-    LocalManager().removeListener(update);
+    if (_isReady) {
+      downloadQueue.removeListener(update);
+    }
     firstTask?.removeListener(update);
     super.dispose();
   }
 
   void update() {
-    var currentFirstTask = LocalManager().downloadingTasks.firstOrNull;
+    var currentFirstTask = downloadQueue.firstTask;
     if (currentFirstTask != firstTask) {
       firstTask?.removeListener(update);
       firstTask = currentFirstTask;
       firstTask?.addListener(update);
     }
-    if(mounted) {
+    if (mounted) {
       setState(() {});
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_isReady) {
+      return PopUpWidgetScaffold(title: "", body: const SizedBox.shrink());
+    }
     return PopUpWidgetScaffold(
       title: "",
       body: ListView.builder(
-        itemCount: LocalManager().downloadingTasks.length + 1,
+        itemCount: downloadQueue.tasks.length + 1,
         itemBuilder: (BuildContext context, int i) {
           if (i == 0) {
             return buildTop();
@@ -62,8 +87,8 @@ class _DownloadingPageState extends State<DownloadingPage> {
           i--;
 
           return _DownloadTaskTile(
-            key: ValueKey(LocalManager().downloadingTasks[i]),
-            task: LocalManager().downloadingTasks[i],
+            key: ValueKey(downloadQueue.tasks[i]),
+            task: downloadQueue.tasks[i],
           );
         },
       ),
@@ -72,10 +97,10 @@ class _DownloadingPageState extends State<DownloadingPage> {
 
   Widget buildTop() {
     int speed = 0;
-    if (LocalManager().downloadingTasks.isNotEmpty) {
-      speed = LocalManager().downloadingTasks.first.speed;
+    if (downloadQueue.tasks.isNotEmpty) {
+      speed = downloadQueue.tasks.first.speed;
     }
-    var first = LocalManager().downloadingTasks.firstOrNull;
+    var first = downloadQueue.firstTask;
     return Container(
       height: 48,
       decoration: BoxDecoration(
@@ -89,20 +114,11 @@ class _DownloadingPageState extends State<DownloadingPage> {
       child: Row(
         children: [
           if (first?.isPaused == true)
-            Text(
-              "Paused".tl,
-              style: ts.s18.bold,
-            )
+            Text("Paused".tl, style: ts.s18.bold)
           else if (first?.isError == true)
-            Text(
-              "Error".tl,
-              style: ts.s18.bold,
-            )
+            Text("Error".tl, style: ts.s18.bold)
           else
-            Text(
-              "${bytesToReadableString(speed)}/s",
-              style: ts.s18.bold,
-            ),
+            Text("${bytesToReadableString(speed)}/s", style: ts.s18.bold),
           const Spacer(),
           if (first?.isPaused == true || first?.isError == true)
             OutlinedButton(
@@ -147,6 +163,7 @@ class _DownloadTaskTile extends StatefulWidget {
 
 class _DownloadTaskTileState extends State<_DownloadTaskTile> {
   late DownloadTask task;
+  final downloadQueue = const DownloadQueueRepository();
 
   @override
   void initState() {
@@ -225,7 +242,7 @@ class _DownloadTaskTileState extends State<_DownloadTaskTile> {
                           icon: Icons.vertical_align_top,
                           text: "Move To First".tl,
                           onClick: () {
-                            LocalManager().moveToFirst(widget.task);
+                            downloadQueue.moveToFirst(widget.task);
                           },
                         ),
                       ],
@@ -234,15 +251,9 @@ class _DownloadTaskTileState extends State<_DownloadTaskTile> {
                 ),
                 const Spacer(),
                 if (!widget.task.isPaused || widget.task.isError)
-                  Text(
-                    widget.task.message,
-                    style: ts.s12,
-                    maxLines: 3,
-                  ),
+                  Text(widget.task.message, style: ts.s12, maxLines: 3),
                 const SizedBox(height: 4),
-                LinearProgressIndicator(
-                  value: widget.task.progress,
-                ),
+                LinearProgressIndicator(value: widget.task.progress),
                 const SizedBox(height: 8),
               ],
             ),

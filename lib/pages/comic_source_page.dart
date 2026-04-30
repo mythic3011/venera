@@ -6,7 +6,7 @@ import 'package:url_launcher/url_launcher_string.dart';
 import 'package:venera/components/components.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/consts.dart';
 import 'package:venera/foundation/log.dart';
 import 'package:venera/network/app_dio.dart';
@@ -216,9 +216,15 @@ class _BodyState extends State<_Body> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(
-              title: Text("Add comic source".tl),
-              leading: const Icon(Icons.dashboard_customize),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.dashboard_customize),
+                  const SizedBox(width: 12),
+                  Text("Add comic source".tl, style: ts.s16),
+                ],
+              ),
             ),
             TextField(
               decoration: InputDecoration(
@@ -414,9 +420,15 @@ class _ComicSourceListState extends State<_ComicSourceList> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ListTile(
-                  leading: Icon(Icons.source_outlined),
-                  title: Text("Repo URL".tl),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.source_outlined),
+                      const SizedBox(width: 12),
+                      Text("Repo URL".tl, style: ts.s16),
+                    ],
+                  ),
                 ),
                 TextField(
                   controller: controller,

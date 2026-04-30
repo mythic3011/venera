@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:venera/foundation/log.dart';
-import 'package:venera/foundation/local_metadata/models.dart';
+import 'package:venera/features/local_library/data/local_metadata_models.dart';
 import 'package:venera/utils/io.dart';
 
 class LocalMetadataRepository {

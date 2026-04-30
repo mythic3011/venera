@@ -54,6 +54,13 @@ void main() {
       ]),
     );
     expect(tables, isNot(contains('comic_sources')));
+    expect(await store.currentUserVersion(), store.schemaVersion);
+  });
+
+  test('concurrent init on same instance is safe', () async {
+    await Future.wait<void>([store.init(), store.init(), store.init()]);
+
+    expect(await store.currentUserVersion(), store.schemaVersion);
   });
 
   test('foreign key enforcement is enabled on store connection', () async {
@@ -447,6 +454,7 @@ void main() {
         '{"legacy":true}',
       ],
     );
+    legacyDb.execute('PRAGMA user_version = 1;');
     legacyDb.dispose();
 
     await store.close();
@@ -459,7 +467,81 @@ void main() {
     expect(link?.id, 'legacy-link');
     expect(link?.sourceComicId, 'legacy-123');
     expect(link?.metadataJson, '{"legacy":true}');
+    expect(await store.currentUserVersion(), store.schemaVersion);
   });
+
+  test(
+    'legacy v2 database upgrades to v3 reader and remote match schema',
+    () async {
+      final legacyPath = '${tempDir.path}/legacy_v2.db';
+      final legacyDb = sqlite3.open(legacyPath);
+      addTearDown(legacyDb.dispose);
+      legacyDb.execute('PRAGMA foreign_keys = ON;');
+      legacyDb.execute('''
+      CREATE TABLE source_platforms (
+        id TEXT PRIMARY KEY,
+        canonical_key TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        is_enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    ''');
+      legacyDb.execute('''
+      CREATE TABLE comics (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        normalized_title TEXT NOT NULL,
+        cover_local_path TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    ''');
+      legacyDb.execute('''
+      CREATE TABLE comic_source_links (
+        id TEXT PRIMARY KEY,
+        comic_id TEXT NOT NULL,
+        source_platform_id TEXT NOT NULL,
+        source_comic_id TEXT NOT NULL,
+        link_status TEXT NOT NULL DEFAULT 'active',
+        is_primary INTEGER NOT NULL DEFAULT 0,
+        source_url TEXT,
+        source_title TEXT,
+        downloaded_at TEXT,
+        last_verified_at TEXT,
+        linked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        metadata_json TEXT,
+        UNIQUE(comic_id, source_platform_id, source_comic_id)
+      );
+    ''');
+      legacyDb.execute(
+        '''
+      INSERT INTO comics (id, title, normalized_title)
+      VALUES (?, ?, ?);
+      ''',
+        ['legacy-v2-comic', 'Legacy V2', 'legacy v2'],
+      );
+      legacyDb.execute('PRAGMA user_version = 2;');
+      legacyDb.dispose();
+
+      await store.close();
+      store = UnifiedComicsStore(legacyPath);
+      await store.init();
+
+      final tables = await store.listTables();
+      expect(
+        tables,
+        containsAll(<String>[
+          'reader_sessions',
+          'reader_tabs',
+          'remote_match_candidates',
+        ]),
+      );
+      expect(await store.currentUserVersion(), store.schemaVersion);
+    },
+  );
 
   test(
     'source tags stay scoped to comic source link and user tags stay separate',
@@ -722,83 +804,86 @@ void main() {
     },
   );
 
-  test('reader session rows can be inserted and read before tabs exist', () async {
-    await store.upsertComic(
-      const ComicRecord(
-        id: 'session-comic-1',
-        title: 'Session Comic',
-        normalizedTitle: 'session comic',
-      ),
-    );
-    await store.upsertReaderSession(
-      const ReaderSessionRecord(
-        id: 'session-1',
-        comicId: 'session-comic-1',
-      ),
-    );
+  test(
+    'reader session rows can be inserted and read before tabs exist',
+    () async {
+      await store.upsertComic(
+        const ComicRecord(
+          id: 'session-comic-1',
+          title: 'Session Comic',
+          normalizedTitle: 'session comic',
+        ),
+      );
+      await store.upsertReaderSession(
+        const ReaderSessionRecord(id: 'session-1', comicId: 'session-comic-1'),
+      );
 
-    final session = await store.loadReaderSessionByComic('session-comic-1');
-    final tabs = await store.loadReaderTabsForSession('session-1');
+      final session = await store.loadReaderSessionByComic('session-comic-1');
+      final tabs = await store.loadReaderTabsForSession('session-1');
 
-    expect(session, isNotNull);
-    expect(session?.id, 'session-1');
-    expect(session?.activeTabId, isNull);
-    expect(tabs, isEmpty);
-  });
+      expect(session, isNotNull);
+      expect(session?.id, 'session-1');
+      expect(session?.activeTabId, isNull);
+      expect(tabs, isEmpty);
+    },
+  );
 
-  test('reader tabs stay scoped to their session and ordered deterministically', () async {
-    await store.upsertComic(
-      const ComicRecord(
-        id: 'session-comic-2',
-        title: 'Session Comic Two',
-        normalizedTitle: 'session comic two',
-      ),
-    );
-    await store.upsertReaderSession(
-      const ReaderSessionRecord(id: 'session-2', comicId: 'session-comic-2'),
-    );
-    await store.upsertReaderSession(
-      const ReaderSessionRecord(id: 'session-3', comicId: 'session-comic-2'),
-    );
-    await store.upsertReaderTab(
-      const ReaderTabRecord(
-        id: 'tab-1',
-        sessionId: 'session-2',
-        comicId: 'session-comic-2',
-        chapterId: 'chapter-1',
-        pageIndex: 1,
-        sourceRefJson: '{"id":"tab-1"}',
-        createdAt: '2026-04-30T10:00:00.000Z',
-        updatedAt: '2026-04-30T10:00:00.000Z',
-      ),
-    );
-    await store.upsertReaderTab(
-      const ReaderTabRecord(
-        id: 'tab-2',
-        sessionId: 'session-2',
-        comicId: 'session-comic-2',
-        chapterId: 'chapter-2',
-        pageIndex: 2,
-        sourceRefJson: '{"id":"tab-2"}',
-        createdAt: '2026-04-30T11:00:00.000Z',
-        updatedAt: '2026-04-30T11:00:00.000Z',
-      ),
-    );
-    await store.upsertReaderTab(
-      const ReaderTabRecord(
-        id: 'tab-other',
-        sessionId: 'session-3',
-        comicId: 'session-comic-2',
-        chapterId: 'chapter-3',
-        pageIndex: 3,
-        sourceRefJson: '{"id":"tab-other"}',
-      ),
-    );
+  test(
+    'reader tabs stay scoped to their session and ordered deterministically',
+    () async {
+      await store.upsertComic(
+        const ComicRecord(
+          id: 'session-comic-2',
+          title: 'Session Comic Two',
+          normalizedTitle: 'session comic two',
+        ),
+      );
+      await store.upsertReaderSession(
+        const ReaderSessionRecord(id: 'session-2', comicId: 'session-comic-2'),
+      );
+      await store.upsertReaderSession(
+        const ReaderSessionRecord(id: 'session-3', comicId: 'session-comic-2'),
+      );
+      await store.upsertReaderTab(
+        const ReaderTabRecord(
+          id: 'tab-1',
+          sessionId: 'session-2',
+          comicId: 'session-comic-2',
+          chapterId: 'chapter-1',
+          pageIndex: 1,
+          sourceRefJson: '{"id":"tab-1"}',
+          createdAt: '2026-04-30T10:00:00.000Z',
+          updatedAt: '2026-04-30T10:00:00.000Z',
+        ),
+      );
+      await store.upsertReaderTab(
+        const ReaderTabRecord(
+          id: 'tab-2',
+          sessionId: 'session-2',
+          comicId: 'session-comic-2',
+          chapterId: 'chapter-2',
+          pageIndex: 2,
+          sourceRefJson: '{"id":"tab-2"}',
+          createdAt: '2026-04-30T11:00:00.000Z',
+          updatedAt: '2026-04-30T11:00:00.000Z',
+        ),
+      );
+      await store.upsertReaderTab(
+        const ReaderTabRecord(
+          id: 'tab-other',
+          sessionId: 'session-3',
+          comicId: 'session-comic-2',
+          chapterId: 'chapter-3',
+          pageIndex: 3,
+          sourceRefJson: '{"id":"tab-other"}',
+        ),
+      );
 
-    final tabs = await store.loadReaderTabsForSession('session-2');
+      final tabs = await store.loadReaderTabsForSession('session-2');
 
-    expect(tabs.map((tab) => tab.id), ['tab-2', 'tab-1']);
-  });
+      expect(tabs.map((tab) => tab.id), ['tab-2', 'tab-1']);
+    },
+  );
 
   test('active tab can be set only after the target tab exists', () async {
     await store.upsertComic(
@@ -867,37 +952,40 @@ void main() {
     expect(await store.loadReaderTabsForSession('session-5'), isEmpty);
   });
 
-  test('deleting the active tab clears the session active tab pointer', () async {
-    await store.upsertComic(
-      const ComicRecord(
-        id: 'session-comic-5',
-        title: 'Session Comic Five',
-        normalizedTitle: 'session comic five',
-      ),
-    );
-    await store.upsertReaderSession(
-      const ReaderSessionRecord(id: 'session-6', comicId: 'session-comic-5'),
-    );
-    await store.upsertReaderTab(
-      const ReaderTabRecord(
-        id: 'tab-5',
+  test(
+    'deleting the active tab clears the session active tab pointer',
+    () async {
+      await store.upsertComic(
+        const ComicRecord(
+          id: 'session-comic-5',
+          title: 'Session Comic Five',
+          normalizedTitle: 'session comic five',
+        ),
+      );
+      await store.upsertReaderSession(
+        const ReaderSessionRecord(id: 'session-6', comicId: 'session-comic-5'),
+      );
+      await store.upsertReaderTab(
+        const ReaderTabRecord(
+          id: 'tab-5',
+          sessionId: 'session-6',
+          comicId: 'session-comic-5',
+          chapterId: 'chapter-1',
+          pageIndex: 9,
+          sourceRefJson: '{"id":"tab-5"}',
+        ),
+      );
+      await store.setReaderSessionActiveTab(
         sessionId: 'session-6',
-        comicId: 'session-comic-5',
-        chapterId: 'chapter-1',
-        pageIndex: 9,
-        sourceRefJson: '{"id":"tab-5"}',
-      ),
-    );
-    await store.setReaderSessionActiveTab(
-      sessionId: 'session-6',
-      activeTabId: 'tab-5',
-    );
+        activeTabId: 'tab-5',
+      );
 
-    await store.deleteReaderTab('tab-5');
+      await store.deleteReaderTab('tab-5');
 
-    final session = await store.loadReaderSessionByComic('session-comic-5');
-    expect(session?.activeTabId, isNull);
-  });
+      final session = await store.loadReaderSessionByComic('session-comic-5');
+      expect(session?.activeTabId, isNull);
+    },
+  );
 
   test('remote match candidates can be inserted and listed by comic', () async {
     await store.upsertComic(
@@ -929,7 +1017,9 @@ void main() {
       ),
     );
 
-    final candidates = await store.loadRemoteMatchCandidates('candidate-comic-1');
+    final candidates = await store.loadRemoteMatchCandidates(
+      'candidate-comic-1',
+    );
 
     expect(candidates, hasLength(1));
     expect(candidates.single.id, 'candidate-1');

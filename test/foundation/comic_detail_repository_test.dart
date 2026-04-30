@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_detail/comic_detail.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/res.dart';

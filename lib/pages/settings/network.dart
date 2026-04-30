@@ -23,7 +23,7 @@ class _NetworkSettingsState extends State<NetworkSettings> {
         ).toSliver(),
         _SliderSetting(
           title: "Download Threads".tl,
-          settingsIndex: 'downloadThreads',
+          settingsIndex: CommonSettingKeys.downloadThreads.name,
           interval: 1,
           min: 1,
           max: 16,
@@ -41,7 +41,7 @@ class _ProxySettingView extends StatefulWidget {
 }
 
 class _ProxySettingViewState extends State<_ProxySettingView> {
-  String type = '';
+  _ProxyMode type = _ProxyMode.direct;
   String host = '';
   String port = '';
   String username = '';
@@ -49,10 +49,10 @@ class _ProxySettingViewState extends State<_ProxySettingView> {
 
   // USERNAME:PASSWORD@HOST:PORT
   String toProxyStr() {
-    if (type == 'direct') {
-      return 'direct';
-    } else if (type == 'system') {
-      return 'system';
+    if (type == _ProxyMode.direct) {
+      return _ProxyMode.direct.value;
+    } else if (type == _ProxyMode.system) {
+      return _ProxyMode.system.value;
     }
     var res = '';
     if (username.isNotEmpty) {
@@ -70,14 +70,14 @@ class _ProxySettingViewState extends State<_ProxySettingView> {
   }
 
   void parseProxyString(String proxy) {
-    if (proxy == 'direct') {
-      type = 'direct';
+    if (proxy == _ProxyMode.direct.value) {
+      type = _ProxyMode.direct;
       return;
-    } else if (proxy == 'system') {
-      type = 'system';
+    } else if (proxy == _ProxyMode.system.value) {
+      type = _ProxyMode.system;
       return;
     }
-    type = 'manual';
+    type = _ProxyMode.manual;
     var parts = proxy.split('@');
     if (parts.length == 2) {
       var auth = parts[0].split(':');
@@ -101,7 +101,7 @@ class _ProxySettingViewState extends State<_ProxySettingView> {
 
   @override
   void initState() {
-    var proxy = appdata.settings['proxy'];
+    var proxy = appdata.settings[CommonSettingKeys.proxy.name];
     parseProxyString(proxy);
     super.initState();
   }
@@ -112,13 +112,13 @@ class _ProxySettingViewState extends State<_ProxySettingView> {
       title: "Proxy".tl,
       body: SingleChildScrollView(
         child: RadioGroup<String>(
-          groupValue: type,
+          groupValue: type.value,
           onChanged: (v) {
             setState(() {
-              type = v ?? type;
+              type = _ProxyMode.fromValue(v) ?? type;
             });
-            if (type != 'manual') {
-              appdata.settings['proxy'] = toProxyStr();
+            if (type != _ProxyMode.manual) {
+              appdata.settings[CommonSettingKeys.proxy.name] = toProxyStr();
               appdata.saveData();
             }
           },
@@ -126,17 +126,17 @@ class _ProxySettingViewState extends State<_ProxySettingView> {
             children: [
               RadioListTile<String>(
                 title: Text("Direct".tl),
-                value: 'direct',
+                value: _ProxyMode.direct.value,
               ),
               RadioListTile<String>(
                 title: Text("System".tl),
-                value: 'system',
+                value: _ProxyMode.system.value,
               ),
-              RadioListTile(
+              RadioListTile<String>(
                 title: Text("Manual".tl),
-                value: 'manual',
+                value: _ProxyMode.manual.value,
               ),
-              if (type == 'manual') buildManualProxy(),
+              if (type == _ProxyMode.manual) buildManualProxy(),
             ],
           ),
         ),
@@ -219,7 +219,7 @@ class _ProxySettingViewState extends State<_ProxySettingView> {
           FilledButton(
             onPressed: () {
               if (formKey.currentState?.validate() ?? false) {
-                appdata.settings['proxy'] = toProxyStr();
+                appdata.settings[CommonSettingKeys.proxy.name] = toProxyStr();
                 appdata.saveData();
                 App.rootContext.pop();
               }
@@ -239,6 +239,23 @@ class _DNSOverrides extends StatefulWidget {
   State<_DNSOverrides> createState() => __DNSOverridesState();
 }
 
+enum _ProxyMode {
+  direct('direct'),
+  system('system'),
+  manual('manual');
+
+  final String value;
+  const _ProxyMode(this.value);
+
+  static _ProxyMode? fromValue(String? value) {
+    if (value == null) return null;
+    for (final mode in _ProxyMode.values) {
+      if (mode.value == value) return mode;
+    }
+    return null;
+  }
+}
+
 class __DNSOverridesState extends State<_DNSOverrides> {
   var overrides = <(TextEditingController, TextEditingController)>[];
 
@@ -248,7 +265,7 @@ class __DNSOverridesState extends State<_DNSOverrides> {
       if (entry.key is String && entry.value is String) {
         overrides.add((
           TextEditingController(text: entry.key),
-          TextEditingController(text: entry.value)
+          TextEditingController(text: entry.value),
         ));
       }
     }
@@ -276,11 +293,11 @@ class __DNSOverridesState extends State<_DNSOverrides> {
           children: [
             _SwitchSetting(
               title: "Enable DNS Overrides".tl,
-              settingKey: "enableDnsOverrides",
+              settingKey: CommonSettingKeys.enableDnsOverrides.name,
             ),
             _SwitchSetting(
               title: "Server Name Indication",
-              settingKey: "sni",
+              settingKey: CommonSettingKeys.sni.name,
             ),
             const SizedBox(height: 8),
             Container(
@@ -293,8 +310,10 @@ class __DNSOverridesState extends State<_DNSOverrides> {
             TextButton.icon(
               onPressed: () {
                 setState(() {
-                  overrides
-                      .add((TextEditingController(), TextEditingController()));
+                  overrides.add((
+                    TextEditingController(),
+                    TextEditingController(),
+                  ));
                 });
               },
               icon: const Icon(Icons.add),
@@ -314,15 +333,9 @@ class __DNSOverridesState extends State<_DNSOverrides> {
       margin: EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(
-            color: context.colorScheme.outlineVariant,
-          ),
-          left: BorderSide(
-            color: context.colorScheme.outlineVariant,
-          ),
-          right: BorderSide(
-            color: context.colorScheme.outlineVariant,
-          ),
+          bottom: BorderSide(color: context.colorScheme.outlineVariant),
+          left: BorderSide(color: context.colorScheme.outlineVariant),
+          right: BorderSide(color: context.colorScheme.outlineVariant),
         ),
       ),
       child: Row(
@@ -336,10 +349,7 @@ class __DNSOverridesState extends State<_DNSOverrides> {
               controller: entry.$1,
             ).paddingHorizontal(8),
           ),
-          Container(
-            width: 1,
-            color: context.colorScheme.outlineVariant,
-          ),
+          Container(width: 1, color: context.colorScheme.outlineVariant),
           Expanded(
             child: TextField(
               decoration: InputDecoration(
@@ -349,10 +359,7 @@ class __DNSOverridesState extends State<_DNSOverrides> {
               controller: entry.$2,
             ).paddingHorizontal(8),
           ),
-          Container(
-            width: 1,
-            color: context.colorScheme.outlineVariant,
-          ),
+          Container(width: 1, color: context.colorScheme.outlineVariant),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             onPressed: () {

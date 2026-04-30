@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:venera/components/components.dart';
 import 'package:venera/foundation/app.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
-import 'package:venera/foundation/reader/reader_activity_models.dart';
-import 'package:venera/foundation/reader/reader_activity_repository.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
+import 'package:venera/features/reader/data/reader_activity_models.dart';
+import 'package:venera/features/reader/data/reader_activity_repository.dart';
 import 'package:venera/foundation/source_identity/source_identity.dart';
 import 'package:venera/utils/translations.dart';
 

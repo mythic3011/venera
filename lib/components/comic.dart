@@ -777,6 +777,7 @@ class SliverGridComics extends StatefulWidget {
   const SliverGridComics({
     super.key,
     required this.comics,
+    this.statuses,
     this.onLastItemBuild,
     this.badgeBuilder,
     this.menuBuilder,
@@ -786,6 +787,7 @@ class SliverGridComics extends StatefulWidget {
   });
 
   final List<Comic> comics;
+  final Map<String, ReaderComicStatus>? statuses;
 
   final Map<Comic, bool>? selections;
 
@@ -806,6 +808,9 @@ class SliverGridComics extends StatefulWidget {
 class _SliverGridComicsState extends State<SliverGridComics> {
   List<Comic> comics = [];
   List<int> heroIDs = [];
+  Map<String, ReaderComicStatus> _loadedStatuses =
+      const <String, ReaderComicStatus>{};
+  int _statusRequestId = 0;
 
   static int _nextHeroID = 0;
 
@@ -826,6 +831,9 @@ class _SliverGridComicsState extends State<SliverGridComics> {
         }
       }
       generateHeroID();
+      _loadStatusesIfNeeded();
+    } else if (oldWidget.statuses != widget.statuses) {
+      _loadStatusesIfNeeded();
     }
     super.didUpdateWidget(oldWidget);
   }
@@ -838,14 +846,8 @@ class _SliverGridComicsState extends State<SliverGridComics> {
       }
     }
     generateHeroID();
-    HistoryManager().addListener(update);
+    _loadStatusesIfNeeded();
     super.initState();
-  }
-
-  @override
-  void dispose() {
-    HistoryManager().removeListener(update);
-    super.dispose();
   }
 
   void update() {
@@ -857,6 +859,45 @@ class _SliverGridComicsState extends State<SliverGridComics> {
         }
       }
     });
+    _loadStatusesIfNeeded();
+  }
+
+  Future<void> _loadStatusesIfNeeded() async {
+    if (widget.statuses != null) {
+      if (_loadedStatuses.isNotEmpty && mounted) {
+        setState(() {
+          _loadedStatuses = const <String, ReaderComicStatus>{};
+        });
+      }
+      return;
+    }
+    if (!App.isInitialized || comics.isEmpty) {
+      if (_loadedStatuses.isNotEmpty && mounted) {
+        setState(() {
+          _loadedStatuses = const <String, ReaderComicStatus>{};
+        });
+      }
+      return;
+    }
+    final requestId = ++_statusRequestId;
+    try {
+      final statuses = await ReaderStatusRepository(
+        store: App.unifiedComicsStore,
+      ).loadStatusesForComics(comics);
+      if (!mounted || requestId != _statusRequestId) {
+        return;
+      }
+      setState(() {
+        _loadedStatuses = statuses;
+      });
+    } catch (_) {
+      if (!mounted || requestId != _statusRequestId) {
+        return;
+      }
+      setState(() {
+        _loadedStatuses = const <String, ReaderComicStatus>{};
+      });
+    }
   }
 
   @override
@@ -866,6 +907,7 @@ class _SliverGridComicsState extends State<SliverGridComics> {
       comics: comics,
       heroIDs: heroIDs,
       displayMode: displayMode,
+      statuses: widget.statuses ?? _loadedStatuses,
       selection: widget.selections,
       onLastItemBuild: widget.onLastItemBuild,
       badgeBuilder: widget.badgeBuilder,
@@ -881,6 +923,7 @@ class _SliverGridComics extends StatelessWidget {
     required this.comics,
     required this.heroIDs,
     required this.displayMode,
+    this.statuses,
     this.onLastItemBuild,
     this.badgeBuilder,
     this.menuBuilder,
@@ -893,6 +936,7 @@ class _SliverGridComics extends StatelessWidget {
 
   final List<int> heroIDs;
   final String displayMode;
+  final Map<String, ReaderComicStatus>? statuses;
 
   final Map<Comic, bool>? selection;
 
@@ -917,33 +961,34 @@ class _SliverGridComics extends StatelessWidget {
         var isSelected = selection == null
             ? false
             : selection![comics[index]] ?? false;
+        final currentComic = comics[index];
+        final status = statuses?[readerStatusMapKey(
+          comicId: currentComic.id,
+          sourceKey: currentComic.sourceKey,
+        )];
         var comic = ComicTile(
-          comic: comics[index],
+          comic: currentComic,
           meta: ComicTileMeta.fromStatus(
-            isFavorite: appdata.settings['showFavoriteStatusOnTile']
-                ? LocalFavoritesManager().isExist(
-                    comics[index].id,
-                    ComicType.fromKey(comics[index].sourceKey),
-                  )
+            isFavorite:
+                appdata.settings['showFavoriteStatusOnTile'] && status != null
+                ? status.isFavorite
                 : false,
-            history: appdata.settings['showHistoryStatusOnTile']
-                ? HistoryManager().find(
-                    comics[index].id,
-                    ComicType.fromKey(comics[index].sourceKey),
-                  )
+            history:
+                appdata.settings['showHistoryStatusOnTile'] && status != null
+                ? status.buildCompatibilityHistory(currentComic)
                 : null,
             displayMode: displayMode,
-            localCoverFile: comics[index] is LocalComic
-                ? (comics[index] as LocalComic).coverFile
+            localCoverFile: currentComic is LocalComic
+                ? currentComic.coverFile
                 : null,
           ),
           badge: badge,
-          menuOptions: menuBuilder?.call(comics[index]),
+          menuOptions: menuBuilder?.call(currentComic),
           onTap: onTap != null
-              ? () => onTap!(comics[index], heroIDs[index])
+              ? () => onTap!(currentComic, heroIDs[index])
               : null,
           onLongPressed: onLongPressed != null
-              ? () => onLongPressed!(comics[index], heroIDs[index])
+              ? () => onLongPressed!(currentComic, heroIDs[index])
               : null,
           heroID: heroIDs[index],
         );

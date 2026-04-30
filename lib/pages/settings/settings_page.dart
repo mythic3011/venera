@@ -8,7 +8,7 @@ import 'package:venera/components/components.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/cache_manager.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/consts.dart';
 import 'package:venera/foundation/debug_log_exporter.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
@@ -34,6 +34,7 @@ part 'app.dart';
 part 'about.dart';
 part 'network.dart';
 part 'debug.dart';
+part 'settings_schema.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({this.initialPage = -1, super.key});
@@ -68,26 +69,18 @@ class _SettingsPageState extends State<SettingsPage> {
   bool get enableTwoViews =>
       classifyAppWidth(context.width) != AppWindowClass.compact;
 
-  final categories = <String>[
-    "Explore",
-    "Reading",
-    "Appearance",
-    "Local Favorites",
-    "APP",
-    "Network",
-    "About",
-    "Debug"
-  ];
-
-  final icons = <IconData>[
-    Icons.explore,
-    Icons.book,
-    Icons.color_lens,
-    Icons.collections_bookmark_rounded,
-    Icons.apps,
-    Icons.public,
-    Icons.info,
-    Icons.bug_report,
+  final categories = const <_SettingsCategoryItem>[
+    _SettingsCategoryItem(title: "Explore", icon: Icons.explore),
+    _SettingsCategoryItem(title: "Reading", icon: Icons.book),
+    _SettingsCategoryItem(title: "Appearance", icon: Icons.color_lens),
+    _SettingsCategoryItem(
+      title: "Local Favorites",
+      icon: Icons.collections_bookmark_rounded,
+    ),
+    _SettingsCategoryItem(title: "APP", icon: Icons.apps),
+    _SettingsCategoryItem(title: "Network", icon: Icons.public),
+    _SettingsCategoryItem(title: "About", icon: Icons.info),
+    _SettingsCategoryItem(title: "Debug", icon: Icons.bug_report),
   ];
 
   @override
@@ -98,9 +91,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      child: buildBody(),
-    );
+    return Material(child: buildBody());
   }
 
   Widget buildBody() {
@@ -160,7 +151,7 @@ class _SettingsPageState extends State<SettingsPage> {
               },
               child: buildRight(effectivePage),
             ),
-          )
+          ),
         ],
       );
     } else {
@@ -172,39 +163,28 @@ class _SettingsPageState extends State<SettingsPage> {
     return Material(
       child: Column(
         children: [
-          SizedBox(
-            height: MediaQuery.of(context).padding.top,
-          ),
+          SizedBox(height: MediaQuery.of(context).padding.top),
           SizedBox(
             height: 56,
-            child: Row(children: [
-              if (!enableTwoViews) ...[
-                const SizedBox(
-                  width: 8,
-                ),
-                Tooltip(
-                  message: "Back",
-                  child: IconButton(
-                    icon: const Icon(Icons.arrow_back),
-                    onPressed: context.pop,
+            child: Row(
+              children: [
+                if (!enableTwoViews) ...[
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: "Back",
+                    child: IconButton(
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: context.pop,
+                    ),
                   ),
-                ),
+                ],
+                const SizedBox(width: 24),
+                Text("Settings".tl, style: ts.s20),
               ],
-              const SizedBox(
-                width: 24,
-              ),
-              Text(
-                "Settings".tl,
-                style: ts.s20,
-              )
-            ]),
+            ),
           ),
-          const SizedBox(
-            height: 4,
-          ),
-          Expanded(
-            child: buildCategories(selectedPage: selectedPage),
-          )
+          const SizedBox(height: 4),
+          Expanded(child: buildCategories(selectedPage: selectedPage)),
         ],
       ),
     );
@@ -229,16 +209,15 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ),
-        child: Row(children: [
-          Icon(icons[id]),
-          const SizedBox(width: 16),
-          Text(
-            name,
-            style: ts.s16,
-          ),
-          const Spacer(),
-          if (selected) const Icon(Icons.arrow_right)
-        ]),
+        child: Row(
+          children: [
+            Icon(categories[id].icon),
+            const SizedBox(width: 16),
+            Text(name, style: ts.s16),
+            const Spacer(),
+            if (selected) const Icon(Icons.arrow_right),
+          ],
+        ),
       );
 
       return Padding(
@@ -261,7 +240,8 @@ class _SettingsPageState extends State<SettingsPage> {
     return ListView.builder(
       padding: EdgeInsets.zero,
       itemCount: categories.length,
-      itemBuilder: (context, index) => buildItem(categories[index].tl, index),
+      itemBuilder: (context, index) =>
+          buildItem(categories[index].title.tl, index),
     );
   }
 
@@ -280,19 +260,15 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildSettingsContent(int pageIndex) {
-    return switch (pageIndex) {
-      0 => const ExploreSettings(),
-      1 => const ReaderSettings(),
-      2 => const AppearanceSettings(),
-      3 => const LocalFavoritesSettings(),
-      4 => const AppSettings(),
-      5 => const NetworkSettings(),
-      6 => const AboutSettings(),
-      7 => const DebugPage(),
-      _ => throw UnimplementedError()
-    };
+    return _settingsContentForIndex(pageIndex);
   }
+}
 
+class _SettingsCategoryItem {
+  final String title;
+  final IconData icon;
+
+  const _SettingsCategoryItem({required this.title, required this.icon});
 }
 
 class _SettingsDetailPage extends StatelessWidget {
@@ -302,22 +278,24 @@ class _SettingsDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      child: _buildPage(),
-    );
+    return Material(child: _buildPage());
   }
 
   Widget _buildPage() {
-    return switch (pageIndex) {
-      0 => const ExploreSettings(),
-      1 => const ReaderSettings(),
-      2 => const AppearanceSettings(),
-      3 => const LocalFavoritesSettings(),
-      4 => const AppSettings(),
-      5 => const NetworkSettings(),
-      6 => const AboutSettings(),
-      7 => const DebugPage(),
-      _ => throw UnimplementedError()
-    };
+    return _settingsContentForIndex(pageIndex);
   }
+}
+
+Widget _settingsContentForIndex(int pageIndex) {
+  return switch (pageIndex) {
+    0 => const ExploreSettings(),
+    1 => const ReaderSettings(),
+    2 => const AppearanceSettings(),
+    3 => const LocalFavoritesSettings(),
+    4 => const AppSettings(),
+    5 => const NetworkSettings(),
+    6 => const AboutSettings(),
+    7 => const DebugPage(),
+    _ => throw UnimplementedError(),
+  };
 }

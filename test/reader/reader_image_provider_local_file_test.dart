@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/image_provider/reader_image.dart';
-import 'package:venera/pages/reader/reader.dart';
+import 'package:venera/features/reader/presentation/reader.dart';
 
 void main() {
   test('file URI image keys normalize to readable local file paths', () {

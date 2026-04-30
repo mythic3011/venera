@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:venera/foundation/cache_manager.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/consts.dart';
 import 'package:venera/foundation/source_identity/source_identity.dart';
 import 'package:venera/utils/image.dart';
