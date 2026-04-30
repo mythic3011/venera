@@ -1,13 +1,15 @@
 import 'dart:convert';
 
-import 'package:venera/foundation/db/unified_comics_store.dart';
+import 'package:venera/foundation/db/unified_comics_store.dart'
+    show ReaderActivityRecord;
+import 'package:venera/foundation/ports/reader_activity_store_port.dart';
 import 'package:venera/features/reader/data/reader_activity_models.dart';
 import 'package:venera/foundation/source_ref.dart';
 
 class ReaderActivityRepository {
   const ReaderActivityRepository({required this.store});
 
-  final UnifiedComicsStore store;
+  final ReaderActivityStorePort store;
 
   Future<List<ReaderActivityItem>> loadRecent({int limit = 20}) async {
     final records = await store.loadReaderActivity(limit: limit);

@@ -1,9 +1,19 @@
 import 'dart:io';
 
+// ignore_for_file: annotate_overrides
+
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/common.dart' as sqlite_common;
+import 'package:venera/features/sources/comic_source/comic_source.dart';
+import 'package:venera/foundation/db/remote_comic_sync.dart';
+import 'package:venera/foundation/ports/comic_detail_store_port.dart';
+import 'package:venera/foundation/ports/local_library_browse_store_port.dart';
+import 'package:venera/foundation/ports/reader_activity_store_port.dart';
+import 'package:venera/foundation/ports/reader_session_store_port.dart';
+import 'package:venera/foundation/ports/reader_status_store_port.dart';
+import 'package:venera/foundation/ports/remote_match_store_port.dart';
 import 'package:venera/foundation/source_identity/source_identity.dart';
 
 part 'unified_comics_store/bootstrap.dart';
@@ -631,7 +641,14 @@ class UnifiedComicSnapshot {
   final List<ChapterRecord> chapters;
 }
 
-class UnifiedComicsStore extends GeneratedDatabase {
+class UnifiedComicsStore extends GeneratedDatabase
+    implements
+        ComicDetailStorePort,
+        ReaderSessionStorePort,
+        ReaderActivityStorePort,
+        ReaderStatusStorePort,
+        LocalLibraryBrowseStorePort,
+        RemoteMatchStorePort {
   UnifiedComicsStore(this.dbPath)
     : super(
         NativeDatabase.createInBackground(
@@ -2559,5 +2576,10 @@ class UnifiedComicsStore extends GeneratedDatabase {
       sourceContext: row.read<String>('source_context'),
       legacyIntType: row.read<int?>('legacy_int_type'),
     );
+  }
+
+  @override
+  Future<String> syncRemoteComic(ComicDetails detail) {
+    return RemoteComicCanonicalSyncService(store: this).syncComic(detail);
   }
 }

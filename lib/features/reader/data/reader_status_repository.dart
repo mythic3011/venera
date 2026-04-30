@@ -3,11 +3,14 @@ import 'dart:convert';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/db/remote_comic_sync.dart';
-import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/history.dart';
+import 'package:venera/foundation/ports/reader_status_store_port.dart';
 import 'package:venera/foundation/source_ref.dart';
 
-String readerStatusMapKey({required String comicId, required String sourceKey}) {
+String readerStatusMapKey({
+  required String comicId,
+  required String sourceKey,
+}) {
   return '$sourceKey@@$comicId';
 }
 
@@ -59,7 +62,7 @@ class ReaderComicStatus {
 class ReaderStatusRepository {
   const ReaderStatusRepository({required this.store});
 
-  final UnifiedComicsStore store;
+  final ReaderStatusStorePort store;
 
   Future<Map<String, ReaderComicStatus>> loadStatusesForComics(
     List<Comic> comics,
@@ -70,9 +73,10 @@ class ReaderStatusRepository {
     final byCanonicalId = <String, Comic>{};
     for (final comic in comics) {
       byCanonicalId[canonicalComicIdForStatus(
-        comicId: comic.id,
-        sourceKey: comic.sourceKey,
-      )] = comic;
+            comicId: comic.id,
+            sourceKey: comic.sourceKey,
+          )] =
+          comic;
     }
     final records = await store.loadReaderStatusesForComics(
       byCanonicalId.keys.toList(growable: false),
@@ -84,20 +88,20 @@ class ReaderStatusRepository {
         return;
       }
       final sourceRefJson = record.sourceRefJson;
-      statuses[readerStatusMapKey(comicId: comic.id, sourceKey: comic.sourceKey)] =
-          ReaderComicStatus(
-            isFavorite: record.isFavorite,
-            sourceRef: sourceRefJson == null
-                ? null
-                : SourceRef.fromJson(
-                    Map<String, dynamic>.from(
-                      jsonDecode(sourceRefJson) as Map,
-                    ),
-                  ),
-            chapterId: record.chapterId,
-            pageIndex: record.pageIndex,
-            maxPage: record.maxPage,
-          );
+      statuses[readerStatusMapKey(
+        comicId: comic.id,
+        sourceKey: comic.sourceKey,
+      )] = ReaderComicStatus(
+        isFavorite: record.isFavorite,
+        sourceRef: sourceRefJson == null
+            ? null
+            : SourceRef.fromJson(
+                Map<String, dynamic>.from(jsonDecode(sourceRefJson) as Map),
+              ),
+        chapterId: record.chapterId,
+        pageIndex: record.pageIndex,
+        maxPage: record.maxPage,
+      );
     });
     return statuses;
   }
