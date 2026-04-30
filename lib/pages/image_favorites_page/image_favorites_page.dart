@@ -7,7 +7,7 @@ import 'package:photo_view/photo_view_gallery.dart';
 import 'package:venera/components/components.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/consts.dart';
 import 'package:venera/foundation/history.dart';
 import 'package:venera/foundation/image_provider/image_favorites_provider.dart';

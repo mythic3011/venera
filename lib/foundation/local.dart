@@ -7,7 +7,7 @@ import 'package:flutter/widgets.dart' show ChangeNotifier;
 import 'package:flutter_saf/flutter_saf.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/db/local_comic_sync.dart';
 import 'package:venera/foundation/favorites.dart';
@@ -1349,7 +1349,9 @@ class LocalManager with ChangeNotifier {
     }
     _db.execute('COMMIT;');
 
-    var comicIDs = comics.map((e) => ComicID(e.comicType, e.id)).toList();
+    var comicIDs = comics
+        .map((e) => ComicID.fromSourceKey(e.comicType.sourceKey, e.id))
+        .toList();
 
     if (removeFavoriteAndHistory) {
       LocalFavoritesManager().batchDeleteComicsInAllFolders(comicIDs);

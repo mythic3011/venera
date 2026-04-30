@@ -17,8 +17,8 @@ import 'package:venera/utils/tags_translation.dart';
 import 'dart:io';
 
 import 'app.dart';
-import 'comic_source/comic_source.dart';
 import 'comic_type.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 
 typedef DeleteLocalComicFromFavoritesForTest =
     void Function(String id, ComicType type);
@@ -333,10 +333,7 @@ class LocalFavoritesManager with ChangeNotifier {
     if (type == ComicType.local) {
       return comicId;
     }
-    return canonicalRemoteComicId(
-      sourceKey: type.sourceKey,
-      comicId: comicId,
-    );
+    return canonicalRemoteComicId(sourceKey: type.sourceKey, comicId: comicId);
   }
 
   void _syncCanonicalFavoriteAdd(FavoriteItem comic) {
@@ -406,10 +403,7 @@ class LocalFavoritesManager with ChangeNotifier {
       await App.unifiedComicsStore.upsertFavoriteFolderItem(
         FavoriteFolderItemRecord(
           folderName: folderName,
-          comicId: _canonicalComicIdForFavorite(
-            comicId: comicId,
-            type: type,
-          ),
+          comicId: _canonicalComicIdForFavorite(comicId: comicId, type: type),
           displayOrder: displayOrder,
         ),
       );
@@ -990,11 +984,7 @@ class LocalFavoritesManager with ChangeNotifier {
       counts[folder] = count(folder);
     }
     reduceHashedId(id, type.value);
-    _syncCanonicalFolderItemDelete(
-      folderName: folder,
-      comicId: id,
-      type: type,
-    );
+    _syncCanonicalFolderItemDelete(folderName: folder, comicId: id, type: type);
     _syncCanonicalFavoriteDeleteIfOrphan(comicId: id, type: type);
     notifyListeners();
   }

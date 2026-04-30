@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/image_provider/reader_image.dart';
-import 'package:venera/pages/reader/reader.dart';
+import 'package:venera/features/reader/presentation/reader.dart';
 
 void main() {
   test('build_reader_image_provider_keeps_requested_page', () {

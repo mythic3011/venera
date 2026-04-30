@@ -1,4 +1,4 @@
-import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/source_ref.dart';
 
 String? resolveReaderTargetChapterId({

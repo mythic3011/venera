@@ -1,7 +1,7 @@
 import 'dart:collection';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/pages/search_result_page.dart';
 
 SearchPageData searchDataWithOptions(List<SearchOptions> options) {

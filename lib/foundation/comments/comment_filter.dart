@@ -1,5 +1,5 @@
 import 'package:venera/foundation/appdata.dart';
-import 'package:venera/foundation/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 
 class CommentFilter {
   const CommentFilter(this.blockedWords);
