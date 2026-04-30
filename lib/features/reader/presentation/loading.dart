@@ -259,8 +259,13 @@ class _ReaderWithLoadingState
     if (comicSource == null) {
       return Res.error("SOURCE_NOT_AVAILABLE:${resolvedSourceRef.sourceKey}");
     }
+    try {
+      SourceIdentityPolicy.assertAdapterSafe(resolvedSourceRef);
+    } on SourceIdentityError catch (e) {
+      return Res.error("SOURCE_IDENTITY_ERROR:${e.codeKey}");
+    }
 
-    final comic = await comicSource.loadComicInfo!(widget.id);
+    final comic = await comicSource.loadComicInfo!(resolvedSourceRef.refId);
     if (comic.error) {
       return Res.fromErrorRes(comic);
     }

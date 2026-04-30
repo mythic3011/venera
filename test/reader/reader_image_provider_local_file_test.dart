@@ -77,8 +77,9 @@ void main() {
     final bytes = await readReaderImageBytesForTesting(
       imageKey: file.uri.toString(),
       sourceKey: 'local',
-      comicId: 'comic-space',
-      chapterId: 'chapter-1',
+      canonicalComicId: 'comic-space',
+      upstreamComicRefId: 'comic-space',
+      chapterRefId: 'chapter-1',
     );
 
     expect(bytes, expectedBytes);
@@ -103,8 +104,9 @@ void main() {
       final bytes = await readReaderImageBytesForTesting(
         imageKey: uri,
         sourceKey: 'local',
-        comicId: 'comic-percent',
-        chapterId: 'chapter-2',
+        canonicalComicId: 'comic-percent',
+        upstreamComicRefId: 'comic-percent',
+        chapterRefId: 'chapter-2',
       );
 
       expect(bytes, expectedBytes);
@@ -124,8 +126,9 @@ void main() {
     final bytes = await readReaderImageBytesForTesting(
       imageKey: file.uri.toString(),
       sourceKey: 'local',
-      comicId: 'comic-unicode',
-      chapterId: 'chapter-3',
+      canonicalComicId: 'comic-unicode',
+      upstreamComicRefId: 'comic-unicode',
+      chapterRefId: 'chapter-3',
     );
 
     expect(bytes, expectedBytes);

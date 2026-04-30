@@ -70,6 +70,12 @@ class HistoryStore extends GeneratedDatabase {
   @override
   int get schemaVersion => 1;
 
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (_) async {},
+    onUpgrade: (_, __, ___) async {},
+  );
+
   Future<void> init() async {
     await customStatement('''
       create table if not exists history  (

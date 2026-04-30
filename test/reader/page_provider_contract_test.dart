@@ -9,6 +9,7 @@ import 'package:venera/foundation/reader/local_page_provider.dart';
 import 'package:venera/foundation/reader/remote_page_provider.dart';
 import 'package:venera/foundation/res.dart';
 import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/source_identity/source_identity.dart';
 
 void main() {
   test(
@@ -142,6 +143,56 @@ void main() {
       expect(gotChapter, 'ch-2');
     },
   );
+
+  test('remote_provider_passes_refId_not_params_comicId_to_adapter', () async {
+    String? gotComic;
+    final provider = RemotePageProvider(
+      loadRemotePages:
+          ({required sourceKey, required comicId, required chapterId}) async {
+            gotComic = comicId;
+            return const Res(['p1']);
+          },
+    );
+    final ref = SourceRef(
+      id: 'remote:copymanga:canonical-id:ch-2',
+      type: SourceRefType.remote,
+      sourceKey: 'copymanga',
+      sourceIdentity: sourceIdentityFromKey('copymanga'),
+      refId: 'upstream-raw-id',
+      params: const {'comicId': 'stale-id', 'chapterId': 'ch-2'},
+    );
+
+    final res = await provider.loadPages(ref);
+    expect(res.error, isFalse);
+    expect(gotComic, 'upstream-raw-id');
+  });
+
+  test('adapter validation failure stops before live loader invocation', () async {
+    var liveCalls = 0;
+    final provider = RemotePageProvider(
+      loadRemotePages:
+          ({required sourceKey, required comicId, required chapterId}) async {
+            liveCalls++;
+            return const Res(['p1']);
+          },
+    );
+    final ref = SourceRef(
+      id: 'remote:nhentai:646922:ch-1',
+      type: SourceRefType.remote,
+      sourceKey: 'nhentai',
+      sourceIdentity: sourceIdentityFromKey('nhentai'),
+      refId: 'remote:nhentai:646922',
+      params: const {'chapterId': 'ch-1'},
+    );
+
+    final res = await provider.loadPages(ref);
+    expect(res.error, isTrue);
+    expect(
+      res.errorMessage,
+      'SOURCE_IDENTITY_ERROR:nonCanonicalRouteKeyLeak',
+    );
+    expect(liveCalls, 0);
+  });
 
   test(
     'remote provider prefers canonical remote pages when available',

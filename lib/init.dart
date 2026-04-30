@@ -71,7 +71,12 @@ Future<void> init() async {
       'app.unhandled',
       details.exception,
       stackTrace: details.stack,
-      message: 'Unhandled Exception',
+      message: details.exception.toString(),
+      data: {
+        'exceptionMessage': details.exception.toString(),
+        'exceptionType': details.exception.runtimeType.toString(),
+        'exceptionStack': details.stack?.toString(),
+      },
     );
   };
   if (App.isWindows) {

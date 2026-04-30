@@ -5,6 +5,7 @@ import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:venera/foundation/cache_manager.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/consts.dart';
+import 'package:venera/foundation/source_ref.dart';
 import 'package:venera/foundation/source_identity/source_identity.dart';
 import 'package:venera/utils/image.dart';
 
@@ -123,16 +124,24 @@ abstract class ImageDownloader {
   /// The function will prevent multiple requests for the same image.
   static Stream<ImageDownloadProgress> loadComicImage(
     String imageKey,
-    String? sourceKey,
-    String cid,
-    String eid,
+    SourceRef sourceRef,
+    String canonicalComicId,
+    String upstreamComicRefId,
+    String chapterRefId,
   ) {
-    final cacheKey = "$imageKey@$sourceKey@$cid@$eid";
+    final cacheKey =
+        "$imageKey@${sourceRef.sourceKey}@$canonicalComicId@$upstreamComicRefId@$chapterRefId";
     if (_loadingImages.containsKey(cacheKey)) {
       return _loadingImages[cacheKey]!.stream;
     }
     final stream = _StreamWrapper<ImageDownloadProgress>(
-      _loadComicImage(imageKey, sourceKey, cid, eid),
+      _loadComicImage(
+        imageKey,
+        sourceRef,
+        canonicalComicId,
+        upstreamComicRefId,
+        chapterRefId,
+      ),
       (wrapper) {
         _loadingImages.remove(cacheKey);
       },
@@ -143,20 +152,30 @@ abstract class ImageDownloader {
 
   static Stream<ImageDownloadProgress> loadComicImageUnwrapped(
     String imageKey,
-    String? sourceKey,
-    String cid,
-    String eid,
+    SourceRef sourceRef,
+    String canonicalComicId,
+    String upstreamComicRefId,
+    String chapterRefId,
   ) {
-    return _loadComicImage(imageKey, sourceKey, cid, eid);
+    return _loadComicImage(
+      imageKey,
+      sourceRef,
+      canonicalComicId,
+      upstreamComicRefId,
+      chapterRefId,
+    );
   }
 
   static Stream<ImageDownloadProgress> _loadComicImage(
     String imageKey,
-    String? sourceKey,
-    String cid,
-    String eid,
+    SourceRef sourceRef,
+    String canonicalComicId,
+    String upstreamComicRefId,
+    String chapterRefId,
   ) async* {
-    final cacheKey = "$imageKey@$sourceKey@$cid@$eid";
+    final sourceKey = sourceRef.sourceKey;
+    final cacheKey =
+        "$imageKey@$sourceKey@$canonicalComicId@$upstreamComicRefId@$chapterRefId";
     final cache = await CacheManager().findCache(cacheKey);
 
     if (cache != null) {
@@ -172,14 +191,18 @@ abstract class ImageDownloader {
 
     var configs = <String, dynamic>{};
     if (shouldUseSourceImageConfig(sourceKey)) {
-      var comicSource = ComicSource.find(sourceKey!);
+      var comicSource = ComicSource.find(sourceKey);
       if (comicSource == null) {
         throw StateError(
           "Comic source not found: $sourceKey. Please refresh/install sources.",
         );
       }
       configs =
-          (await comicSource.getImageLoadingConfig?.call(imageKey, cid, eid)) ??
+          (await comicSource.getImageLoadingConfig?.call(
+                imageKey,
+                upstreamComicRefId,
+                chapterRefId,
+              )) ??
           {};
     }
     var retryLimit = 5;

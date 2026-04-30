@@ -1,16 +1,186 @@
 part of 'components.dart';
 
+sealed class AppLoadError {
+  const AppLoadError();
+
+  String get title;
+  String get userMessage;
+  String? get diagnosticCode;
+  bool get retryable;
+  bool get exportLogsSuggested;
+
+  static AppLoadError fromMessage(String message) {
+    final cfe = CloudflareException.fromString(message);
+    if (cfe != null) {
+      return CloudflareLoadError(rawMessage: message);
+    }
+    if (message.startsWith('SOURCE_NOT_AVAILABLE')) {
+      return SourceRefLoadError(rawMessage: message);
+    }
+    if (message.startsWith('SOURCE_REF_') ||
+        message.startsWith('SOURCE_IDENTITY_ERROR:')) {
+      return AdapterBoundaryLoadError(rawMessage: message);
+    }
+    final lower = message.toLowerCase();
+    if (lower.contains('sqlite') ||
+        lower.contains('no such table') ||
+        lower.contains('schema')) {
+      return StorageSchemaLoadError(rawMessage: message);
+    }
+    if (lower.contains('socket') ||
+        lower.contains('timeout') ||
+        lower.contains('network') ||
+        lower.contains('http')) {
+      return NetworkLoadError(rawMessage: message);
+    }
+    return UnknownLoadError(rawMessage: message);
+  }
+}
+
+final class NetworkLoadError extends AppLoadError {
+  const NetworkLoadError({required this.rawMessage});
+
+  final String rawMessage;
+
+  @override
+  String get title => 'Network Error'.tl;
+  @override
+  String get userMessage => rawMessage;
+  @override
+  String? get diagnosticCode => null;
+  @override
+  bool get retryable => true;
+  @override
+  bool get exportLogsSuggested => true;
+}
+
+final class CloudflareLoadError extends AppLoadError {
+  const CloudflareLoadError({required this.rawMessage});
+
+  final String rawMessage;
+
+  @override
+  String get title => 'Cloudflare Verification'.tl;
+  @override
+  String get userMessage => "Cloudflare verification required".tl;
+  @override
+  String? get diagnosticCode => 'CLOUDFLARE_CHALLENGE';
+  @override
+  bool get retryable => true;
+  @override
+  bool get exportLogsSuggested => true;
+}
+
+final class SourceRefLoadError extends AppLoadError {
+  const SourceRefLoadError({required this.rawMessage});
+
+  final String rawMessage;
+
+  @override
+  String get title => 'Source Unavailable'.tl;
+  @override
+  String get userMessage => rawMessage;
+  @override
+  String? get diagnosticCode => 'SOURCE_REF_UNAVAILABLE';
+  @override
+  bool get retryable => true;
+  @override
+  bool get exportLogsSuggested => true;
+}
+
+final class AdapterBoundaryLoadError extends AppLoadError {
+  const AdapterBoundaryLoadError({required this.rawMessage});
+
+  final String rawMessage;
+
+  @override
+  String get title => 'Identity Boundary Error'.tl;
+  @override
+  String get userMessage => rawMessage;
+  @override
+  String? get diagnosticCode => 'ADAPTER_BOUNDARY';
+  @override
+  bool get retryable => true;
+  @override
+  bool get exportLogsSuggested => true;
+}
+
+final class StorageSchemaLoadError extends AppLoadError {
+  const StorageSchemaLoadError({required this.rawMessage});
+
+  final String rawMessage;
+
+  @override
+  String get title => 'Storage Schema Error'.tl;
+  @override
+  String get userMessage => rawMessage;
+  @override
+  String? get diagnosticCode => 'STORAGE_SCHEMA';
+  @override
+  bool get retryable => false;
+  @override
+  bool get exportLogsSuggested => true;
+}
+
+final class UnknownLoadError extends AppLoadError {
+  const UnknownLoadError({required this.rawMessage});
+
+  final String rawMessage;
+
+  @override
+  String get title => 'Error'.tl;
+  @override
+  String get userMessage => rawMessage;
+  @override
+  String? get diagnosticCode => null;
+  @override
+  bool get retryable => true;
+  @override
+  bool get exportLogsSuggested => true;
+}
+
+String _redactLogs(String raw) {
+  var sanitized = raw;
+  sanitized = sanitized.replaceAll(
+    RegExp(
+      r'(token|authorization|cookie)\s*[:=]\s*([^\s,;]+)',
+      caseSensitive: false,
+    ),
+    r'$1=[redacted]',
+  );
+  sanitized = sanitized.replaceAll(
+    RegExp(
+      r'(https?://)([^/\s:@]+):([^@\s]+)@',
+      caseSensitive: false,
+    ),
+    r'$1[redacted]:[redacted]@',
+  );
+  return sanitized;
+}
+
 class NetworkError extends StatelessWidget {
-  const NetworkError({
+  NetworkError({
     super.key,
-    required this.message,
+    required Object message,
+    this.retry,
+    this.withAppbar = true,
+    this.buttonText,
+    this.action,
+  }) : error = switch (message) {
+         AppLoadError typed => typed,
+         _ => AppLoadError.fromMessage(message.toString()),
+       };
+
+  const NetworkError.fromError({
+    super.key,
+    required this.error,
     this.retry,
     this.withAppbar = true,
     this.buttonText,
     this.action,
   });
 
-  final String message;
+  final AppLoadError error;
 
   final void Function()? retry;
 
@@ -22,7 +192,9 @@ class NetworkError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var cfe = CloudflareException.fromString(message);
+    final cfe = error is CloudflareLoadError
+        ? CloudflareException.fromString((error as CloudflareLoadError).rawMessage)
+        : null;
     Widget body = Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -38,7 +210,7 @@ class NetworkError extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  "Error".tl,
+                  error.title,
                   style: ts.withColor(context.colorScheme.error).s16,
                 ),
               ],
@@ -46,25 +218,27 @@ class NetworkError extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            cfe == null ? message : "Cloudflare verification required".tl,
+            error.userMessage,
             textAlign: TextAlign.center,
             maxLines: 3,
           ),
-          TextButton(
-            onPressed: () {
-              saveFile(
-                data: utf8.encode(Log().toString()),
-                filename: 'log.txt',
-              );
-            },
-            child: Text("Export logs".tl),
-          ),
+          if (error.exportLogsSuggested)
+            TextButton(
+              onPressed: () {
+                final redacted = _redactLogs(Log().toString());
+                saveFile(
+                  data: utf8.encode(redacted),
+                  filename: 'diagnostics-redacted.txt',
+                );
+              },
+              child: Text("Export logs".tl),
+            ),
           const SizedBox(height: 8),
-          if (retry != null)
+          if (retry != null && error.retryable)
             if (cfe != null)
               FilledButton(
                 onPressed: () => passCloudflare(
-                  CloudflareException.fromString(message)!,
+                  cfe,
                   retry!,
                 ),
                 child: Text('Verify'.tl),
@@ -128,7 +302,7 @@ abstract class LoadingState<T extends StatefulWidget, S extends Object>
 
   S? data;
 
-  String? error;
+  AppLoadError? error;
 
   Future<Res<S>> loadData();
 
@@ -181,14 +355,16 @@ abstract class LoadingState<T extends StatefulWidget, S extends Object>
         if (!mounted) return;
         setState(() {
           isLoading = false;
-          error = value.errorMessage!;
+          error = AppLoadError.fromMessage(
+            value.errorMessage ?? 'Unknown error',
+          );
         });
       }
     });
   }
 
   Widget buildError() {
-    return NetworkError(message: error!, retry: retry);
+    return NetworkError.fromError(error: error!, retry: retry);
   }
 
   @override
@@ -209,7 +385,9 @@ abstract class LoadingState<T extends StatefulWidget, S extends Object>
           if (!mounted) return;
           setState(() {
             isLoading = false;
-            error = value.errorMessage!;
+            error = AppLoadError.fromMessage(
+              value.errorMessage ?? 'Unknown error',
+            );
           });
         }
       });
@@ -241,11 +419,13 @@ abstract class MultiPageLoadingState<T extends StatefulWidget, S extends Object>
 
   List<S>? data;
 
-  String? _error;
+  AppLoadError? _error;
 
   int _page = 1;
 
   int? _maxPage;
+
+  int _loadGeneration = 0;
 
   Future<Res<List<S>>> loadData(int page);
 
@@ -259,46 +439,57 @@ abstract class MultiPageLoadingState<T extends StatefulWidget, S extends Object>
 
   bool get haveNextPage => _maxPage == null || _page <= _maxPage!;
 
-  void nextPage() {
+  Future<void> nextPage() async {
     if (_maxPage != null && _page > _maxPage!) return;
     if (_isLoading) return;
-    _isLoading = true;
-    loadData(_page).then((value) {
-      _isLoading = false;
-      if (mounted) {
-        if (value.success) {
-          _page++;
+    final generation = _loadGeneration;
+    final page = _page;
+    setState(() => _isLoading = true);
+    try {
+      final value = await loadData(page);
+      if (!mounted || generation != _loadGeneration) return;
+      if (value.success) {
+        setState(() {
+          _page = page + 1;
           if (value.subData is int) {
             _maxPage = value.subData as int;
           }
-          setState(() {
-            data!.addAll(value.data);
-          });
-        } else {
-          var message = value.errorMessage ?? "Network Error";
-          if (message.length > 20) {
-            message = "${message.substring(0, 20)}...";
-          }
-          context.showMessage(message: message);
+          data!.addAll(value.data);
+          _isLoading = false;
+        });
+      } else {
+        setState(() => _isLoading = false);
+        var message = value.errorMessage ?? "Network Error";
+        if (message.length > 20) {
+          message = "${message.substring(0, 20)}...";
         }
+        context.showMessage(message: message);
       }
-    });
+    } catch (e) {
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() => _isLoading = false);
+      context.showMessage(message: e.toString());
+    }
   }
 
   void reset() {
+    _loadGeneration++;
     setState(() {
       _isFirstLoading = true;
       _isLoading = false;
       data = null;
       _error = null;
       _page = 1;
+      _maxPage = null;
     });
     firstLoad();
   }
 
   void firstLoad() {
+    final generation = _loadGeneration;
     Future.microtask(() {
       loadData(_page).then((value) {
+        if (generation != _loadGeneration) return;
         if (!mounted) return;
         if (value.success) {
           _page++;
@@ -312,9 +503,17 @@ abstract class MultiPageLoadingState<T extends StatefulWidget, S extends Object>
         } else {
           setState(() {
             _isFirstLoading = false;
-            _error = value.errorMessage!;
+            _error = AppLoadError.fromMessage(
+              value.errorMessage ?? 'Unknown error',
+            );
           });
         }
+      }).catchError((e) {
+        if (!mounted || generation != _loadGeneration) return;
+        setState(() {
+          _isFirstLoading = false;
+          _error = AppLoadError.fromMessage(e.toString());
+        });
       });
     });
   }
@@ -331,8 +530,12 @@ abstract class MultiPageLoadingState<T extends StatefulWidget, S extends Object>
     );
   }
 
-  Widget buildError(BuildContext context, String error) {
-    return NetworkError(withAppbar: false, message: error, retry: reset);
+  Widget buildError(BuildContext context, AppLoadError error) {
+    return NetworkError.fromError(
+      withAppbar: false,
+      error: error,
+      retry: reset,
+    );
   }
 
   @override
@@ -346,8 +549,9 @@ abstract class MultiPageLoadingState<T extends StatefulWidget, S extends Object>
     } else {
       child = NotificationListener<ScrollNotification>(
         onNotification: (notification) {
-          if (notification.metrics.pixels ==
-              notification.metrics.maxScrollExtent) {
+          final remaining =
+              notification.metrics.maxScrollExtent - notification.metrics.pixels;
+          if (remaining <= 200) {
             nextPage();
           }
           return false;

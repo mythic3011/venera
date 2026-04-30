@@ -20,7 +20,7 @@ String _canonicalReaderComicId({
   }
   return canonicalRemoteComicId(
     sourceKey: sourceRef.sourceKey,
-    comicId: sourceRef.params['comicId']?.toString() ?? comicId,
+    comicId: sourceRef.refId,
   );
 }
 

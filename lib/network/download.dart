@@ -12,6 +12,7 @@ import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/local_comics_legacy_bridge.dart';
 import 'package:venera/foundation/log.dart';
 import 'package:venera/foundation/res.dart';
+import 'package:venera/foundation/source_ref.dart';
 import 'package:venera/network/images.dart';
 import 'package:venera/utils/ext.dart';
 import 'package:venera/utils/file_type.dart';
@@ -578,7 +579,12 @@ class _ImageDownloadWrapper {
     try {
       await for (var p in ImageDownloader.loadComicImageUnwrapped(
         image,
-        task.source.key,
+        SourceRef.fromLegacyRemote(
+          sourceKey: task.source.key,
+          comicId: task.comicId,
+          chapterId: chapter,
+        ),
+        'remote:${task.source.key}:${task.comicId}',
         task.comicId,
         chapter,
       )) {

@@ -14,6 +14,7 @@ import 'package:venera/features/reader/data/reader_session_repository.dart';
 import 'package:venera/features/reader/data/reader_session_persistence.dart';
 import 'package:venera/foundation/res.dart';
 import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/source_identity/source_identity.dart';
 import 'package:venera/pages/comic_details_page/comic_page.dart';
 
 class _SpyProvider implements ReadablePageProvider {
@@ -66,7 +67,7 @@ void main() {
       chapterId: 'ch-1',
     );
 
-    await _dispatch(
+    final result = await _dispatch(
       useSourceRefResolver: false,
       ref: ref,
       loadMode: 'local',
@@ -77,7 +78,9 @@ void main() {
       loader: loader,
     );
 
-    expect(legacyCalls, 1);
+    expect(result.res.error, isTrue);
+    expect(result.res.errorMessage, 'SOURCE_REF_RESOLVER_REQUIRED');
+    expect(legacyCalls, 0);
     expect(local.calls, 0);
     expect(remote.calls, 0);
   });
@@ -311,6 +314,38 @@ void main() {
       }
     },
   );
+
+  test('remote dispatch maps source identity validation failures', () async {
+    var liveCalls = 0;
+    final loader = ReaderPageLoader(
+      loadLocalPages:
+          ({required localType, required localComicId, chapterId}) async =>
+              ['local'],
+      loadRemotePages:
+          ({required sourceKey, required comicId, required chapterId}) async {
+            liveCalls++;
+            return const Res(['live']);
+          },
+      sourceExists: (_) => true,
+    );
+    final result = await loader.load(
+      SourceRef(
+        id: 'remote:nhentai:646922:chapter-1',
+        type: SourceRefType.remote,
+        sourceKey: 'nhentai',
+        sourceIdentity: sourceIdentityFromKey('nhentai'),
+        refId: 'remote:nhentai:646922',
+        params: const {'chapterId': 'chapter-1'},
+      ),
+    );
+
+    expect(result.res.error, isTrue);
+    expect(
+      result.res.errorMessage,
+      'SOURCE_IDENTITY_ERROR:nonCanonicalRouteKeyLeak',
+    );
+    expect(liveCalls, 0);
+  });
 
   test(
     'persisted local reader context writes session and active tab',

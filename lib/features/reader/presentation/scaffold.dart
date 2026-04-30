@@ -1003,6 +1003,14 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
   Future<int?> selectImage() async {
     var reader = context.reader;
     var imageViewController = context.reader._imageViewController;
+    if (imageViewController == null) {
+      reader.recordImageControllerLifecycle(
+        'use.beforeReady',
+        owner: 'scaffold.selectImage',
+        ready: false,
+      );
+      return null;
+    }
 
     bool needsSelection = false;
     int? singleImageIndex;
@@ -1031,7 +1039,7 @@ class _ReaderScaffoldState extends State<_ReaderScaffold> {
       if (location == null) {
         return null;
       }
-      var imageKey = imageViewController!.getImageKeyByOffset(location);
+      var imageKey = imageViewController.getImageKeyByOffset(location);
       if (imageKey == null) {
         return null;
       }

@@ -44,11 +44,24 @@ ReaderPaginationDiagnostics _buildReaderPaginationDiagnostics({
       imagesPerPage: null,
     );
   }
-  return ReaderPaginationDiagnostics(
-    imageCount: imageCount,
-    maxPage: maxPage(),
-    imagesPerPage: imagesPerPage(),
-  );
+  try {
+    return ReaderPaginationDiagnostics(
+      imageCount: imageCount,
+      maxPage: maxPage(),
+      imagesPerPage: imagesPerPage(),
+    );
+  } catch (error, stackTrace) {
+    AppDiagnostics.warn(
+      'reader.lifecycle',
+      'pagination.diagnostics.unavailable',
+      data: {'error': error.toString(), 'stackTrace': stackTrace.toString()},
+    );
+    return ReaderPaginationDiagnostics(
+      imageCount: imageCount,
+      maxPage: null,
+      imagesPerPage: null,
+    );
+  }
 }
 
 @visibleForTesting
@@ -67,6 +80,50 @@ ReaderPaginationDiagnostics buildReaderPaginationDiagnosticsForTesting({
 }
 
 extension _ReaderDiagnosticsState on _ReaderState {
+  void recordImageControllerLifecycle(
+    String lifecycle, {
+    required String owner,
+    bool? ready,
+    Map<String, Object?> data = const {},
+  }) {
+    final context = currentReaderContext();
+    final pagination = _buildReaderPaginationDiagnostics(
+      includePagination: images != null,
+      imageCount: images?.length,
+      maxPage: () => maxPage,
+      imagesPerPage: () => mode.isContinuous ? 1 : imagesPerPage,
+    );
+    ReaderDiagnostics.updateReaderState(
+      lifecycle: 'imageController.$lifecycle',
+      type: type,
+      comicId: cid,
+      chapterId: context.chapterId,
+      chapterIndex: context.chapterIndex,
+      page: context.page,
+      mode: mode.key,
+      isLoading: isLoading,
+      imageCount: pagination.imageCount,
+      maxPage: pagination.maxPage,
+      imagesPerPage: pagination.imagesPerPage,
+      sourceKey: context.sourceKey,
+      loadMode: context.loadMode,
+      sourceRef: context.sourceRef,
+    );
+    AppDiagnostics.trace(
+      'reader.lifecycle',
+      'imageController.$lifecycle',
+      data: {
+        'owner': owner,
+        'ready': ready ?? hasImageViewController,
+        'comicId': context.comicId,
+        'chapterId': context.chapterId,
+        'chapterIndex': context.chapterIndex,
+        'page': context.page,
+        ...data,
+      },
+    );
+  }
+
   void recordReaderOpenDiagnostics() {
     final context = currentReaderContext();
     ReaderDiagnostics.recordReaderLifecycle(

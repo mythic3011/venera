@@ -62,8 +62,10 @@ Future<ReaderPageLoaderResult> dispatchReaderPageLoad({
   required SourceRef sourceRef,
 }) async {
   if (!useSourceRefResolver) {
-    final res = await legacyLoadPages();
-    return ReaderPageLoaderResult(res: res, loadMode: loadMode);
+    return ReaderPageLoaderResult(
+      res: const Res.error('SOURCE_REF_RESOLVER_REQUIRED'),
+      loadMode: loadMode,
+    );
   }
   return loader.load(sourceRef);
 }

@@ -21,6 +21,64 @@ extension SourceRefTypeX on SourceRefType {
   static SourceRefType fromKey(String key) => sourceRefTypeFromKey(key);
 }
 
+enum SourceIdentityErrorCode {
+  missingSourceKey,
+  missingRefId,
+  invalidRefId,
+  nonCanonicalRouteKeyLeak,
+}
+
+class SourceIdentityError implements Exception {
+  const SourceIdentityError(this.code, {required this.message});
+
+  final SourceIdentityErrorCode code;
+  final String message;
+
+  String get codeKey => switch (code) {
+    SourceIdentityErrorCode.missingSourceKey => 'missingSourceKey',
+    SourceIdentityErrorCode.missingRefId => 'missingRefId',
+    SourceIdentityErrorCode.invalidRefId => 'invalidRefId',
+    SourceIdentityErrorCode.nonCanonicalRouteKeyLeak =>
+      'nonCanonicalRouteKeyLeak',
+  };
+
+  @override
+  String toString() => 'SourceIdentityError($codeKey): $message';
+}
+
+class SourceIdentityPolicy {
+  const SourceIdentityPolicy._();
+
+  static void assertAdapterSafe(SourceRef ref) {
+    if (ref.sourceKey.trim().isEmpty) {
+      throw const SourceIdentityError(
+        SourceIdentityErrorCode.missingSourceKey,
+        message: 'SourceRef.sourceKey is required.',
+      );
+    }
+    if (ref.refId.trim().isEmpty) {
+      throw const SourceIdentityError(
+        SourceIdentityErrorCode.missingRefId,
+        message: 'SourceRef.refId is required.',
+      );
+    }
+    if (ref.type == SourceRefType.remote) {
+      if (ref.refId.startsWith('remote:')) {
+        throw const SourceIdentityError(
+          SourceIdentityErrorCode.nonCanonicalRouteKeyLeak,
+          message: 'Remote adapter refId must be upstream ID, not canonical ID.',
+        );
+      }
+      if (ref.refId.contains(':')) {
+        throw const SourceIdentityError(
+          SourceIdentityErrorCode.invalidRefId,
+          message: 'Remote adapter refId must not contain route delimiters.',
+        );
+      }
+    }
+  }
+}
+
 class SourceRef {
   final String id;
   final SourceRefType type;
@@ -41,6 +99,11 @@ class SourceRef {
   });
 
   static String _chapterToken(String? chapterId) => chapterId ?? '_';
+
+  String get canonicalId => switch (type) {
+    SourceRefType.local => refId,
+    SourceRefType.remote => 'remote:$sourceKey:$refId',
+  };
 
   factory SourceRef.fromLegacyLocal({
     required String localType,

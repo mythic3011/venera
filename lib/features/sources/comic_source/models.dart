@@ -44,6 +44,8 @@ abstract final class _ModelJsonKey {
   static const text = 'text';
 }
 
+const Object _copyWithSentinel = Object();
+
 extension _ModelJsonRead on Map<String, dynamic> {
   String readString(String key, {String fallback = ''}) {
     final value = this[key];
@@ -65,6 +67,12 @@ extension _ModelJsonRead on Map<String, dynamic> {
   bool? readBoolOrNull(String key) {
     final value = this[key];
     return value is bool ? value : null;
+  }
+
+  List<String>? readStringListOrNull(String key) {
+    final value = this[key];
+    if (value is! List) return null;
+    return value.whereType<String>().toList();
   }
 }
 
@@ -167,7 +175,7 @@ class Comic {
           "",
       cover = json.readString(_ModelJsonKey.cover),
       id = json.readString(_ModelJsonKey.id),
-      tags = List<String>.from(json[_ModelJsonKey.tags] ?? const <String>[]),
+      tags = json.readStringListOrNull(_ModelJsonKey.tags) ?? const <String>[],
       description = json.readString(_ModelJsonKey.description),
       maxPage = json.readIntOrNull(_ModelJsonKey.maxPage),
       language = json.readStringOrNull(_ModelJsonKey.language),
@@ -344,8 +352,12 @@ class ComicDetails with HistoryMixin {
       comicId = json.readString(_ModelJsonKey.comicId),
       thumbnails = ListOrNull.from(json[_ModelJsonKey.thumbnails]),
       recommend = (json[_ModelJsonKey.recommend] as List?)
-          ?.map(
-            (e) => Comic.fromJson(e, json.readString(_ModelJsonKey.sourceKey)),
+          ?.whereType<Map>()
+          .map(
+            (e) => Comic.fromJson(
+              Map<String, dynamic>.from(e),
+              json.readString(_ModelJsonKey.sourceKey),
+            ),
           )
           .toList(),
       isFavorite = json.readBoolOrNull(_ModelJsonKey.isFavorite),
@@ -360,14 +372,15 @@ class ComicDetails with HistoryMixin {
       stars = (json[_ModelJsonKey.stars] as num?)?.toDouble(),
       maxPage = json.readIntOrNull(_ModelJsonKey.maxPage),
       comments = (json[_ModelJsonKey.comments] as List?)
-          ?.map((e) => Comment.fromJson(e))
+          ?.whereType<Map>()
+          .map((e) => Comment.fromJson(Map<String, dynamic>.from(e)))
           .toList();
 
   ComicDetails copyWith({
     String? title,
-    String? subTitle,
+    Object? subTitle = _copyWithSentinel,
     String? cover,
-    String? description,
+    Object? description = _copyWithSentinel,
     Map<String, List<String>>? tags,
     ComicChapters? chapters,
     List<String>? thumbnails,
@@ -375,23 +388,27 @@ class ComicDetails with HistoryMixin {
     String? sourceKey,
     String? comicId,
     bool? isFavorite,
-    String? subId,
+    Object? subId = _copyWithSentinel,
     bool? isLiked,
     int? likesCount,
     int? commentCount,
-    String? uploader,
-    String? uploadTime,
-    String? updateTime,
-    String? url,
-    double? stars,
+    Object? uploader = _copyWithSentinel,
+    Object? uploadTime = _copyWithSentinel,
+    Object? updateTime = _copyWithSentinel,
+    Object? url = _copyWithSentinel,
+    Object? stars = _copyWithSentinel,
     int? maxPage,
-    List<Comment>? comments,
+    Object? comments = _copyWithSentinel,
   }) {
     return ComicDetails(
       title: title ?? this.title,
-      subTitle: subTitle ?? this.subTitle,
+      subTitle:
+          identical(subTitle, _copyWithSentinel) ? this.subTitle : subTitle as String?,
       cover: cover ?? this.cover,
-      description: description ?? this.description,
+      description:
+          identical(description, _copyWithSentinel)
+              ? this.description
+              : description as String?,
       tags: tags ?? this.tags,
       chapters: chapters ?? this.chapters,
       thumbnails: thumbnails ?? this.thumbnails,
@@ -399,17 +416,27 @@ class ComicDetails with HistoryMixin {
       sourceKey: sourceKey ?? this.sourceKey,
       comicId: comicId ?? this.comicId,
       isFavorite: isFavorite ?? this.isFavorite,
-      subId: subId ?? this.subId,
+      subId: identical(subId, _copyWithSentinel) ? this.subId : subId as String?,
       isLiked: isLiked ?? this.isLiked,
       likesCount: likesCount ?? this.likesCount,
       commentCount: commentCount ?? this.commentCount,
-      uploader: uploader ?? this.uploader,
-      uploadTime: uploadTime ?? this.uploadTime,
-      updateTime: updateTime ?? this.updateTime,
-      url: url ?? this.url,
-      stars: stars ?? this.stars,
+      uploader:
+          identical(uploader, _copyWithSentinel) ? this.uploader : uploader as String?,
+      uploadTime:
+          identical(uploadTime, _copyWithSentinel)
+              ? this.uploadTime
+              : uploadTime as String?,
+      updateTime:
+          identical(updateTime, _copyWithSentinel)
+              ? this.updateTime
+              : updateTime as String?,
+      url: identical(url, _copyWithSentinel) ? this.url : url as String?,
+      stars: identical(stars, _copyWithSentinel) ? this.stars : stars as double?,
       maxPage: maxPage ?? this.maxPage,
-      comments: comments ?? this.comments,
+      comments:
+          identical(comments, _copyWithSentinel)
+              ? this.comments
+              : comments as List<Comment>?,
     );
   }
 
@@ -429,7 +456,7 @@ class ComicDetails with HistoryMixin {
       "subId": subId,
       "isLiked": isLiked,
       "likesCount": likesCount,
-      "commentsCount": commentCount,
+      "commentCount": commentCount,
       "uploader": uploader,
       "uploadTime": uploadTime,
       "updateTime": updateTime,
@@ -537,7 +564,11 @@ class ComicChapters {
       var value = entry.value;
       if (key is! String) throw ArgumentError("Invalid key type");
       if (value is Map) {
-        groupedChapters[key] = Map.from(value);
+        groupedChapters[key] = {
+          for (final entry in value.entries)
+            if (entry.key is String)
+              entry.key as String: entry.value.toString(),
+        };
       } else {
         chapters[key] = value.toString();
       }
@@ -589,14 +620,16 @@ class ComicChapters {
 
   /// Get a group of chapters by index(0-based)
   Map<String, String> getGroupByIndex(int index) {
-    return _groupedChapters!.values.elementAt(index);
+    if (!isGrouped || index < 0 || index >= _groupedChapters!.length) {
+      return const {};
+    }
+    return _groupedChapters.values.elementAt(index);
   }
 
   /// Get total number of chapters
   int get length {
-    return isGrouped
-        ? _groupedChapters!.values.map((e) => e.length).reduce((a, b) => a + b)
-        : _chapters!.length;
+    if (!isGrouped) return _chapters!.length;
+    return _groupedChapters!.values.fold<int>(0, (sum, e) => sum + e.length);
   }
 
   /// Get the number of groups
@@ -672,12 +705,16 @@ class PageJumpTarget {
       }
     } else if (value is String) {
       // old version string encoding. search: `search:keyword`, category: `category:keyword` or `category:keyword@param`
-      var segments = value.split(":");
-      var page = segments[0];
+      final sep = value.indexOf(':');
+      if (sep <= 0) {
+        return PageJumpTarget(sourceKey, "Invalid Data", null);
+      }
+      var page = value.substring(0, sep);
+      var payload = value.substring(sep + 1);
       if (page == "search") {
-        return PageJumpTarget(sourceKey, "search", {"text": segments[1]});
+        return PageJumpTarget(sourceKey, "search", {"text": payload});
       } else if (page == "category") {
-        var c = segments[1];
+        var c = payload;
         if (c.contains('@')) {
           var parts = c.split('@');
           return PageJumpTarget(sourceKey, "category", {
@@ -707,13 +744,23 @@ class PageJumpTarget {
         ),
       );
     } else if (page == "category") {
-      var key = ComicSource.find(sourceKey)!.categoryData!.key;
+      final source = ComicSource.find(sourceKey);
+      final categoryData = source?.categoryData;
+      if (categoryData == null) {
+        Log.error("Page Jump", "Category source unavailable: $sourceKey");
+        context.showMessage(message: "Comic source is unavailable".tl);
+        return;
+      }
+      final category = attributes?[_ModelJsonKey.category]?.toString();
+      if (category == null || category.isEmpty) {
+        Log.error("Page Jump", "Category name is required for source: $sourceKey");
+        context.showMessage(message: "Category is unavailable".tl);
+        return;
+      }
       context.to(
         () => CategoryComicsPage(
-          categoryKey: key,
-          category:
-              attributes?[_ModelJsonKey.category] ??
-              (throw ArgumentError("Category name is required")),
+          categoryKey: categoryData.key,
+          category: category,
           options: List.from(attributes?[_ModelJsonKey.options] ?? []),
           param: attributes?[_ModelJsonKey.param],
         ),

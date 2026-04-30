@@ -91,6 +91,23 @@ ComicDetails buildLocalDetailsFromCanonicalForTesting(
   ComicDetailViewModel detail,
   LocalComic localComic,
 ) {
+  return buildLocalDetailsFromCanonicalDetailForTesting(
+    detail,
+    fallbackTags: localComic.tags,
+    fallbackSubtitle: localComic.subtitle,
+    fallbackCover: localComic.coverFile.uri.toString(),
+    fallbackUpdatedAt: localComic.createdAt,
+  );
+}
+
+@visibleForTesting
+ComicDetails buildLocalDetailsFromCanonicalDetailForTesting(
+  ComicDetailViewModel detail, {
+  List<String> fallbackTags = const <String>[],
+  String? fallbackSubtitle,
+  String? fallbackCover,
+  DateTime? fallbackUpdatedAt,
+}) {
   final tags = <String, List<String>>{};
   for (final tag in detail.sourceTags) {
     final key = tag.namespace.isEmpty ? 'Source Tags' : tag.namespace;
@@ -100,7 +117,7 @@ ComicDetails buildLocalDetailsFromCanonicalForTesting(
     tags['User Tags'] = detail.userTags.map((tag) => tag.name).toList();
   }
   if (tags.isEmpty) {
-    for (final raw in localComic.tags) {
+    for (final raw in fallbackTags) {
       final index = raw.indexOf(':');
       if (index > 0 && index < raw.length - 1) {
         final namespace = raw.substring(0, index).trim();
@@ -115,7 +132,8 @@ ComicDetails buildLocalDetailsFromCanonicalForTesting(
       ? 'Remote source: Not linked'
       : 'Remote source: ${detail.primarySource!.platformName}';
   final subtitleParts = <String>[
-    if (localComic.subtitle.isNotEmpty) localComic.subtitle,
+    if (fallbackSubtitle != null && fallbackSubtitle.isNotEmpty)
+      fallbackSubtitle,
     sourceLabel,
   ];
   final chapters = detail.chapters.isEmpty
@@ -129,7 +147,7 @@ ComicDetails buildLocalDetailsFromCanonicalForTesting(
     "subtitle": subtitleParts.join(' | '),
     "cover": (detail.coverLocalPath != null
         ? File(detail.coverLocalPath!).uri.toString()
-        : localComic.coverFile.uri.toString()),
+        : fallbackCover ?? ""),
     "description": detail.primarySource?.sourceTitle ?? "",
     "tags": tags,
     "chapters": chapters?.toJson(),
@@ -144,7 +162,7 @@ ComicDetails buildLocalDetailsFromCanonicalForTesting(
     "commentCount": null,
     "uploader": null,
     "uploadTime": null,
-    "updateTime": (detail.updatedAt ?? localComic.createdAt).toIso8601String(),
+    "updateTime": (detail.updatedAt ?? fallbackUpdatedAt)?.toIso8601String(),
     "url": detail.primarySource?.comicUrl,
     "stars": null,
     "maxPage": null,
@@ -208,29 +226,7 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
 
   @override
   Widget buildError() {
-    final isDownloaded = legacyIsDownloaded(
-      widget.id,
-      ComicType.fromKey(widget.sourceKey),
-      0,
-    );
-    Widget? action;
-    if (isDownloaded) {
-      action = FilledButton.tonal(
-        child: Text("Read".tl),
-        onPressed: () {
-          final localComic = legacyFindLocalComic(
-            widget.id,
-            ComicType.fromKey(widget.sourceKey),
-          );
-          if (localComic == null) {
-            context.showMessage(message: "Local comic not found".tl);
-            return;
-          }
-          localComic.read();
-        },
-      );
-    }
-    return NetworkError(message: error!, retry: retry, action: action);
+    return NetworkError(message: error!, retry: retry);
   }
 
   @override
@@ -358,34 +354,36 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
   @override
   Future<Res<ComicDetails>> loadData() async {
     if (_isLocalSource) {
-      final localRecord = await loadCanonicalLocalDetailRecord(
-        comicId: widget.id,
-      );
-      if (localRecord == null) {
+      final localItem = await App.repositories.localLibrary
+          .loadPrimaryLocalLibraryItem(widget.id);
+      if (localItem == null) {
         return const Res.error('Local comic not found');
       }
-      final localComic = localRecord.localComic;
-      final detail = localRecord.detail;
+      final detail = await App.repositories.comicDetail.getComicDetail(
+        widget.id,
+      );
+      if (detail == null) {
+        return const Res.error('Local comic detail not found');
+      }
       _canonicalDetailVm = detail;
-      isAddToLocalFav = legacyLocalFavoriteExists(widget.id, ComicType.local);
+      isAddToLocalFav = await App.repositories.comicDetailStore
+          .isComicFavorited(widget.id);
       _canonicalComicId = widget.id;
-      history = buildComicDetailCompatibilityHistoryForTesting(
-        model: localComic,
-        chapters: localComic.chapters,
-        canonicalActiveTab: detail.readerTabs.firstWhereOrNull(
-          (tab) => tab.isActive,
+      history = null;
+      return Res(
+        buildLocalDetailsFromCanonicalDetailForTesting(
+          detail,
+          fallbackCover: detail.coverLocalPath == null
+              ? Uri.file(localItem.localRootPath).toString()
+              : null,
+          fallbackUpdatedAt: detail.updatedAt,
         ),
       );
-      return Res(buildLocalDetailsFromCanonicalForTesting(detail, localComic));
     }
     var comicSource = ComicSource.find(widget.sourceKey);
     if (comicSource == null) {
       return const Res.error('Comic source not found');
     }
-    isAddToLocalFav = legacyLocalFavoriteExists(
-      widget.id,
-      ComicType.fromKey(widget.sourceKey),
-    );
     final remoteDetail =
         await CanonicalRemoteComicDetailRepository(
           store: App.repositories.comicDetailStore,
@@ -397,6 +395,9 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
       return Res.fromErrorRes(remoteDetail, subData: remoteDetail.subData);
     }
     _canonicalComicId = remoteDetail.data.canonicalComicId;
+    isAddToLocalFav = await App.repositories.comicDetailStore.isComicFavorited(
+      _canonicalComicId!,
+    );
     _canonicalDetailVm = await App.repositories.comicDetail.getComicDetail(
       _canonicalComicId!,
     );
@@ -430,7 +431,12 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
       }
     }
     if (comic.chapters == null) {
-      isDownloaded = legacyIsDownloaded(comic.id, comic.comicType, 0);
+      final canonicalId = _canonicalComicId;
+      isDownloaded =
+          canonicalId != null &&
+          await App.repositories.localLibrary.hasPrimaryLocalLibraryItem(
+            canonicalId,
+          );
     }
   }
 
@@ -1239,10 +1245,6 @@ class _ComicPageLoadingPlaceHolder extends StatelessWidget {
 
   ImageProvider? _imageProvider() {
     if (isLocalSourceKey(sourceKey)) {
-      final localComic = legacyFindLocalComic(cid, ComicType.local);
-      if (localComic != null) {
-        return FileImage(localComic.coverFile);
-      }
       return null;
     }
     if (cover == null) {

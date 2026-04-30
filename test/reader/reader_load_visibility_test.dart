@@ -2,14 +2,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/image_provider/reader_image.dart';
 import 'package:venera/features/reader/presentation/reader.dart';
+import 'package:venera/foundation/source_ref.dart';
 
 void main() {
   test('build_reader_image_provider_keeps_requested_page', () {
     final provider = buildReaderImageProvider(
       imageKey: 'https://example.com/page-3.jpg',
-      sourceKey: 'copymanga',
-      comicId: 'comic-9',
-      chapterId: 'ep-5',
+      sourceRef: SourceRef.fromLegacyRemote(
+        sourceKey: 'copymanga',
+        comicId: 'comic-9',
+        chapterId: 'ep-5',
+      ),
+      canonicalComicId: 'remote:copymanga:comic-9',
+      upstreamComicRefId: 'comic-9',
+      chapterRefId: 'ep-5',
       page: 3,
       enableResize: true,
     );
@@ -29,7 +35,7 @@ void main() {
 
     expect(
       context,
-      'imageKey=https://example.com/page-3.jpg comicId=comic-9 chapterId=ep-5 page=3 sourceKey=copymanga',
+      'imageKey=https://example.com/page-3.jpg canonicalComicId=comic-9 upstreamComicRefId=comic-9 chapterRefId=ep-5 page=3 sourceKey=copymanga',
     );
   });
 
@@ -45,7 +51,7 @@ void main() {
 
     expect(
       error,
-      'EMPTY_PAGE_LIST: loadMode=local comicId=comic-1 chapterIndex=2 chapterId=ch-2 sourceKey=local',
+      'EMPTY_PAGE_LIST: loadMode=local canonicalComicRefId=comic-1 chapterIndex=2 chapterId=ch-2 sourceKey=local',
     );
   });
 
@@ -61,7 +67,7 @@ void main() {
 
     expect(
       error,
-      'EMPTY_PAGE_LIST: loadMode=remote comicId=comic-9 chapterIndex=5 chapterId=ep-5 sourceKey=copymanga',
+      'EMPTY_PAGE_LIST: loadMode=remote canonicalComicRefId=comic-9 chapterIndex=5 chapterId=ep-5 sourceKey=copymanga',
     );
   });
 

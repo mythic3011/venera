@@ -2,30 +2,53 @@ part of 'reader.dart';
 
 Future<Uint8List> _readReaderImageBytes({
   required String imageKey,
-  required String sourceKey,
-  required String comicId,
-  required String chapterId,
+  String? sourceKey,
+  String? canonicalComicId,
+  String? upstreamComicRefId,
+  String? chapterRefId,
+  // Compatibility aliases for older callsites.
+  String? comicId,
+  String? chapterId,
 }) async {
+  final resolvedSourceKey = sourceKey ?? localSourceKey;
+  final resolvedCanonicalComicRefId = canonicalComicId ?? comicId;
+  final resolvedChapterRefId = chapterRefId ?? chapterId;
+  final resolvedUpstreamComicRefId =
+      upstreamComicRefId ?? resolvedCanonicalComicRefId;
+  if (resolvedCanonicalComicRefId == null || resolvedCanonicalComicRefId.isEmpty) {
+    throw StateError('IMAGE_IDENTITY_MISSING: canonicalComicRefId');
+  }
+  if (resolvedChapterRefId == null || resolvedChapterRefId.isEmpty) {
+    throw StateError('IMAGE_IDENTITY_MISSING: chapterRefId');
+  }
   if (imageKey.startsWith('file://')) {
     return File(Uri.parse(imageKey).toFilePath()).readAsBytes();
   }
-  return (await CacheManager().findCache(
-    '$imageKey@$sourceKey@$comicId@$chapterId',
-  ))!.readAsBytes();
+  final cache = await CacheManager().findCache(
+    '$imageKey@$resolvedSourceKey@$resolvedCanonicalComicRefId@$resolvedUpstreamComicRefId@$resolvedChapterRefId',
+  );
+  if (cache == null) {
+    throw StateError(
+      'IMAGE_CACHE_MISS: imageKey=$imageKey sourceKey=$resolvedSourceKey canonicalComicRefId=$resolvedCanonicalComicRefId upstreamComicRefId=$resolvedUpstreamComicRefId chapterRefId=$resolvedChapterRefId',
+    );
+  }
+  return cache.readAsBytes();
 }
 
 @visibleForTesting
 Future<Uint8List> readReaderImageBytesForTesting({
   required String imageKey,
   required String sourceKey,
-  required String comicId,
-  required String chapterId,
+  required String canonicalComicId,
+  required String upstreamComicRefId,
+  required String chapterRefId,
 }) {
   return _readReaderImageBytes(
     imageKey: imageKey,
     sourceKey: sourceKey,
-    comicId: comicId,
-    chapterId: chapterId,
+    canonicalComicId: canonicalComicId,
+    upstreamComicRefId: upstreamComicRefId,
+    chapterRefId: chapterRefId,
   );
 }
 
@@ -47,6 +70,19 @@ String? resolveLegacyRemoteSourceUnavailableErrorForTesting(
   return null;
 }
 
+String requireRemoteUpstreamComicRefId(SourceRef sourceRef) {
+  if (sourceRef.type != SourceRefType.remote) {
+    throw StateError('SOURCE_REF_MALFORMED: expected remote SourceRef');
+  }
+  final upstreamComicRefId = sourceRef.refId;
+  if (upstreamComicRefId.isEmpty || upstreamComicRefId.startsWith('remote:')) {
+    throw StateError(
+      'SOURCE_REF_MALFORMED: invalid upstreamRefId=$upstreamComicRefId',
+    );
+  }
+  return upstreamComicRefId;
+}
+
 bool _isReaderSourceUnavailableError(String? errorMessage) {
   if (errorMessage == null) {
     return false;
@@ -61,22 +97,25 @@ bool _isReaderSourceUnavailableError(String? errorMessage) {
 
 bool _shouldLoadReaderPagesLocally({
   required ComicType type,
-  required String comicId,
-  required bool Function(String comicId, ComicType type) isDownloaded,
-  required bool Function(String comicId) hasLocalComic,
+  required String canonicalComicRefId,
+  required bool Function(String canonicalComicRefId, ComicType type)
+  isDownloaded,
+  required bool Function(String canonicalComicRefId) hasLocalComic,
 }) {
-  if (type == ComicType.local || isDownloaded(comicId, type)) {
+  if (type == ComicType.local || isDownloaded(canonicalComicRefId, type)) {
     return true;
   }
-  return isUnknownSourceKey(type.sourceKey) && hasLocalComic(comicId);
+  return isUnknownSourceKey(type.sourceKey) &&
+      hasLocalComic(canonicalComicRefId);
 }
 
 String _readerLocalTypeKey({
   required ComicType type,
-  required String comicId,
-  required bool Function(String comicId) hasLocalComic,
+  required String canonicalComicRefId,
+  required bool Function(String canonicalComicRefId) hasLocalComic,
 }) {
-  if (isUnknownSourceKey(type.sourceKey) && hasLocalComic(comicId)) {
+  if (isUnknownSourceKey(type.sourceKey) &&
+      hasLocalComic(canonicalComicRefId)) {
     return localSourceKey;
   }
   return type.sourceKey;
@@ -90,13 +129,19 @@ bool isReaderSourceUnavailableErrorForTesting(String? errorMessage) {
 @visibleForTesting
 bool shouldLoadReaderPagesLocallyForTesting({
   required ComicType type,
-  required String comicId,
-  required bool Function(String comicId, ComicType type) isDownloaded,
-  required bool Function(String comicId) hasLocalComic,
+  String? canonicalComicRefId,
+  String? comicId,
+  required bool Function(String canonicalComicRefId, ComicType type)
+  isDownloaded,
+  required bool Function(String canonicalComicRefId) hasLocalComic,
 }) {
+  final resolvedCanonicalRefId = canonicalComicRefId ?? comicId;
+  if (resolvedCanonicalRefId == null || resolvedCanonicalRefId.isEmpty) {
+    throw ArgumentError('canonicalComicRefId is required');
+  }
   return _shouldLoadReaderPagesLocally(
     type: type,
-    comicId: comicId,
+    canonicalComicRefId: resolvedCanonicalRefId,
     isDownloaded: isDownloaded,
     hasLocalComic: hasLocalComic,
   );
@@ -105,23 +150,30 @@ bool shouldLoadReaderPagesLocallyForTesting({
 @visibleForTesting
 String readerLocalTypeKeyForTesting({
   required ComicType type,
-  required String comicId,
-  required bool Function(String comicId) hasLocalComic,
+  String? canonicalComicRefId,
+  String? comicId,
+  required bool Function(String canonicalComicRefId) hasLocalComic,
 }) {
+  final resolvedCanonicalRefId = canonicalComicRefId ?? comicId;
+  if (resolvedCanonicalRefId == null || resolvedCanonicalRefId.isEmpty) {
+    throw ArgumentError('canonicalComicRefId is required');
+  }
   return _readerLocalTypeKey(
     type: type,
-    comicId: comicId,
+    canonicalComicRefId: resolvedCanonicalRefId,
     hasLocalComic: hasLocalComic,
   );
 }
 
 Future<bool> _isReaderDownloadedFromCanonical({
-  required String comicId,
+  required String canonicalComicRefId,
   required int? chapterIndex,
   required ComicChapters? chapters,
 }) async {
   final localLibrary = App.repositories.localLibrary;
-  final hasLocal = await localLibrary.hasPrimaryLocalLibraryItem(comicId);
+  final hasLocal = await localLibrary.hasPrimaryLocalLibraryItem(
+    canonicalComicRefId,
+  );
   if (!hasLocal) {
     return false;
   }
@@ -133,7 +185,7 @@ Future<bool> _isReaderDownloadedFromCanonical({
     return false;
   }
   final downloadedChapterIds = await localLibrary.loadDownloadedChapterIds(
-    comicId,
+    canonicalComicRefId,
   );
   return downloadedChapterIds.contains(targetChapterId);
 }
@@ -142,13 +194,13 @@ Future<bool> _isReaderDownloadedFromCanonical({
 String buildReaderLoadDiagnostic({
   required String code,
   required String loadMode,
-  required String comicId,
+  required String canonicalComicRefId,
   required int chapterIndex,
   String? chapterId,
   String? sourceKey,
 }) {
   final buffer = StringBuffer(
-    '$code: loadMode=$loadMode comicId=$comicId chapterIndex=$chapterIndex',
+    '$code: loadMode=$loadMode canonicalComicRefId=$canonicalComicRefId chapterIndex=$chapterIndex',
   );
   if (chapterId != null && chapterId.isNotEmpty) {
     buffer.write(' chapterId=$chapterId');
@@ -163,18 +215,23 @@ String buildReaderLoadDiagnostic({
 String? resolveReaderEmptyPageListError({
   required List<String> images,
   required String loadMode,
-  required String comicId,
+  String? canonicalComicRefId,
+  String? comicId,
   required int chapterIndex,
   String? chapterId,
   String? sourceKey,
 }) {
+  final resolvedCanonicalRefId = canonicalComicRefId ?? comicId;
+  if (resolvedCanonicalRefId == null || resolvedCanonicalRefId.isEmpty) {
+    throw ArgumentError('canonicalComicRefId is required');
+  }
   if (images.isNotEmpty) {
     return null;
   }
   return buildReaderLoadDiagnostic(
     code: 'EMPTY_PAGE_LIST',
     loadMode: loadMode,
-    comicId: comicId,
+    canonicalComicRefId: resolvedCanonicalRefId,
     chapterIndex: chapterIndex,
     chapterId: chapterId,
     sourceKey: sourceKey,
@@ -183,17 +240,19 @@ String? resolveReaderEmptyPageListError({
 
 ReaderImageProvider buildReaderImageProvider({
   required String imageKey,
-  required String? sourceKey,
-  required String comicId,
-  required String chapterId,
+  required SourceRef sourceRef,
+  required String canonicalComicId,
+  required String upstreamComicRefId,
+  required String chapterRefId,
   required int page,
   required bool enableResize,
 }) {
   return ReaderImageProvider(
     imageKey,
-    sourceKey,
-    comicId,
-    chapterId,
+    sourceRef,
+    canonicalComicId,
+    upstreamComicRefId,
+    chapterRefId,
     page,
     enableResize: enableResize,
   );
@@ -212,6 +271,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
   bool get _isSourceUnavailableError => _isReaderSourceUnavailableError(error);
 
   bool inProgress = false;
+  int _loadSessionId = 0;
 
   late _ReaderState reader;
 
@@ -239,24 +299,36 @@ class _ReaderImagesState extends State<_ReaderImages> {
   void load() async {
     if (inProgress) return;
     inProgress = true;
+    final loadSessionId = ++_loadSessionId;
+    final loadChapter = reader.chapter;
     final hasLocalComic = await App.repositories.localLibrary
         .hasPrimaryLocalLibraryItem(reader.cid);
     final isDownloaded = await _isReaderDownloadedFromCanonical(
-      comicId: reader.cid,
+      canonicalComicRefId: reader.cid,
       chapterIndex: reader.chapter,
       chapters: reader.widget.chapters,
     );
     final loadMode =
         _shouldLoadReaderPagesLocally(
           type: reader.type,
-          comicId: reader.cid,
+          canonicalComicRefId: reader.cid,
           isDownloaded: (_, __) => isDownloaded,
           hasLocalComic: (_) => hasLocalComic,
         )
         ? 'local'
         : 'remote';
     final callId = reader.beginPageListDiagnostics(loadMode);
-    final sourceRef = _buildSourceRef(loadMode, hasLocalComic: hasLocalComic);
+    SourceRef sourceRef;
+    try {
+      sourceRef = _buildSourceRef(loadMode, hasLocalComic: hasLocalComic);
+    } catch (e) {
+      setState(() {
+        error = e.toString();
+        reader.isLoading = false;
+        inProgress = false;
+      });
+      return;
+    }
     Future<Res<List<String>>> legacyLoadPages() async {
       if (loadMode == 'local') {
         final targetChapterId =
@@ -280,7 +352,12 @@ class _ReaderImagesState extends State<_ReaderImages> {
           sourceRef.params['chapterId']?.toString() ??
           reader.widget.chapters?.ids.elementAtOrNull(reader.chapter - 1) ??
           reader.chapter.toString();
-      return loadComicPages(reader.cid, chapterId);
+      try {
+        final upstreamRefId = requireRemoteUpstreamComicRefId(sourceRef);
+        return loadComicPages(upstreamRefId, chapterId);
+      } catch (e) {
+        return Res.error(e.toString());
+      }
     }
 
     final loader = ReaderPageLoader(
@@ -321,14 +398,18 @@ class _ReaderImagesState extends State<_ReaderImages> {
       sourceExists: (sourceKey) => ComicSource.find(sourceKey) != null,
     );
     final result = await dispatchReaderPageLoad(
-      useSourceRefResolver:
-          appdata.settings['reader_use_source_ref_resolver'] == true,
+      useSourceRefResolver: true,
       loadMode: loadMode,
       legacyLoadPages: legacyLoadPages,
       loader: loader,
       sourceRef: sourceRef,
     );
-    if (!mounted) return;
+    if (!mounted ||
+        loadSessionId != _loadSessionId ||
+        loadChapter != reader.chapter) {
+      inProgress = false;
+      return;
+    }
     final res = result.res;
     if (res.error) {
       final sourceUnavailable = _isReaderSourceUnavailableError(
@@ -359,15 +440,31 @@ class _ReaderImagesState extends State<_ReaderImages> {
       }
     } else {
       if (sourceRef.type == SourceRefType.remote) {
-        final remoteComicId =
-            sourceRef.params['comicId']?.toString() ?? reader.cid;
+        String remoteUpstreamRefId;
+        try {
+          remoteUpstreamRefId = requireRemoteUpstreamComicRefId(sourceRef);
+        } catch (e) {
+          setState(() {
+            error = e.toString();
+            reader.isLoading = false;
+            inProgress = false;
+          });
+          reader.failPageListDiagnostics(
+            callId: callId,
+            loadMode: loadMode,
+            sourceRef: sourceRef,
+            errorCode: 'SOURCE_REF_MALFORMED',
+            errorMessage: e.toString(),
+          );
+          return;
+        }
         final remoteChapterId =
             sourceRef.params['chapterId']?.toString() ??
             reader.chapter.toString();
         try {
           await App.repositories.comicDetailStore.syncRemoteChapterPages(
             sourceKey: sourceRef.sourceKey,
-            comicId: remoteComicId,
+            comicId: remoteUpstreamRefId,
             chapterId: remoteChapterId,
             pageKeys: res.data,
           );
@@ -419,7 +516,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
         ),
         SourceRefType.remote => SourceRef.fromLegacyRemote(
           sourceKey: existingRef.sourceKey,
-          comicId: existingRef.params['comicId']?.toString() ?? reader.cid,
+          comicId: requireRemoteUpstreamComicRefId(existingRef),
           chapterId: chapterId,
           routeKey: existingRef.routeKey,
         ),
@@ -429,18 +526,14 @@ class _ReaderImagesState extends State<_ReaderImages> {
       return SourceRef.fromLegacyLocal(
         localType: _readerLocalTypeKey(
           type: reader.type,
-          comicId: reader.cid,
+          canonicalComicRefId: reader.cid,
           hasLocalComic: (_) => hasLocalComic,
         ),
         localComicId: reader.cid,
         chapterId: chapterId,
       );
     }
-    return SourceRef.fromLegacyRemote(
-      sourceKey: reader.type.sourceKey,
-      comicId: reader.cid,
-      chapterId: chapterId,
-    );
+    throw StateError('REMOTE_READER_REQUIRES_SOURCE_REF');
   }
 
   @override
@@ -510,7 +603,7 @@ class _GalleryMode extends StatefulWidget {
 
 class _GalleryModeState extends State<_GalleryMode>
     implements _ImageViewController {
-  late PageController controller;
+  PageController? controller;
 
   int get preCacheCount => appdata.settings["preloadImageCount"];
 
@@ -562,7 +655,8 @@ class _GalleryModeState extends State<_GalleryMode>
   void initState() {
     reader = context.reader;
     controller = PageController(initialPage: reader.page);
-    reader._imageViewController = this;
+    reader.attachImageViewController(this);
+    reader.recordImageControllerLifecycle('assign', owner: 'gallery');
     Future.microtask(() {
       context.readerScaffold.setFloatingButton(0);
     });
@@ -571,8 +665,11 @@ class _GalleryModeState extends State<_GalleryMode>
 
   @override
   void dispose() {
+    reader.recordImageControllerLifecycle('dispose', owner: 'gallery');
+    reader.detachImageViewController(this);
     keyRepeatTimer?.cancel();
-    controller.dispose();
+    controller?.dispose();
+    controller = null;
     for (final photoController in photoViewControllers.values) {
       photoController.dispose();
     }
@@ -639,12 +736,19 @@ class _GalleryModeState extends State<_GalleryMode>
   }
 
   Widget _buildChapterCommentsPage() {
-    var source = ComicSource.find(reader.type.sourceKey);
+    final runtimeContext = reader.currentReaderContext();
+    final source = ComicSource.find(runtimeContext.sourceRef.sourceKey);
     var chapters = reader.widget.chapters;
     if (source == null || chapters == null) return const SizedBox();
+    String upstreamRefId;
+    try {
+      upstreamRefId = requireRemoteUpstreamComicRefId(runtimeContext.sourceRef);
+    } catch (_) {
+      return const SizedBox();
+    }
     var chapterIndex = reader.chapter - 1;
     return _EmbeddedChapterCommentsPage(
-      comicId: reader.cid,
+      comicId: upstreamRefId,
       epId: chapters.ids.elementAt(chapterIndex),
       source: source,
       comicTitle: reader.widget.name,
@@ -749,14 +853,15 @@ class _GalleryModeState extends State<_GalleryMode>
           );
         },
         onPageChanged: (i) {
+          final pageController = controller;
           if (i == 0) {
             if (reader.isFirstChapterOfGroup ||
                 !reader.toPrevChapter(toLastPage: true)) {
-              controller.jumpToPage(1);
+              pageController?.jumpToPage(1);
             }
           } else if (i == totalPages + 1) {
             if (reader.isLastChapterOfGroup || !reader.toNextChapter()) {
-              controller.jumpToPage(totalPages);
+              pageController?.jumpToPage(totalPages);
             }
           } else {
             reader.setPage(i);
@@ -853,10 +958,21 @@ class _GalleryModeState extends State<_GalleryMode>
 
   @override
   Future<void> animateToPage(int page) {
-    if ((page - controller.page!.round()).abs() > 1) {
-      controller.jumpToPage(page > controller.page! ? page - 1 : page + 1);
+    final pageController = controller;
+    if (pageController == null || !pageController.hasClients) {
+      reader.recordImageControllerLifecycle(
+        'use.beforeReady',
+        owner: 'gallery.animateToPage',
+        ready: false,
+      );
+      return Future.value();
     }
-    return controller.animateToPage(
+    if ((page - pageController.page!.round()).abs() > 1) {
+      pageController.jumpToPage(
+        page > pageController.page! ? page - 1 : page + 1,
+      );
+    }
+    return pageController.animateToPage(
       page,
       duration: const Duration(milliseconds: 200),
       curve: Curves.ease,
@@ -865,7 +981,16 @@ class _GalleryModeState extends State<_GalleryMode>
 
   @override
   void toPage(int page) {
-    controller.jumpToPage(page);
+    final pageController = controller;
+    if (pageController == null || !pageController.hasClients) {
+      reader.recordImageControllerLifecycle(
+        'use.beforeReady',
+        owner: 'gallery.toPage',
+        ready: false,
+      );
+      return;
+    }
+    pageController.jumpToPage(page);
   }
 
   @override
@@ -977,11 +1102,13 @@ class _GalleryModeState extends State<_GalleryMode>
   Future<Uint8List?> getImageByOffset(Offset offset) async {
     var imageKey = getImageKeyByOffset(offset);
     if (imageKey == null) return null;
+    final runtimeContext = context.reader.currentReaderContext();
     return _readReaderImageBytes(
       imageKey: imageKey,
-      sourceKey: context.reader.type.sourceKey,
-      comicId: context.reader.cid,
-      chapterId: context.reader.eid,
+      sourceKey: runtimeContext.sourceRef.sourceKey,
+      canonicalComicId: runtimeContext.canonicalComicId,
+      upstreamComicRefId: runtimeContext.sourceRef.refId,
+      chapterRefId: runtimeContext.chapterId,
     );
   }
 
@@ -1057,10 +1184,12 @@ class _ContinuousModeState extends State<_ContinuousMode>
   var imageStates = <State<ComicImage>>{};
 
   void delayedSetIsScrolling(bool value) {
-    Future.delayed(
-      const Duration(milliseconds: 300),
-      () => delayedIsScrolling = value,
-    );
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (!mounted) {
+        return;
+      }
+      delayedIsScrolling = value;
+    });
   }
 
   bool prepareToPrevChapter = false;
@@ -1074,18 +1203,24 @@ class _ContinuousModeState extends State<_ContinuousMode>
   @override
   void initState() {
     reader = context.reader;
-    reader._imageViewController = this;
+    final loadChapter = reader.chapter;
+    reader.attachImageViewController(this);
+    reader.recordImageControllerLifecycle('assign', owner: 'continuous');
     itemPositionsListener.itemPositions.addListener(onPositionChanged);
     cached = List.filled(reader.maxPage + 2, false);
-    Future.delayed(
-      const Duration(milliseconds: 100),
-      () => cacheImages(reader.page),
-    );
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (!mounted || loadChapter != reader.chapter) {
+        return;
+      }
+      cacheImages(reader.page);
+    });
     super.initState();
   }
 
   @override
   void dispose() {
+    reader.recordImageControllerLifecycle('dispose', owner: 'continuous');
+    reader.detachImageViewController(this);
     itemPositionsListener.itemPositions.removeListener(onPositionChanged);
     _scrollController?.removeListener(onScroll);
     photoViewController.dispose();
@@ -1562,11 +1697,13 @@ class _ContinuousModeState extends State<_ContinuousMode>
   Future<Uint8List?> getImageByOffset(Offset offset) async {
     var imageKey = getImageKeyByOffset(offset);
     if (imageKey == null) return null;
+    final runtimeContext = context.reader.currentReaderContext();
     return _readReaderImageBytes(
       imageKey: imageKey,
-      sourceKey: context.reader.type.sourceKey,
-      comicId: context.reader.cid,
-      chapterId: context.reader.eid,
+      sourceKey: runtimeContext.sourceRef.sourceKey,
+      canonicalComicId: runtimeContext.canonicalComicId,
+      upstreamComicRefId: runtimeContext.sourceRef.refId,
+      chapterRefId: runtimeContext.chapterId,
     );
   }
 
@@ -1592,9 +1729,10 @@ ImageProvider _createImageProviderFromKey(
   reader.recordImageProviderDiagnostics(imageKey: imageKey, imagePage: page);
   return buildReaderImageProvider(
     imageKey: imageKey,
-    sourceKey: runtimeContext.sourceKey,
-    comicId: reader.cid,
-    chapterId: runtimeContext.chapterId,
+    sourceRef: runtimeContext.sourceRef,
+    canonicalComicId: runtimeContext.canonicalComicId,
+    upstreamComicRefId: runtimeContext.sourceRef.refId,
+    chapterRefId: runtimeContext.chapterId,
     page: page,
     enableResize: reader.mode.isContinuous,
   );
@@ -1627,10 +1765,14 @@ void _preDownloadImage(int page, BuildContext context) {
   if (imageKey.startsWith("file://")) {
     return;
   }
-  var cid = reader.cid;
-  var eid = reader.eid;
-  var sourceKey = reader.type.comicSource?.key;
-  ImageDownloader.loadComicImage(imageKey, sourceKey, cid, eid);
+  final runtimeContext = reader.currentReaderContext(pageOverride: page);
+  ImageDownloader.loadComicImage(
+    imageKey,
+    runtimeContext.sourceRef,
+    runtimeContext.canonicalComicId,
+    runtimeContext.sourceRef.refId,
+    runtimeContext.chapterId,
+  );
 }
 
 class _SwipeChangeChapterProgress extends StatefulWidget {

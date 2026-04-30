@@ -6,6 +6,7 @@ import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:venera/foundation/log.dart';
 import 'package:venera/foundation/js_engine.dart';
 import 'package:venera/foundation/reader/reader_diagnostics.dart';
+import 'package:venera/foundation/source_ref.dart';
 import 'package:venera/network/images.dart';
 import 'package:venera/utils/io.dart';
 import 'base_image_provider.dart';
@@ -24,12 +25,19 @@ String readerImageFilePathForTesting(String imageKey) {
 String readerImageLoadContextForTesting({
   required String imageKey,
   String? sourceKey,
-  required String comicId,
-  required String chapterId,
+  String? canonicalComicId,
+  String? upstreamComicRefId,
+  String? chapterRefId,
+  String? comicId,
+  String? chapterId,
   required int page,
 }) {
+  final resolvedCanonicalComicRefId = canonicalComicId ?? comicId ?? '<unknown>';
+  final resolvedUpstreamComicRefId =
+      upstreamComicRefId ?? resolvedCanonicalComicRefId;
+  final resolvedChapterRefId = chapterRefId ?? chapterId ?? '<unknown>';
   final buffer = StringBuffer(
-    'imageKey=$imageKey comicId=$comicId chapterId=$chapterId page=$page',
+    'imageKey=$imageKey canonicalComicId=$resolvedCanonicalComicRefId upstreamComicRefId=$resolvedUpstreamComicRefId chapterRefId=$resolvedChapterRefId page=$page',
   );
   if (sourceKey != null && sourceKey.isNotEmpty) {
     buffer.write(' sourceKey=$sourceKey');
@@ -42,20 +50,28 @@ class ReaderImageProvider
   /// Image provider for normal image.
   const ReaderImageProvider(
     this.imageKey,
-    this.sourceKey,
-    this.cid,
-    this.eid,
+    this.sourceRef,
+    this.canonicalComicId,
+    this.upstreamComicRefId,
+    this.chapterRefId,
     this.page, {
     this.enableResize = false,
   });
 
   final String imageKey;
 
-  final String? sourceKey;
+  final SourceRef sourceRef;
 
-  final String cid;
+  final String canonicalComicId;
 
-  final String eid;
+  final String upstreamComicRefId;
+
+  final String chapterRefId;
+
+  // Backward-compatible read-only aliases for legacy callsites.
+  String get sourceKey => sourceRef.sourceKey;
+  String get cid => canonicalComicId;
+  String get eid => chapterRefId;
 
   final int page;
 
@@ -68,16 +84,17 @@ class ReaderImageProvider
     final loadMode = imageKey.startsWith('file://') ? 'local' : 'remote';
     final diagnosticContext = readerImageLoadContextForTesting(
       imageKey: imageKey,
-      sourceKey: sourceKey,
-      comicId: cid,
-      chapterId: eid,
+      sourceKey: sourceRef.sourceKey,
+      canonicalComicId: canonicalComicId,
+      upstreamComicRefId: upstreamComicRefId,
+      chapterRefId: chapterRefId,
       page: page,
     );
     final callId = ReaderDiagnostics.beginImageLoad(
       loadMode: loadMode,
-      sourceKey: sourceKey,
-      comicId: cid,
-      chapterId: eid,
+      sourceKey: sourceRef.sourceKey,
+      comicId: canonicalComicId,
+      chapterId: chapterRefId,
       page: page,
       imageKey: imageKey,
     );
@@ -92,9 +109,10 @@ class ReaderImageProvider
       } else {
         await for (var event in ImageDownloader.loadComicImage(
           imageKey,
-          sourceKey,
-          cid,
-          eid,
+          sourceRef,
+          canonicalComicId,
+          upstreamComicRefId,
+          chapterRefId,
         )) {
           checkStop();
           chunkEvents.add(
@@ -118,9 +136,9 @@ class ReaderImageProvider
           ReaderDiagnostics.endImageLoad(
             callId: callId,
             loadMode: loadMode,
-            sourceKey: sourceKey,
-            comicId: cid,
-            chapterId: eid,
+            sourceKey: sourceRef.sourceKey,
+            comicId: canonicalComicId,
+            chapterId: chapterRefId,
             page: page,
             imageKey: imageKey,
             byteLength: imageBytes.length,
@@ -135,7 +153,13 @@ class ReaderImageProvider
       ''');
         if (func is JSInvokable) {
           var autoFreeFunc = JSAutoFreeFunction(func);
-          var result = autoFreeFunc([imageBytes, cid, eid, page, sourceKey]);
+          var result = autoFreeFunc([
+            imageBytes,
+            upstreamComicRefId,
+            chapterRefId,
+            page,
+            sourceRef.sourceKey,
+          ]);
           if (result is Uint8List) {
             imageBytes = result;
           } else if (result is Future) {
@@ -187,9 +211,9 @@ class ReaderImageProvider
       ReaderDiagnostics.endImageLoad(
         callId: callId,
         loadMode: loadMode,
-        sourceKey: sourceKey,
-        comicId: cid,
-        chapterId: eid,
+        sourceKey: sourceRef.sourceKey,
+        comicId: canonicalComicId,
+        chapterId: chapterRefId,
         page: page,
         imageKey: imageKey,
         byteLength: loadedBytes.length,
@@ -199,9 +223,9 @@ class ReaderImageProvider
       ReaderDiagnostics.failImageLoad(
         callId: callId,
         loadMode: loadMode,
-        sourceKey: sourceKey,
-        comicId: cid,
-        chapterId: eid,
+        sourceKey: sourceRef.sourceKey,
+        comicId: canonicalComicId,
+        chapterId: chapterRefId,
         page: page,
         imageKey: imageKey,
         error: e,
@@ -224,9 +248,9 @@ class ReaderImageProvider
   void onDecodeSuccess({required Uint8List data, required ui.Codec codec}) {
     ReaderDiagnostics.recordImageDecodeSuccess(
       imageKey: imageKey,
-      sourceKey: sourceKey,
-      comicId: cid,
-      chapterId: eid,
+      sourceKey: sourceRef.sourceKey,
+      comicId: canonicalComicId,
+      chapterId: chapterRefId,
       page: page,
       byteLength: data.length,
     );
@@ -236,14 +260,15 @@ class ReaderImageProvider
   void onDecodeError({required Object error}) {
     ReaderDiagnostics.recordImageDecodeError(
       imageKey: imageKey,
-      sourceKey: sourceKey,
-      comicId: cid,
-      chapterId: eid,
+      sourceKey: sourceRef.sourceKey,
+      comicId: canonicalComicId,
+      chapterId: chapterRefId,
       page: page,
       error: error,
     );
   }
 
   @override
-  String get key => "$imageKey@$sourceKey@$cid@$eid@$enableResize";
+  String get key =>
+      "$imageKey@${sourceRef.sourceKey}@$canonicalComicId@$upstreamComicRefId@$chapterRefId@$enableResize";
 }

@@ -15,6 +15,7 @@ abstract class ComicDetailStorePort {
   Future<PageOrderSummaryRecord> loadPageOrderSummary(String comicId);
   Future<List<PageRecord>> loadActivePageOrderPages(String chapterId);
   Future<PageOrderRecord?> loadActivePageOrderForChapter(String chapterId);
+  Future<bool> isComicFavorited(String comicId);
   Future<void> upsertUserTag(UserTagRecord record);
   Future<void> attachUserTagToComic(ComicUserTagRecord record);
   Future<void> removeUserTagFromComic({

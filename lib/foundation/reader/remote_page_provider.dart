@@ -24,11 +24,16 @@ class RemotePageProvider implements ReadablePageProvider {
     if (ref.type != SourceRefType.remote) {
       return const Res.error('SOURCE_REF_TYPE_MISMATCH');
     }
+    try {
+      SourceIdentityPolicy.assertAdapterSafe(ref);
+    } on SourceIdentityError catch (e) {
+      return Res.error('SOURCE_IDENTITY_ERROR:${e.codeKey}');
+    }
 
-    final comicId = ref.params['comicId'] as String?;
+    final comicId = ref.refId;
     final chapterId = ref.params['chapterId'] as String?;
 
-    if (comicId == null || chapterId == null) {
+    if (chapterId == null) {
       return const Res.error('SOURCE_REF_NOT_FOUND');
     }
 

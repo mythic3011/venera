@@ -10,6 +10,8 @@ import 'package:sqlite3/sqlite3.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/db/local_comic_sync.dart';
+import 'package:venera/foundation/db/unified_comics_store.dart';
+import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/favorites.dart';
 import 'package:venera/foundation/log.dart';
 import 'package:venera/foundation/local_metadata/local_metadata.dart';
@@ -29,6 +31,7 @@ part 'local/local_sort_type.dart';
 class LocalManager with ChangeNotifier {
   static const _localPathFilename = 'local_path';
   static const _iosLocalDirectoryBookmarkKey = 'localDirectoryBookmark';
+  static const _localComicsTable = 'legacy_local_comics';
   static LocalManager? _instance;
 
   LocalManager._();
@@ -159,9 +162,21 @@ class LocalManager with ChangeNotifier {
   }
 
   Future<void> _doInit({bool skipSourceInit = false}) async {
-    _db = sqlite3.open('${App.dataPath}/local.db');
+    final canonicalDbPath = canonicalDomainDatabasePath(App.dataPath);
+    Directory(File(canonicalDbPath).parent.path).createSync(recursive: true);
+    _db = sqlite3.open(canonicalDbPath);
+    AppDiagnostics.info(
+      'storage.route',
+      'Local library routed to canonical DB file',
+      data: {
+        'domain': 'local_library',
+        'route': 'canonical',
+        'legacyDbFile': 'local.db',
+        'canonicalDbFile': canonicalDomainDatabaseFileName,
+      },
+    );
     _db.execute('''
-      CREATE TABLE IF NOT EXISTS comics (
+      CREATE TABLE IF NOT EXISTS $_localComicsTable (
         id TEXT NOT NULL,
         title TEXT NOT NULL,
         subtitle TEXT NOT NULL,
@@ -566,7 +581,7 @@ class LocalManager with ChangeNotifier {
   String findValidId(ComicType type) {
     final res = _db.select(
       '''
-      SELECT id FROM comics WHERE comic_type = ?
+      SELECT id FROM $_localComicsTable WHERE comic_type = ?
       ORDER BY CAST(id AS INTEGER) DESC
       LIMIT 1;
       ''',
@@ -585,7 +600,7 @@ class LocalManager with ChangeNotifier {
       downloaded.addAll(old.downloadedChapters);
     }
     _db.execute(
-      'INSERT OR REPLACE INTO comics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);',
+      'INSERT OR REPLACE INTO $_localComicsTable VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);',
       [
         id ?? comic.id,
         comic.title,
@@ -603,7 +618,7 @@ class LocalManager with ChangeNotifier {
   }
 
   void remove(String id, ComicType comicType) async {
-    _db.execute('DELETE FROM comics WHERE id = ? AND comic_type = ?;', [
+    _db.execute('DELETE FROM $_localComicsTable WHERE id = ? AND comic_type = ?;', [
       id,
       comicType.value,
     ]);
@@ -617,7 +632,7 @@ class LocalManager with ChangeNotifier {
 
   List<LocalComic> getComics(LocalSortType sortType) {
     var res = _db.select('''
-      SELECT * FROM comics
+      SELECT * FROM $_localComicsTable
       ORDER BY
         ${sortType.value == 'name' ? 'title' : 'created_at'}
         ${sortType.value == 'time_asc' ? 'ASC' : 'DESC'}
@@ -628,7 +643,7 @@ class LocalManager with ChangeNotifier {
 
   LocalComic? find(String id, ComicType comicType) {
     final res = _db.select(
-      'SELECT * FROM comics WHERE id = ? AND comic_type = ?;',
+      'SELECT * FROM $_localComicsTable WHERE id = ? AND comic_type = ?;',
       [id, comicType.value],
     );
     if (res.isEmpty) {
@@ -650,7 +665,7 @@ class LocalManager with ChangeNotifier {
 
   List<LocalComic> getRecent() {
     final res = _db.select('''
-      SELECT * FROM comics
+      SELECT * FROM $_localComicsTable
       ORDER BY created_at DESC
       LIMIT 20;
     ''');
@@ -659,7 +674,7 @@ class LocalManager with ChangeNotifier {
 
   int get count {
     final res = _db.select('''
-      SELECT COUNT(*) FROM comics;
+      SELECT COUNT(*) FROM $_localComicsTable;
     ''');
     return res.first[0] as int;
   }
@@ -667,7 +682,7 @@ class LocalManager with ChangeNotifier {
   LocalComic? findByName(String name) {
     final res = _db.select(
       '''
-      SELECT * FROM comics
+      SELECT * FROM $_localComicsTable
       WHERE title = ? OR directory = ?;
     ''',
       [name, name],
@@ -681,7 +696,7 @@ class LocalManager with ChangeNotifier {
   List<LocalComic> search(String keyword) {
     final res = _db.select(
       '''
-      SELECT * FROM comics
+      SELECT * FROM $_localComicsTable
       WHERE title LIKE ? OR tags LIKE ? OR subtitle LIKE ?
       ORDER BY created_at DESC;
     ''',
@@ -945,7 +960,7 @@ class LocalManager with ChangeNotifier {
         oldCover.deleteIgnoreError();
       }
       _db.execute(
-        'UPDATE comics SET cover = ? WHERE id = ? AND comic_type = ?;',
+        'UPDATE $_localComicsTable SET cover = ? WHERE id = ? AND comic_type = ?;',
         [newCoverName, comic.id, comic.comicType.value],
       );
     }
@@ -991,7 +1006,7 @@ class LocalManager with ChangeNotifier {
         }
       }
       _db.execute(
-        'UPDATE comics SET chapters = ?, downloadedChapters = ? WHERE id = ? AND comic_type = ?;',
+        'UPDATE $_localComicsTable SET chapters = ?, downloadedChapters = ? WHERE id = ? AND comic_type = ?;',
         [
           jsonEncode(newChapterMap),
           jsonEncode(newDownloadedChapters),
@@ -1001,7 +1016,7 @@ class LocalManager with ChangeNotifier {
       );
       _removeChapterMetadata(c, chapters);
     } else {
-      _db.execute('DELETE FROM comics WHERE id = ? AND comic_type = ?;', [
+      _db.execute('DELETE FROM $_localComicsTable WHERE id = ? AND comic_type = ?;', [
         c.id,
         c.comicType.value,
       ]);
@@ -1044,7 +1059,7 @@ class LocalManager with ChangeNotifier {
     final updated = LinkedHashMap<String, String>.from(currentMap);
     updated[chapterId] = trimmed;
     _db.execute(
-      'UPDATE comics SET chapters = ? WHERE id = ? AND comic_type = ?;',
+      'UPDATE $_localComicsTable SET chapters = ? WHERE id = ? AND comic_type = ?;',
       [jsonEncode(updated), comic.id, comic.comicType.value],
     );
     notifyListeners();
@@ -1065,7 +1080,7 @@ class LocalManager with ChangeNotifier {
       reordered[id] = currentMap[id] ?? id;
     }
     _db.execute(
-      'UPDATE comics SET chapters = ?, downloadedChapters = ? WHERE id = ? AND comic_type = ?;',
+      'UPDATE $_localComicsTable SET chapters = ?, downloadedChapters = ? WHERE id = ? AND comic_type = ?;',
       [
         jsonEncode(reordered),
         jsonEncode(orderedChapterIds),
@@ -1171,7 +1186,7 @@ class LocalManager with ChangeNotifier {
     }
 
     _db.execute(
-      'UPDATE comics SET chapters = ?, downloadedChapters = ? WHERE id = ? AND comic_type = ?;',
+      'UPDATE $_localComicsTable SET chapters = ?, downloadedChapters = ? WHERE id = ? AND comic_type = ?;',
       [
         jsonEncode(chapterMap),
         jsonEncode(downloaded),
@@ -1243,7 +1258,7 @@ class LocalManager with ChangeNotifier {
             shouldRemovedDirs.add(dir);
           }
         }
-        _db.execute('DELETE FROM comics WHERE id = ? AND comic_type = ?;', [
+        _db.execute('DELETE FROM $_localComicsTable WHERE id = ? AND comic_type = ?;', [
           c.id,
           c.comicType.value,
         ]);

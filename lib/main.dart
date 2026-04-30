@@ -24,41 +24,49 @@ void main(List<String> args) {
   }
   if (runWebViewTitleBarWidget(args)) return;
   overrideIO(() {
-    runZonedGuarded(() async {
-      WidgetsFlutterBinding.ensureInitialized();
-      await init();
-      runApp(const MyApp());
-      if (App.isDesktop) {
-        await windowManager.ensureInitialized();
-        windowManager.waitUntilReadyToShow().then((_) async {
-          await windowManager.setTitleBarStyle(
-            TitleBarStyle.hidden,
-            windowButtonVisibility: App.isMacOS,
-          );
-          if (App.isLinux) {
-            await windowManager.setBackgroundColor(Colors.transparent);
-          }
-          await windowManager.setMinimumSize(const Size(500, 600));
-          var placement = await WindowPlacement.loadFromFile();
-          if (App.isLinux) {
-            await windowManager.show();
-            await placement.applyToWindow();
-          } else {
-            await placement.applyToWindow();
-            await windowManager.show();
-          }
+    runZonedGuarded(
+      () async {
+        WidgetsFlutterBinding.ensureInitialized();
+        await init();
+        runApp(const MyApp());
+        if (App.isDesktop) {
+          await windowManager.ensureInitialized();
+          windowManager.waitUntilReadyToShow().then((_) async {
+            await windowManager.setTitleBarStyle(
+              TitleBarStyle.hidden,
+              windowButtonVisibility: App.isMacOS,
+            );
+            if (App.isLinux) {
+              await windowManager.setBackgroundColor(Colors.transparent);
+            }
+            await windowManager.setMinimumSize(const Size(500, 600));
+            var placement = await WindowPlacement.loadFromFile();
+            if (App.isLinux) {
+              await windowManager.show();
+              await placement.applyToWindow();
+            } else {
+              await placement.applyToWindow();
+              await windowManager.show();
+            }
 
-          WindowPlacement.loop();
-        });
-      }
-    }, (error, stack) {
-      AppDiagnostics.error(
-        'app.unhandled',
-        error,
-        stackTrace: stack,
-        message: 'Unhandled Exception',
-      );
-    });
+            WindowPlacement.loop();
+          });
+        }
+      },
+      (error, stack) {
+        AppDiagnostics.error(
+          'app.unhandled',
+          error,
+          stackTrace: stack,
+          message: error.toString(),
+          data: {
+            'exceptionMessage': error.toString(),
+            'exceptionType': error.runtimeType.toString(),
+            'exceptionStack': stack.toString(),
+          },
+        );
+      },
+    );
   });
 }
 
@@ -164,7 +172,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         'Microsoft YaHei',
         'PingFang SC',
         'Arial',
-        'sans-serif'
+        'sans-serif',
       ];
     }
     return ThemeData(
@@ -192,110 +200,111 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     } else {
       home = const MainPage();
     }
-    return DynamicColorBuilder(builder: (light, dark) {
-      Color? primary, secondary, tertiary;
-      if (appdata.settings['color'] != 'system' ||
-          light == null ||
-          dark == null) {
-        primary = translateColorSetting();
-      } else {
-        primary = light.primary;
-        secondary = light.secondary;
-        tertiary = light.tertiary;
-      }
-      return MaterialApp(
-        title: "venera",
-        home: home,
-        debugShowCheckedModeBanner: false,
-        theme: getTheme(primary, secondary, tertiary, Brightness.light),
-        navigatorKey: App.rootNavigatorKey,
-        darkTheme: getTheme(primary, secondary, tertiary, Brightness.dark),
-        themeMode: switch (appdata.settings['theme_mode']) {
-          'light' => ThemeMode.light,
-          'dark' => ThemeMode.dark,
-          _ => ThemeMode.system
-        },
-        color: Colors.transparent,
-        localizationsDelegates: [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        locale: () {
-          var lang = appdata.settings['language'];
-          if (lang == 'system') {
-            return null;
-          }
-          return switch (lang) {
-            'zh-CN' => const Locale('zh', 'CN'),
-            'zh-TW' => const Locale('zh', 'TW'),
-            'en-US' => const Locale('en'),
-            _ => null
-          };
-        }(),
-        supportedLocales: const [
-          Locale('zh', 'CN'),
-          Locale('zh', 'TW'),
-          Locale('en'),
-        ],
-        builder: (context, widget) {
-          ErrorWidget.builder = (details) {
-            AppDiagnostics.error(
-              'app.unhandled',
-              details.exception,
-              stackTrace: details.stack,
-              message: 'Unhandled Exception',
-            );
-            return Material(
-              child: Center(
-                child: Text(details.exception.toString()),
-              ),
-            );
-          };
-          if (widget != null) {
-            /// 如果无法检测到状态栏高度设定指定高度
-            /// https://github.com/flutter/flutter/issues/161086
-            var isPaddingCheckError =
-                MediaQuery.of(context).viewPadding.top <= 0 ||
-                MediaQuery.of(context).viewPadding.top > 200;
-
-            if (isPaddingCheckError && Platform.isAndroid) {
-              widget = MediaQuery(
-                  data: MediaQuery.of(context).copyWith(
-                    viewPadding: const EdgeInsets.only(
-                      top: 15,
-                      bottom: 15,
-                    ),
-                    padding: const EdgeInsets.only(
-                      top: 15,
-                      bottom: 15,
-                    ),
-                  ),
-                  child: widget);
+    return DynamicColorBuilder(
+      builder: (light, dark) {
+        Color? primary, secondary, tertiary;
+        if (appdata.settings['color'] != 'system' ||
+            light == null ||
+            dark == null) {
+          primary = translateColorSetting();
+        } else {
+          primary = light.primary;
+          secondary = light.secondary;
+          tertiary = light.tertiary;
+        }
+        return MaterialApp(
+          title: "venera",
+          home: home,
+          debugShowCheckedModeBanner: false,
+          theme: getTheme(primary, secondary, tertiary, Brightness.light),
+          navigatorKey: App.rootNavigatorKey,
+          darkTheme: getTheme(primary, secondary, tertiary, Brightness.dark),
+          themeMode: switch (appdata.settings['theme_mode']) {
+            'light' => ThemeMode.light,
+            'dark' => ThemeMode.dark,
+            _ => ThemeMode.system,
+          },
+          color: Colors.transparent,
+          localizationsDelegates: [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          locale: () {
+            var lang = appdata.settings['language'];
+            if (lang == 'system') {
+              return null;
             }
-
-            widget = OverlayWidget(widget);
-            if (App.isDesktop) {
-              widget = Shortcuts(
-                shortcuts: {
-                  LogicalKeySet(LogicalKeyboardKey.escape): VoidCallbackIntent(
-                    App.pop,
-                  ),
+            return switch (lang) {
+              'zh-CN' => const Locale('zh', 'CN'),
+              'zh-TW' => const Locale('zh', 'TW'),
+              'en-US' => const Locale('en'),
+              _ => null,
+            };
+          }(),
+          supportedLocales: const [
+            Locale('zh', 'CN'),
+            Locale('zh', 'TW'),
+            Locale('en'),
+          ],
+          builder: (context, widget) {
+            ErrorWidget.builder = (details) {
+              AppDiagnostics.error(
+                'app.unhandled',
+                details.exception,
+                stackTrace: details.stack,
+                message: details.exception.toString(),
+                data: {
+                  'exceptionMessage': details.exception.toString(),
+                  'exceptionType': details.exception.runtimeType.toString(),
+                  'exceptionStack': details.stack?.toString(),
                 },
-                child: MouseBackDetector(
-                  onTapDown: App.pop,
-                  child: WindowFrame(widget),
+              );
+              return Material(
+                child: Center(child: Text(details.exception.toString())),
+              );
+            };
+            if (widget != null) {
+              /// 如果无法检测到状态栏高度设定指定高度
+              /// https://github.com/flutter/flutter/issues/161086
+              var isPaddingCheckError =
+                  MediaQuery.of(context).viewPadding.top <= 0 ||
+                  MediaQuery.of(context).viewPadding.top > 200;
+
+              if (isPaddingCheckError && Platform.isAndroid) {
+                widget = MediaQuery(
+                  data: MediaQuery.of(context).copyWith(
+                    viewPadding: const EdgeInsets.only(top: 15, bottom: 15),
+                    padding: const EdgeInsets.only(top: 15, bottom: 15),
+                  ),
+                  child: widget,
+                );
+              }
+
+              widget = OverlayWidget(widget);
+              if (App.isDesktop) {
+                widget = Shortcuts(
+                  shortcuts: {
+                    LogicalKeySet(LogicalKeyboardKey.escape):
+                        VoidCallbackIntent(App.pop),
+                  },
+                  child: MouseBackDetector(
+                    onTapDown: App.pop,
+                    child: WindowFrame(widget),
+                  ),
+                );
+              }
+              return _SystemUiProvider(
+                Material(
+                  color: App.isLinux ? Colors.transparent : null,
+                  child: widget,
                 ),
               );
             }
-            return _SystemUiProvider(Material(
-              color: App.isLinux ? Colors.transparent : null,
-              child: widget,
-            ));
-          }
-          throw ('widget is null');
-        },
-      );
-    });
+            throw ('widget is null');
+          },
+        );
+      },
+    );
   }
 }
 

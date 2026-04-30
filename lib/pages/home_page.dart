@@ -746,6 +746,7 @@ class _ImageFavoritesState extends State<ImageFavorites> {
   ImageFavoritesComputed? imageFavoritesCompute;
 
   int displayType = 0;
+  bool _subscribed = false;
 
   void refreshImageFavorites() async {
     try {
@@ -761,14 +762,19 @@ class _ImageFavoritesState extends State<ImageFavorites> {
 
   @override
   void initState() {
-    refreshImageFavorites();
-    ImageFavoriteManager().addListener(refreshImageFavorites);
     super.initState();
+    if (HistoryManager().isInitialized) {
+      refreshImageFavorites();
+      ImageFavoriteManager().addListener(refreshImageFavorites);
+      _subscribed = true;
+    }
   }
 
   @override
   void dispose() {
-    ImageFavoriteManager().removeListener(refreshImageFavorites);
+    if (_subscribed) {
+      ImageFavoriteManager().removeListener(refreshImageFavorites);
+    }
     super.dispose();
   }
 

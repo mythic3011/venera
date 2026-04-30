@@ -25,6 +25,7 @@ import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/comments/comment_filter.dart';
 import 'package:venera/foundation/consts.dart';
+import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/global_state.dart';
 import 'package:venera/foundation/history.dart';
 import 'package:venera/foundation/image_provider/cached_image.dart';
@@ -139,6 +140,9 @@ class _ReaderState extends State<Reader>
         _ImagePerPageHandler {
   @override
   void update() {
+    if (!mounted) {
+      return;
+    }
     setState(() {});
   }
 
@@ -217,26 +221,8 @@ class _ReaderState extends State<Reader>
 
   @override
   void initState() {
-    page = widget.initialPage ?? 1;
-    if (page < 1) {
-      page = 1;
-    }
-    chapter = widget.initialChapter ?? 1;
-    if (chapter < 1) {
-      chapter = 1;
-    }
-    if (widget.initialChapterGroup != null) {
-      for (int i = 0; i < (widget.initialChapterGroup! - 1); i++) {
-        chapter += widget.chapters!.getGroupByIndex(i).length;
-      }
-    }
-    if (widget.initialPage != null) {
-      page = widget.initialPage!;
-      if (page < 1) {
-        page = 1;
-      }
-    }
-    // mode = ReaderMode.fromKey(appdata.settings['readerMode']);
+    _page = _initialPage;
+    chapter = _initialChapter;
     mode = ReaderMode.fromKey(
       appdata.settings.getReaderSetting(cid, type.sourceKey, 'readerMode'),
     );
@@ -271,6 +257,24 @@ class _ReaderState extends State<Reader>
     );
   }
 
+  int get _initialPage => math.max(widget.initialPage ?? 1, 1);
+
+  int get _initialChapter {
+    var resolvedChapter = math.max(widget.initialChapter ?? 1, 1);
+    final initialGroup = widget.initialChapterGroup;
+    final chapters = widget.chapters;
+    if (initialGroup == null || chapters == null || !chapters.isGrouped) {
+      return resolvedChapter;
+    }
+    if (chapters.length < 1) {
+      return 1;
+    }
+    for (var i = 0; i < initialGroup - 1 && i < chapters.groupCount; i++) {
+      resolvedChapter += chapters.getGroupByIndex(i).length;
+    }
+    return resolvedChapter.clamp(1, chapters.length);
+  }
+
   bool _isInitialized = false;
   bool _traceOpened = false;
   ReaderPaginationDiagnostics? _lastLoadedPaginationDiagnostics;
@@ -298,7 +302,7 @@ class _ReaderState extends State<Reader>
       ),
       SourceRefType.remote => SourceRef.fromLegacyRemote(
         sourceKey: existingRef.sourceKey,
-        comicId: existingRef.params['comicId']?.toString() ?? cid,
+        comicId: existingRef.refId,
         chapterId: chapterId,
         routeKey: existingRef.routeKey,
       ),
@@ -374,9 +378,13 @@ class _ReaderState extends State<Reader>
 
   @override
   void dispose() {
+    if (hasImageViewController) {
+      recordImageControllerLifecycle('clear', owner: 'reader.dispose');
+    }
+    clearImageViewController();
     recordReaderDisposeDiagnostics();
     if (isFullscreen) {
-      fullscreen();
+      unawaited(restoreReaderWindowFrame());
     }
     autoTurnController.dispose();
     panelState.dispose();
@@ -449,16 +457,14 @@ class _ReaderState extends State<Reader>
         }
       }
       history!.maxPage = images?.length ?? 1;
-      if (widget.chapters?.isGrouped ?? false) {
-        int g = 0;
-        int c = chapter;
-        while (c > widget.chapters!.getGroupByIndex(g).length) {
-          c -= widget.chapters!.getGroupByIndex(g).length;
-          g++;
-        }
-        history!.readEpisode.add('${g + 1}-$c');
-        history!.ep = c;
-        history!.group = g + 1;
+      final chapters = widget.chapters;
+      if (chapters?.isGrouped ?? false) {
+        final groupIndex = _chapterGroupIndex(chapters!);
+        final chapterOffset = _chapterOffsetInCurrentGroup(chapters);
+        final chapterInGroup = chapterOffset + 1;
+        history!.readEpisode.add('${groupIndex + 1}-$chapterInGroup');
+        history!.ep = chapterInGroup;
+        history!.group = groupIndex + 1;
       } else {
         history!.readEpisode.add(chapter.toString());
         history!.ep = chapter;
@@ -469,37 +475,45 @@ class _ReaderState extends State<Reader>
   }
 
   bool get isFirstChapterOfGroup {
-    if (widget.chapters?.isGrouped ?? false) {
-      int c = chapter - 1;
-      int g = 1;
-      while (c > 0) {
-        c -= widget.chapters!.getGroupByIndex(g - 1).length;
-        g++;
-      }
-      if (c == 0) {
-        return true;
-      } else {
-        return false;
-      }
+    final chapters = widget.chapters;
+    if (chapters?.isGrouped ?? false) {
+      return _chapterOffsetInCurrentGroup(chapters!) == 0;
     }
     return chapter == 1;
   }
 
   bool get isLastChapterOfGroup {
-    if (widget.chapters?.isGrouped ?? false) {
-      int c = chapter;
-      int g = 1;
-      while (c > 0) {
-        c -= widget.chapters!.getGroupByIndex(g - 1).length;
-        g++;
-      }
-      if (c == 0) {
-        return true;
-      } else {
-        return false;
-      }
+    final chapters = widget.chapters;
+    if (chapters?.isGrouped ?? false) {
+      final offset = _chapterOffsetInCurrentGroup(chapters!);
+      final groupIndex = _chapterGroupIndex(chapters);
+      return offset == chapters.getGroupByIndex(groupIndex).length - 1;
     }
     return chapter == maxChapter;
+  }
+
+  int _chapterGroupIndex(ComicChapters chapters) {
+    var remaining = chapter - 1;
+    for (var i = 0; i < chapters.groupCount; i++) {
+      final groupLength = chapters.getGroupByIndex(i).length;
+      if (remaining < groupLength) {
+        return i;
+      }
+      remaining -= groupLength;
+    }
+    return math.max(chapters.groupCount - 1, 0);
+  }
+
+  int _chapterOffsetInCurrentGroup(ComicChapters chapters) {
+    var remaining = chapter - 1;
+    for (var i = 0; i < chapters.groupCount; i++) {
+      final groupLength = chapters.getGroupByIndex(i).length;
+      if (remaining < groupLength) {
+        return remaining;
+      }
+      remaining -= groupLength;
+    }
+    return 0;
   }
 
   /// Get the size of the reader.
@@ -724,6 +738,46 @@ abstract mixin class _ReaderLocation {
 
   _ImageViewController? _imageViewController;
 
+  bool get hasImageViewController => _imageViewController != null;
+
+  void attachImageViewController(_ImageViewController controller) {
+    _imageViewController = controller;
+    AppDiagnostics.trace(
+      'reader.lifecycle',
+      'imageController.assign',
+      data: {
+        'ready': true,
+        'controllerType': controller.runtimeType.toString(),
+      },
+    );
+  }
+
+  void detachImageViewController(_ImageViewController controller) {
+    if (identical(_imageViewController, controller)) {
+      clearImageViewController();
+      AppDiagnostics.trace(
+        'reader.lifecycle',
+        'imageController.detach',
+        data: {
+          'ready': false,
+          'controllerType': controller.runtimeType.toString(),
+        },
+      );
+    }
+  }
+
+  void clearImageViewController() {
+    _imageViewController = null;
+    _pageAnimationToken++;
+    _animationCount = 0;
+    _pendingPage = null;
+    AppDiagnostics.trace(
+      'reader.lifecycle',
+      'imageController.clear',
+      data: {'ready': false},
+    );
+  }
+
   void onPageChanged();
 
   void setPage(int page) {
@@ -749,32 +803,88 @@ abstract mixin class _ReaderLocation {
   }
 
   int _animationCount = 0;
+  int _pageAnimationToken = 0;
 
   bool toPage(int page) {
     if (_validatePage(page)) {
       if (page == this.page && page != 1 && page != totalPages) {
         return false;
       }
+      final imageViewController = _imageViewController;
+      if (imageViewController == null) {
+        _pageAnimationToken++;
+        this.page = page;
+        update();
+        return true;
+      }
       final hasAnimation = enablePageAnimation(cid, type);
       if (hasAnimation) {
+        final animationToken = ++_pageAnimationToken;
         _pendingPage = page;
         _animationCount++;
         update();
-        _imageViewController!.animateToPage(page).then((_) {
-          _animationCount--;
-          if (_pendingPage == page) {
-            _pendingPage = null;
-          }
-          update();
-        });
+        unawaited(
+          _animateToPage(
+            controller: imageViewController,
+            page: page,
+            animationToken: animationToken,
+          ).whenComplete(() {
+            if (_animationCount > 0) {
+              _animationCount--;
+            }
+            if (animationToken != _pageAnimationToken) {
+              return;
+            }
+            if (_pendingPage == page) {
+              _pendingPage = null;
+            }
+            update();
+          }),
+        );
       } else {
+        _pageAnimationToken++;
         this.page = page;
         update();
-        _imageViewController!.toPage(page);
+        imageViewController.toPage(page);
       }
       return true;
     }
     return false;
+  }
+
+  Future<void> _animateToPage({
+    required _ImageViewController controller,
+    required int page,
+    required int animationToken,
+  }) async {
+    try {
+      await controller.animateToPage(page);
+    } catch (error, stackTrace) {
+      if (animationToken != _pageAnimationToken) {
+        return;
+      }
+      AppDiagnostics.warn(
+        'reader.lifecycle',
+        'pageAnimation.error',
+        data: {
+          'error': error.toString(),
+          'stackTrace': stackTrace.toString(),
+          'page': page,
+          'comicId': cid,
+          'sourceKey': type.sourceKey,
+        },
+      );
+    }
+  }
+
+  void _cancelPageAnimation() {
+    _pageAnimationToken++;
+    if (_animationCount > 0) {
+      _animationCount = 0;
+    }
+    if (_pendingPage != null) {
+      _pendingPage = null;
+    }
   }
 
   bool get isPageAnimating => _animationCount > 0;
@@ -796,6 +906,7 @@ abstract mixin class _ReaderLocation {
 
   bool toChapter(int c, {bool toLastPage = false}) {
     if (_validateChapter(c) && !isLoading) {
+      _cancelPageAnimation();
       chapter = c;
       page = 1;
       _jumpToLastPageOnLoad = toLastPage;
@@ -830,14 +941,14 @@ abstract mixin class _ReaderLocation {
 mixin class _ReaderWindow {
   bool isFullscreen = false;
 
-  late WindowFrameController windowFrame;
+  WindowFrameController? windowFrame;
 
   bool _isInit = false;
 
   void initReaderWindow() {
     if (!App.isDesktop || _isInit) return;
     windowFrame = WindowFrame.of(App.rootContext);
-    windowFrame.addCloseListener(onWindowClose);
+    windowFrame?.addCloseListener(onWindowClose);
     _isInit = true;
   }
 
@@ -850,6 +961,23 @@ mixin class _ReaderWindow {
     WindowFrame.of(App.rootContext).setWindowFrame(!isFullscreen);
   }
 
+  Future<void> restoreReaderWindowFrame() async {
+    if (!App.isDesktop || !isFullscreen) return;
+    try {
+      await windowManager.hide();
+      await windowManager.setFullScreen(false);
+      await windowManager.show();
+      isFullscreen = false;
+      WindowFrame.of(App.rootContext).setWindowFrame(true);
+    } catch (error, stackTrace) {
+      AppDiagnostics.warn(
+        'reader.lifecycle',
+        'window.restore.error',
+        data: {'error': error.toString(), 'stackTrace': stackTrace.toString()},
+      );
+    }
+  }
+
   bool onWindowClose() {
     if (Navigator.of(App.rootContext).canPop()) {
       Navigator.of(App.rootContext).pop();
@@ -860,8 +988,10 @@ mixin class _ReaderWindow {
   }
 
   void disposeReaderWindow() {
-    if (!App.isDesktop) return;
-    windowFrame.removeCloseListener(onWindowClose);
+    if (!App.isDesktop || !_isInit) return;
+    windowFrame?.removeCloseListener(onWindowClose);
+    windowFrame = null;
+    _isInit = false;
   }
 }
 

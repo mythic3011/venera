@@ -2,9 +2,11 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqlite3/sqlite3.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/comic_type.dart';
+import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/favorites.dart';
 
 FavoriteItem buildComic(String id) {
@@ -38,7 +40,9 @@ void main() {
   late LocalFavoritesManager manager;
 
   setUpAll(() async {
-    baseTempDir = Directory.systemTemp.createTempSync('venera-fav-manager-test-');
+    baseTempDir = Directory.systemTemp.createTempSync(
+      'venera-fav-manager-test-',
+    );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
           if (call.method == 'getApplicationSupportDirectory' ||
@@ -112,11 +116,15 @@ void main() {
 
     manager.moveFavorite(src, dst, c1.id, c1.type);
     expect(
-      manager.getFolderComics(dst).any((e) => e.id == c1.id && e.type == c1.type),
+      manager
+          .getFolderComics(dst)
+          .any((e) => e.id == c1.id && e.type == c1.type),
       isTrue,
     );
     expect(
-      manager.getFolderComics(src).any((e) => e.id == c1.id && e.type == c1.type),
+      manager
+          .getFolderComics(src)
+          .any((e) => e.id == c1.id && e.type == c1.type),
       isFalse,
     );
 
@@ -140,33 +148,58 @@ void main() {
     await waitUntil(() => manager.isExist(c3.id, c3.type));
   });
 
-  test('addComic respects newFavoriteAddTo start/end display order direction', () async {
-    final folder = manager.createFolder('order_phase3b');
-    final c1 = buildComic('o1');
-    final c2 = buildComic('o2');
-    final c3 = buildComic('o3');
-    final c4 = buildComic('o4');
+  test(
+    'addComic respects newFavoriteAddTo start/end display order direction',
+    () async {
+      final folder = manager.createFolder('order_phase3b');
+      final c1 = buildComic('o1');
+      final c2 = buildComic('o2');
+      final c3 = buildComic('o3');
+      final c4 = buildComic('o4');
 
-    appdata.settings['newFavoriteAddTo'] = 'end';
-    expect(manager.addComic(folder, c1), isTrue);
-    expect(manager.addComic(folder, c2), isTrue);
-    expect(
-      manager.getFolderComics(folder).map((e) => e.id).toList(),
-      ['o1', 'o2'],
-    );
+      appdata.settings['newFavoriteAddTo'] = 'end';
+      expect(manager.addComic(folder, c1), isTrue);
+      expect(manager.addComic(folder, c2), isTrue);
+      expect(manager.getFolderComics(folder).map((e) => e.id).toList(), [
+        'o1',
+        'o2',
+      ]);
 
-    appdata.settings['newFavoriteAddTo'] = 'start';
-    expect(manager.addComic(folder, c3), isTrue);
-    expect(
-      manager.getFolderComics(folder).map((e) => e.id).toList(),
-      ['o3', 'o1', 'o2'],
-    );
+      appdata.settings['newFavoriteAddTo'] = 'start';
+      expect(manager.addComic(folder, c3), isTrue);
+      expect(manager.getFolderComics(folder).map((e) => e.id).toList(), [
+        'o3',
+        'o1',
+        'o2',
+      ]);
 
-    appdata.settings['newFavoriteAddTo'] = 'end';
-    expect(manager.addComic(folder, c4), isTrue);
-    expect(
-      manager.getFolderComics(folder).map((e) => e.id).toList(),
-      ['o3', 'o1', 'o2', 'o4'],
-    );
+      appdata.settings['newFavoriteAddTo'] = 'end';
+      expect(manager.addComic(folder, c4), isTrue);
+      expect(manager.getFolderComics(folder).map((e) => e.id).toList(), [
+        'o3',
+        'o1',
+        'o2',
+        'o4',
+      ]);
+    },
+  );
+
+  test('canonical tables are not treated as legacy favorite folders', () {
+    final db = sqlite3.open(canonicalDomainDatabasePath(App.dataPath));
+    addTearDown(db.dispose);
+    db.execute('''
+      CREATE TABLE IF NOT EXISTS source_platforms (
+        id TEXT PRIMARY KEY,
+        canonical_key TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        is_enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    ''');
+
+    expect(manager.folderNames, isNot(contains('source_platforms')));
+    expect(manager.find('local-comic-1', ComicType.local), isEmpty);
   });
 }

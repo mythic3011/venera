@@ -4,15 +4,42 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
-  test('LocalManager usage stays inside allowlisted authority files', () async {
+  test('legacy manager usage stays inside allowlisted authority files', () async {
     final libRoot = Directory(p.join(Directory.current.path, 'lib'));
-    final allowedSuffixes = <String>{
-      p.join('foundation', 'local.dart'),
-      p.join('foundation', 'local', 'local_comic.dart'),
-      p.join('foundation', 'comic_detail_legacy_bridge.dart'),
-      p.join('foundation', 'download_queue_legacy_bridge.dart'),
-      p.join('foundation', 'local_comics_legacy_bridge.dart'),
-      p.join('foundation', 'local_storage_legacy_bridge.dart'),
+    final allowlistByToken = <String, Set<String>>{
+      'LocalManager(': <String>{
+        p.join('foundation', 'local.dart'),
+        p.join('foundation', 'local', 'local_comic.dart'),
+        p.join('foundation', 'comic_detail_legacy_bridge.dart'),
+        p.join('foundation', 'download_queue_legacy_bridge.dart'),
+        p.join('foundation', 'local_comics_legacy_bridge.dart'),
+        p.join('foundation', 'local_storage_legacy_bridge.dart'),
+      },
+      'LocalFavoritesManager(': <String>{
+        p.join('foundation', 'favorites.dart'),
+        p.join('foundation', 'follow_updates.dart'),
+        p.join('foundation', 'local.dart'),
+        p.join('foundation', 'history.dart'),
+        p.join('foundation', 'comic_detail_legacy_bridge.dart'),
+        p.join('features', 'favorites', 'data', 'favorites_runtime_repository.dart'),
+        p.join('headless.dart'),
+        p.join('utils', 'data.dart'),
+        p.join('utils', 'data_sync.dart'),
+        p.join('utils', 'import_comic.dart'),
+        p.join('pages', 'follow_updates_page.dart'),
+        p.join('pages', 'favorites', 'local_favorites_page.dart'),
+        p.join('pages', 'settings', 'local_favorites.dart'),
+        p.join('pages', 'home_page_legacy_sections.dart'),
+      },
+      'HistoryManager(': <String>{
+        p.join('foundation', 'history.dart'),
+        p.join('foundation', 'local.dart'),
+        p.join('foundation', 'local', 'local_comic.dart'),
+        p.join('foundation', 'image_favorites.dart'),
+        p.join('foundation', 'image_provider', 'history_image_provider.dart'),
+        p.join('pages', 'home_page.dart'),
+        p.join('utils', 'data.dart'),
+      },
     };
 
     final violations = <String>[];
@@ -21,14 +48,16 @@ void main() {
         continue;
       }
       final content = await entity.readAsString();
-      if (!content.contains('LocalManager(')) {
-        continue;
-      }
       final normalizedPath = p.normalize(entity.path);
       final relative = p.relative(normalizedPath, from: libRoot.path);
-      final isAllowed = allowedSuffixes.contains(relative);
-      if (!isAllowed) {
-        violations.add(relative);
+      for (final entry in allowlistByToken.entries) {
+        if (!content.contains(entry.key)) {
+          continue;
+        }
+        final isAllowed = entry.value.contains(relative);
+        if (!isAllowed) {
+          violations.add('${entry.key} -> $relative');
+        }
       }
     }
 

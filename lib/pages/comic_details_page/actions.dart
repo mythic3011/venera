@@ -157,12 +157,15 @@ abstract mixin class _ComicPageActions {
   void onReadEnd();
 
   void download() async {
+    final runtimeComicId = canonicalComicId ?? comic.id;
     if (legacyIsDownloading(comic.id, comic.comicType)) {
       App.rootContext.showMessage(message: "The comic is downloading".tl);
       return;
     }
     if (comic.chapters == null &&
-        legacyIsDownloaded(comic.id, comic.comicType, 0)) {
+        await App.repositories.localLibrary.hasPrimaryLocalLibraryItem(
+          runtimeComicId,
+        )) {
       App.rootContext.showMessage(message: "The comic is downloaded".tl);
       return;
     }
@@ -288,12 +291,11 @@ abstract mixin class _ComicPageActions {
     } else {
       List<int>? selected;
       var downloaded = <int>[];
-      var localComic = legacyFindLocalComic(comic.id, comic.comicType);
-      if (localComic != null) {
+      final downloadedChapterIds = await App.repositories.localLibrary
+          .loadDownloadedChapterIds(runtimeComicId);
+      if (downloadedChapterIds.isNotEmpty) {
         for (int i = 0; i < comic.chapters!.length; i++) {
-          if (localComic.downloadedChapters.contains(
-            comic.chapters!.ids.elementAt(i),
-          )) {
+          if (downloadedChapterIds.contains(comic.chapters!.ids.elementAt(i))) {
             downloaded.add(i);
           }
         }

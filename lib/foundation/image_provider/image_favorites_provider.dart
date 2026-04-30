@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/local_comics_legacy_bridge.dart';
+import 'package:venera/foundation/source_ref.dart';
 import 'package:venera/network/images.dart';
 import 'package:venera/utils/io.dart';
 import '../history.dart';
@@ -115,7 +116,12 @@ class ImageFavoritesProvider
   ) async {
     await for (var progress in ImageDownloader.loadComicImage(
       imageKey,
-      sourceKey,
+      SourceRef.fromLegacyRemote(
+        sourceKey: sourceKey,
+        comicId: cid,
+        chapterId: eid,
+      ),
+      'remote:$sourceKey:$cid',
       cid,
       eid,
     )) {

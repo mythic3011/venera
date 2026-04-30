@@ -46,8 +46,24 @@ class ComicSourceManager with ChangeNotifier, Init {
 
   List<ComicSource> all() => List.from(_sources);
 
-  ComicSource? find(String key) =>
-      _sources.firstWhereOrNull((element) => element.identity.matchesKey(key));
+  bool _isCanonicalSourceKey(String key) {
+    final trimmed = key.trim();
+    return trimmed.isNotEmpty && !trimmed.contains(':');
+  }
+
+  ComicSource? findCanonical(String key) {
+    if (!_isCanonicalSourceKey(key)) {
+      AppDiagnostics.warn(
+        'source.runtime',
+        'Rejected non-canonical source key lookup',
+        data: {'sourceKey': key},
+      );
+      return null;
+    }
+    return _sources.firstWhereOrNull((element) => element.key == key);
+  }
+
+  ComicSource? find(String key) => findCanonical(key);
 
   ComicSource? fromIntKey(int key) => _sources.firstWhereOrNull(
     (element) => matchesSourceIdentityTypeValue(
@@ -102,6 +118,14 @@ class ComicSourceManager with ChangeNotifier, Init {
   }
 
   void remove(String key) {
+    if (!_isCanonicalSourceKey(key)) {
+      AppDiagnostics.warn(
+        'source.runtime',
+        'Rejected non-canonical source key remove',
+        data: {'sourceKey': key},
+      );
+      return;
+    }
     _sources.removeWhere((element) => element.key == key);
     _refreshTrustedSourceCapabilities();
     notifyListeners();
@@ -139,7 +163,7 @@ class ComicSourceManager with ChangeNotifier, Init {
 class ComicSource {
   static List<ComicSource> all() => ComicSourceManager().all();
 
-  static ComicSource? find(String key) => ComicSourceManager().find(key);
+  static ComicSource? find(String key) => ComicSourceManager().findCanonical(key);
 
   static ComicSource? fromIntKey(int key) =>
       ComicSourceManager().fromIntKey(key);
@@ -240,9 +264,24 @@ class ComicSource {
   final ArchiveDownloader? archiveDownloader;
 
   Future<void> loadData() async {
-    var file = File("${App.dataPath}/comic_source/$key.data");
-    if (await file.exists()) {
-      data = Map.from(jsonDecode(await file.readAsString()));
+    final file = File("${App.dataPath}/comic_source/$key.data");
+    if (!await file.exists()) {
+      return;
+    }
+    try {
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is! Map) {
+        throw const FormatException('source data must be object');
+      }
+      data = Map<String, dynamic>.from(decoded);
+    } catch (e, s) {
+      AppDiagnostics.warn(
+        'source.runtime',
+        'Invalid source data payload, fallback to empty data',
+        data: {'sourceKey': key, 'stage': 'loadSourceData', 'error': '$e'},
+      );
+      Log.error('ComicSource', 'Failed to load source data: $e', s);
+      data = <String, dynamic>{};
     }
   }
 
@@ -250,19 +289,23 @@ class ComicSource {
   bool _haveWaitingTask = false;
 
   Future<void> saveData() async {
-    if (_haveWaitingTask) return;
-    while (_isSaving) {
+    if (_isSaving) {
       _haveWaitingTask = true;
-      await Future.delayed(const Duration(milliseconds: 20));
-      _haveWaitingTask = false;
+      return;
     }
     _isSaving = true;
-    var file = File("${App.dataPath}/comic_source/$key.data");
-    if (!await file.exists()) {
-      await file.create(recursive: true);
+    try {
+      do {
+        _haveWaitingTask = false;
+        final file = File("${App.dataPath}/comic_source/$key.data");
+        if (!await file.exists()) {
+          await file.create(recursive: true);
+        }
+        await file.writeAsString(jsonEncode(data));
+      } while (_haveWaitingTask);
+    } finally {
+      _isSaving = false;
     }
-    await file.writeAsString(jsonEncode(data));
-    _isSaving = false;
     DataSync().uploadData();
   }
 
@@ -291,7 +334,8 @@ class ComicSource {
   /// This allows sources to use getters for dynamic settings that can change at runtime.
   Map<String, Map<String, dynamic>>? getSettingsDynamic() {
     try {
-      var value = JsEngine().runCode("ComicSource.sources.$key.settings");
+      final safeKey = jsonEncode(key);
+      var value = JsEngine().runCode("ComicSource.sources[$safeKey]?.settings");
       if (value is Map) {
         var newMap = <String, Map<String, dynamic>>{};
         for (var e in value.entries) {
@@ -374,18 +418,14 @@ class SourceSecurityCapabilities {
   factory SourceSecurityCapabilities.fromData(Map<String, dynamic> data) {
     final raw = data[sourceSecurityField];
     if (raw is! Map) {
-      return const SourceSecurityCapabilities(
-        allowSensitiveCrypto: defaultAllowSensitiveCrypto,
-      );
+      return const SourceSecurityCapabilities(allowSensitiveCrypto: false);
     }
     final security = Map<String, dynamic>.from(raw);
     final allow = security[allowSensitiveCryptoField];
     if (allow is bool) {
       return SourceSecurityCapabilities(allowSensitiveCrypto: allow);
     }
-    return const SourceSecurityCapabilities(
-      allowSensitiveCrypto: defaultAllowSensitiveCrypto,
-    );
+    return const SourceSecurityCapabilities(allowSensitiveCrypto: false);
   }
 }
 

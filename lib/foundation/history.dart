@@ -2,12 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
 import 'dart:math';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/db/history_store.dart';
+import 'package:venera/foundation/db/unified_comics_store.dart';
+import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/favorites.dart';
 import 'package:venera/foundation/image_provider/image_favorites_provider.dart';
 import 'package:venera/foundation/log.dart';
@@ -199,6 +202,8 @@ class HistoryManager with ChangeNotifier {
 
   bool isInitialized = false;
   Future<void>? _initializingFuture;
+  final Set<Future<void>> _pendingStoreOperations = <Future<void>>{};
+  bool _isClosing = false;
 
   Future<void> init() async {
     if (isInitialized) {
@@ -221,7 +226,19 @@ class HistoryManager with ChangeNotifier {
   }
 
   Future<void> _doInit() async {
-    _store = HistoryStore("${App.dataPath}/history.db");
+    final canonicalDbPath = canonicalDomainDatabasePath(App.dataPath);
+    Directory(File(canonicalDbPath).parent.path).createSync(recursive: true);
+    _store = HistoryStore(canonicalDbPath);
+    AppDiagnostics.info(
+      'storage.route',
+      'History runtime routed to canonical DB file',
+      data: {
+        'domain': 'history',
+        'route': 'canonical',
+        'legacyDbFile': 'history.db',
+        'canonicalDbFile': canonicalDomainDatabaseFileName,
+      },
+    );
     await _store.init();
     final rows = await _store.loadAllHistory();
     _historyMap.clear();
@@ -354,12 +371,12 @@ class HistoryManager with ChangeNotifier {
   }
 
   void addHistoryDeferred(History newItem) {
-    unawaited(addHistory(newItem));
+    _trackStoreOperation(addHistory(newItem));
   }
 
   void clearHistory() {
     _historyMap.clear();
-    unawaited(_store.clearHistory());
+    _trackStoreOperation(_store.clearHistory());
     updateCache();
     notifyListeners();
   }
@@ -376,14 +393,14 @@ class HistoryManager with ChangeNotifier {
     for (final item in toDelete) {
       _historyMap.remove(item.$1);
     }
-    unawaited(_store.batchDeleteHistories(toDelete));
+    _trackStoreOperation(_store.batchDeleteHistories(toDelete));
     updateCache();
     notifyListeners();
   }
 
   void remove(String id, ComicType type) async {
     _historyMap.remove(id);
-    unawaited(_store.deleteHistory(id, type.value));
+    _trackStoreOperation(_store.deleteHistory(id, type.value));
     updateCache();
     notifyListeners();
   }
@@ -435,6 +452,8 @@ class HistoryManager with ChangeNotifier {
   }
 
   Future<void> close() async {
+    _isClosing = true;
+    await _drainPendingStoreOperations();
     isInitialized = false;
     await _store.close();
   }
@@ -446,9 +465,26 @@ class HistoryManager with ChangeNotifier {
       _historyMap.remove(history.id);
       deleteItems.add((history.id, history.type.value));
     }
-    unawaited(_store.batchDeleteHistories(deleteItems));
+    _trackStoreOperation(_store.batchDeleteHistories(deleteItems));
     updateCache();
     notifyListeners();
+  }
+
+  void _trackStoreOperation(Future<void> operation) {
+    if (_isClosing) {
+      return;
+    }
+    _pendingStoreOperations.add(operation);
+    operation.whenComplete(() {
+      _pendingStoreOperations.remove(operation);
+    });
+  }
+
+  Future<void> _drainPendingStoreOperations() async {
+    while (_pendingStoreOperations.isNotEmpty) {
+      final pending = List<Future<void>>.from(_pendingStoreOperations);
+      await Future.wait(pending);
+    }
   }
 
   /// Refresh history info from comic source.

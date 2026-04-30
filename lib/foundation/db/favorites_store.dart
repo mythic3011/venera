@@ -38,6 +38,12 @@ class FavoritesStore extends GeneratedDatabase {
   @override
   int get schemaVersion => 1;
 
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (_) async {},
+    onUpgrade: (_, __, ___) async {},
+  );
+
   Future<List<String>> listTables() async {
     final rows = await customSelect(
       "SELECT name FROM sqlite_master WHERE type='table';",

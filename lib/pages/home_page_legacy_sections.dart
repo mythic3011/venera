@@ -13,11 +13,12 @@ class _Local extends StatefulWidget {
 
 class _LocalState extends State<_Local> {
   final downloadQueue = const DownloadQueueRepository();
-  late List<LocalComic> local;
-  late int count;
-  late int downloadingTaskCount;
-  late bool firstDownloadingTaskPaused;
+  List<LocalComic> local = const [];
+  int count = 0;
+  int downloadingTaskCount = 0;
+  bool firstDownloadingTaskPaused = false;
   bool _isReady = false;
+  bool _hasLegacyRuntimeData = false;
 
   ({List<LocalComic> recent, int count, int taskCount, bool firstTaskPaused})
   _readLocalSnapshot() {
@@ -50,16 +51,15 @@ class _LocalState extends State<_Local> {
   }
 
   Future<void> _initialize() async {
-    await Future.wait([
-      legacyEnsureLocalComicsInitialized(),
-      downloadQueue.ensureInitialized(),
-    ]);
+    _hasLegacyRuntimeData = legacyIsLocalComicsInitialized();
     if (!mounted) {
       return;
     }
-    _applyLocalSnapshot();
-    legacyAddLocalComicsListener(onLocalComicsChange);
-    downloadQueue.addListener(onLocalComicsChange);
+    if (_hasLegacyRuntimeData) {
+      _applyLocalSnapshot();
+      legacyAddLocalComicsListener(onLocalComicsChange);
+      downloadQueue.addListener(onLocalComicsChange);
+    }
     setState(() {
       _isReady = true;
     });
@@ -67,7 +67,7 @@ class _LocalState extends State<_Local> {
 
   @override
   void dispose() {
-    if (_isReady) {
+    if (_isReady && _hasLegacyRuntimeData) {
       legacyRemoveLocalComicsListener(onLocalComicsChange);
       downloadQueue.removeListener(onLocalComicsChange);
     }

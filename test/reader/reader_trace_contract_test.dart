@@ -112,6 +112,23 @@ void main() {
     expect(snapshot.imagesPerPage, isNull);
   });
 
+  test('pagination diagnostics degrade when layout reads fail', () {
+    final snapshot = buildReaderPaginationDiagnosticsForTesting(
+      includePagination: true,
+      imageCount: 3,
+      maxPage: () => throw StateError('layout unavailable'),
+      imagesPerPage: () => throw StateError('layout unavailable'),
+    );
+
+    expect(snapshot.imageCount, 3);
+    expect(snapshot.maxPage, isNull);
+    expect(snapshot.imagesPerPage, isNull);
+    expect(
+      DevDiagnosticsApi.recent(channel: 'reader.lifecycle').single.message,
+      'pagination.diagnostics.unavailable',
+    );
+  });
+
   test(
     'reader image load calls keep source comic chapter and page context',
     () {

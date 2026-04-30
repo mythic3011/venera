@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:sqlite3/sqlite3.dart';
 import 'package:venera/foundation/appdata.dart';
+import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/db/favorites_store.dart';
 import 'package:venera/foundation/db/remote_comic_sync.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
@@ -14,7 +16,6 @@ import 'package:venera/foundation/log.dart';
 import 'package:venera/foundation/source_identity/source_identity.dart';
 import 'package:venera/pages/follow_updates_page.dart';
 import 'package:venera/utils/tags_translation.dart';
-import 'dart:io';
 
 import 'app.dart';
 import 'comic_type.dart';
@@ -22,6 +23,13 @@ import 'package:venera/features/sources/comic_source/comic_source.dart';
 
 typedef DeleteLocalComicFromFavoritesForTest =
     void Function(String id, ComicType type);
+
+String quoteSqlIdent(String ident) {
+  if (ident.contains('\u0000')) {
+    throw ArgumentError('Invalid SQLite identifier');
+  }
+  return '"${ident.replaceAll('"', '""')}"';
+}
 
 String _getTimeString(DateTime time) {
   return time.toIso8601String().replaceFirst("T", " ").substring(0, 19);
@@ -52,15 +60,18 @@ class FavoriteItem implements Comic {
   }
 
   FavoriteItem.fromRow(Row row)
-    : name = row["name"],
-      author = row["author"],
-      type = ComicType(row["type"]),
-      tags = (row["tags"] as String).split(","),
-      id = row["id"],
-      coverPath = row["cover_path"],
-      time = row["time"] {
-    tags.remove("");
-  }
+    : this._fromTrustedRow(
+        tryFromRow(row) ?? (throw const FormatException('Invalid favorite row')),
+      );
+
+  FavoriteItem._fromTrustedRow(FavoriteItem item)
+    : name = item.name,
+      author = item.author,
+      type = item.type,
+      tags = List<String>.from(item.tags),
+      id = item.id,
+      coverPath = item.coverPath,
+      time = item.time;
 
   FavoriteItem.fromRecord(FavoriteComicRecord row)
     : name = row.name,
@@ -95,7 +106,7 @@ class FavoriteItem implements Comic {
 
   @override
   String get description {
-    var time = this.time.substring(0, 10);
+    final time = this.time.length >= 10 ? this.time.substring(0, 10) : 'Unknown';
     return appdata.settings['comicDisplayMode'] == 'detailed'
         ? "$time | ${type == ComicType.local ? 'local' : type.comicSource?.name ?? "Unknown"}"
         : "${type.comicSource?.name ?? "Unknown"} | $time";
@@ -135,18 +146,78 @@ class FavoriteItem implements Comic {
     };
   }
 
+  static FavoriteItem? tryFromRow(Row row, {String? folder}) {
+    try {
+      final id = row['id']?.toString();
+      final name = row['name']?.toString();
+      final rawType = row['type'];
+      if (id == null || id.isEmpty || name == null || rawType is! int) {
+        AppDiagnostics.warn(
+          'favorites.store',
+          'Dropped malformed favorite row',
+          data: {
+            'folder': folder,
+            'id': id,
+            'name': name,
+            'type': rawType?.toString(),
+          },
+        );
+        return null;
+      }
+      final rawTags = row['tags']?.toString() ?? '';
+      return FavoriteItem(
+        id: id,
+        name: name,
+        author: row['author']?.toString() ?? '',
+        coverPath: row['cover_path']?.toString() ?? '',
+        type: ComicType(rawType),
+        tags: rawTags.split(',').where((e) => e.isNotEmpty).toList(),
+        favoriteTime: DateTime.tryParse(row['time']?.toString() ?? ''),
+      );
+    } catch (e, stackTrace) {
+      AppDiagnostics.warn(
+        'favorites.store',
+        'Failed to parse favorite row',
+        data: {
+          'folder': folder,
+          'error': '$e',
+          'stackTrace': '$stackTrace',
+        },
+      );
+      return null;
+    }
+  }
+
   static FavoriteItem fromJson(Map<String, dynamic> json) {
-    final type = normalizeFavoriteJsonTypeValue(
-      typeValue: json["type"] as int,
-      coverPath: json['coverPath'].toString(),
+    return tryFromJson(json) ??
+        (throw const FormatException('Invalid favorite json'));
+  }
+
+  static FavoriteItem? tryFromJson(Map<String, dynamic> json) {
+    final rawType = json['type'];
+    final typeValue = rawType is int
+        ? rawType
+        : int.tryParse(rawType?.toString() ?? '');
+    final id = (json['id'] ?? json['target'])?.toString();
+    if (typeValue == null || id == null || id.isEmpty) {
+      return null;
+    }
+    final coverPath = json['coverPath']?.toString() ?? '';
+    final normalizedType = normalizeFavoriteJsonTypeValue(
+      typeValue: typeValue,
+      coverPath: coverPath,
     );
+    final rawTags = json['tags'];
+    final tags = rawTags is List
+        ? rawTags.whereType<String>().toList()
+        : const <String>[];
     return FavoriteItem(
-      id: json["id"] ?? json['target'],
-      name: json["name"],
-      author: json["author"],
-      coverPath: json["coverPath"],
-      type: ComicType(type),
-      tags: List<String>.from(json["tags"] ?? []),
+      id: id,
+      name: json['name']?.toString() ?? '',
+      author: json['author']?.toString() ?? '',
+      coverPath: coverPath,
+      type: ComicType(normalizedType),
+      tags: tags,
     );
   }
 }
@@ -244,8 +315,20 @@ class LocalFavoritesManager with ChangeNotifier {
       return;
     }
     counts = {};
-    _db = sqlite3.open("${App.dataPath}/local_favorite.db");
-    _store = FavoritesStore("${App.dataPath}/local_favorite.db");
+    final canonicalDbPath = canonicalDomainDatabasePath(App.dataPath);
+    Directory(File(canonicalDbPath).parent.path).createSync(recursive: true);
+    _db = sqlite3.open(canonicalDbPath);
+    _store = FavoritesStore(canonicalDbPath);
+    AppDiagnostics.info(
+      'storage.route',
+      'Favorites runtime routed to canonical DB file',
+      data: {
+        'domain': 'favorites',
+        'route': 'canonical',
+        'legacyDbFile': 'local_favorite.db',
+        'canonicalDbFile': canonicalDomainDatabaseFileName,
+      },
+    );
     _db.execute("""
       create table if not exists folder_order (
         folder_name text primary key,
@@ -260,31 +343,6 @@ class LocalFavoritesManager with ChangeNotifier {
       );
     """);
     var folderNames = _getFolderNamesWithDB();
-    for (var folder in folderNames) {
-      var columns = _db.select("""
-        pragma table_info("$folder");
-      """);
-      if (!columns.any((element) => element["name"] == "translated_tags")) {
-        _db.execute("""
-          alter table "$folder"
-          add column translated_tags TEXT;
-        """);
-        var comics = getFolderComics(folder);
-        for (var comic in comics) {
-          var translatedTags = _translateTags(comic.tags);
-          _db.execute(
-            """
-            update "$folder"
-            set translated_tags = ?
-            where id == ? and type == ?;
-          """,
-            [translatedTags, comic.id, comic.type.value],
-          );
-        }
-      } else {
-        break;
-      }
-    }
     await appdata.ensureInit();
     // Make sure the follow updates folder is ready
     var followUpdateFolder = appdata.settings['followUpdatesFolder'];
@@ -434,8 +492,7 @@ class LocalFavoritesManager with ChangeNotifier {
     required String comicId,
     required ComicType type,
   }) {
-    final hash = comicId.hashCode ^ type.value;
-    if (_hashedIds.containsKey(hash)) {
+    if (_existsInAnyFolder(comicId, type)) {
       return;
     }
     _runCanonicalSync((store) async {
@@ -448,9 +505,10 @@ class LocalFavoritesManager with ChangeNotifier {
   List<String> find(String id, ComicType type) {
     var res = <String>[];
     for (var folder in folderNames) {
+      final quotedFolder = quoteSqlIdent(folder);
       var rows = _db.select(
         """
-        select * from "$folder"
+        select * from $quotedFolder
         where id == ? and type == ?;
       """,
         [id, type.value],
@@ -465,9 +523,10 @@ class LocalFavoritesManager with ChangeNotifier {
   Future<List<String>> findWithModel(FavoriteItem item) async {
     var res = <String>[];
     for (var folder in folderNames) {
+      final quotedFolder = quoteSqlIdent(folder);
       var rows = _db.select(
         """
-        select * from "$folder"
+        select * from $quotedFolder
         where id == ? and type == ?;
       """,
         [item.id, item.type.value],
@@ -487,10 +546,28 @@ class LocalFavoritesManager with ChangeNotifier {
     return tables;
   }
 
+  Set<String> _tableColumnNames(String tableName) {
+    final quotedTable = quoteSqlIdent(tableName);
+    return _db
+        .select('pragma table_info($quotedTable);')
+        .map((row) => row['name'] as String)
+        .toSet();
+  }
+
+  bool _isReservedFavoritesTable(String tableName) {
+    return tableName == 'folder_sync' ||
+        tableName == 'folder_order' ||
+        tableName.startsWith('sqlite_');
+  }
+
   List<String> _getFolderNamesWithDB() {
-    final folders = _getTablesWithDB();
-    folders.remove('folder_sync');
-    folders.remove('folder_order');
+    final folders = <String>[];
+    for (final table in _getTablesWithDB()) {
+      if (_looksLikeLegacyFavoriteFolderTable(table)) {
+        _ensureFavoriteFolderSchema(table);
+        folders.add(table);
+      }
+    }
     var folderToOrder = <String, int>{};
     for (var folder in folders) {
       var res = _db.select(
@@ -512,6 +589,72 @@ class LocalFavoritesManager with ChangeNotifier {
     return folders;
   }
 
+  bool _looksLikeLegacyFavoriteFolderTable(String tableName) {
+    if (_isReservedFavoritesTable(tableName)) {
+      return false;
+    }
+    final columns = _tableColumnNames(tableName);
+    const requiredColumns = {
+      'id',
+      'name',
+      'author',
+      'type',
+      'tags',
+      'cover_path',
+      'time',
+    };
+    return columns.containsAll(requiredColumns);
+  }
+
+  void _ensureFavoriteFolderSchema(String folder) {
+    final quotedFolder = quoteSqlIdent(folder);
+    final columns = _tableColumnNames(folder);
+    if (!columns.contains('display_order')) {
+      _db.execute(
+        '''
+        alter table $quotedFolder
+        add column display_order int;
+      ''',
+      );
+      _db.execute(
+        '''
+        update $quotedFolder
+        set display_order = rowid
+        where display_order is null;
+      ''',
+      );
+    }
+    if (!columns.contains('translated_tags')) {
+      _db.execute(
+        '''
+        alter table $quotedFolder
+        add column translated_tags TEXT;
+      ''',
+      );
+      final rows = _db.select(
+        '''
+        select id, type, tags from $quotedFolder;
+      ''',
+      );
+      for (final row in rows) {
+        final translatedTags = _translateTags(
+          (row['tags']?.toString() ?? '')
+              .split(',')
+              .where((e) => e.isNotEmpty)
+              .toList(),
+        );
+        _db.execute(
+          '''
+          update $quotedFolder
+          set translated_tags = ?
+          where id == ? and type == ?;
+        ''',
+          [translatedTags, row['id'], row['type']],
+        );
+      }
+    }
+  }
+
   void updateOrder(List<String> folders) {
     for (int i = 0; i < folders.length; i++) {
       _db.execute(
@@ -527,9 +670,10 @@ class LocalFavoritesManager with ChangeNotifier {
   }
 
   int count(String folderName) {
+    final quotedFolder = quoteSqlIdent(folderName);
     return _db.select("""
       select count(*) as c
-      from "$folderName"
+      from $quotedFolder
     """).first["c"];
   }
 
@@ -537,27 +681,33 @@ class LocalFavoritesManager with ChangeNotifier {
       _isInitialized ? _getFolderNamesWithDB() : const [];
 
   int maxValue(String folder) {
+    final quotedFolder = quoteSqlIdent(folder);
     return _db.select("""
         SELECT MAX(display_order) AS max_value
-        FROM "$folder";
+        FROM $quotedFolder;
       """).firstOrNull?["max_value"] ??
         0;
   }
 
   int minValue(String folder) {
+    final quotedFolder = quoteSqlIdent(folder);
     return _db.select("""
         SELECT MIN(display_order) AS min_value
-        FROM "$folder";
+        FROM $quotedFolder;
       """).firstOrNull?["min_value"] ??
         0;
   }
 
   List<FavoriteItem> getFolderComics(String folder) {
+    final quotedFolder = quoteSqlIdent(folder);
     var rows = _db.select("""
-        select * from "$folder"
+        select * from $quotedFolder
         ORDER BY display_order;
       """);
-    return rows.map((element) => FavoriteItem.fromRow(element)).toList();
+    return rows
+        .map((row) => FavoriteItem.tryFromRow(row, folder: folder))
+        .whereType<FavoriteItem>()
+        .toList();
   }
 
   /// Start a new isolate to get the comics in the folder
@@ -570,10 +720,15 @@ class LocalFavoritesManager with ChangeNotifier {
   List<FavoriteItem> getAllComics() {
     var res = <FavoriteItem>{};
     for (final folder in folderNames) {
+      final quotedFolder = quoteSqlIdent(folder);
       var comics = _db.select("""
-        select * from "$folder";
+        select * from $quotedFolder;
       """);
-      res.addAll(comics.map((element) => FavoriteItem.fromRow(element)));
+      res.addAll(
+        comics
+            .map((row) => FavoriteItem.tryFromRow(row, folder: folder))
+            .whereType<FavoriteItem>(),
+      );
     }
     return res.toList();
   }
@@ -589,9 +744,10 @@ class LocalFavoritesManager with ChangeNotifier {
   }
 
   void addTagTo(String folder, String id, String tag) {
+    final quotedFolder = quoteSqlIdent(folder);
     _db.execute(
       """
-      update "$folder"
+      update $quotedFolder
       set tags = '$tag,' || tags
       where id == ?
     """,
@@ -603,15 +759,16 @@ class LocalFavoritesManager with ChangeNotifier {
   List<FavoriteItemWithFolderInfo> allComics() {
     var res = <FavoriteItemWithFolderInfo>[];
     for (final folder in folderNames) {
+      final quotedFolder = quoteSqlIdent(folder);
       var comics = _db.select("""
-        select * from "$folder";
+        select * from $quotedFolder;
       """);
-      res.addAll(
-        comics.map(
-          (element) =>
-              FavoriteItemWithFolderInfo(FavoriteItem.fromRow(element), folder),
-        ),
-      );
+      for (final row in comics) {
+        final parsed = FavoriteItem.tryFromRow(row, folder: folder);
+        if (parsed != null) {
+          res.add(FavoriteItemWithFolderInfo(parsed, folder));
+        }
+      }
     }
     return res;
   }
@@ -714,14 +871,24 @@ class LocalFavoritesManager with ChangeNotifier {
   }
 
   bool comicExists(String folder, String id, ComicType type) {
+    final quotedFolder = quoteSqlIdent(folder);
     var res = _db.select(
       """
-      select * from "$folder"
+      select * from $quotedFolder
       where id == ? and type == ?;
     """,
       [id, type.value],
     );
     return res.isNotEmpty;
+  }
+
+  bool _existsInAnyFolder(String id, ComicType type) {
+    for (final folder in folderNames) {
+      if (comicExists(folder, id, type)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   FavoriteItem getComic(String folder, String id, ComicType type) {
@@ -1113,10 +1280,19 @@ class LocalFavoritesManager with ChangeNotifier {
   }
 
   Future<void> clearAll() async {
-    await _store.close();
-    _db.dispose();
-    File("${App.dataPath}/local_favorite.db").deleteSync();
-    await init();
+    if (!_isInitialized) {
+      return;
+    }
+    final folders = _getFolderNamesWithDB();
+    for (final folder in folders) {
+      _db.execute('DROP TABLE IF EXISTS "$folder";');
+    }
+    _db.execute('DELETE FROM folder_order;');
+    _db.execute('DELETE FROM folder_sync;');
+    counts.clear();
+    _hashedIds.clear();
+    _syncCanonicalFolderOrder(const <String>[]);
+    notifyListeners();
   }
 
   void reorder(List<FavoriteItem> newFolder, String folder) async {

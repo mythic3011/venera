@@ -101,6 +101,11 @@ class UnifiedComicDetailStoreAdapter
   }
 
   @override
+  Future<bool> isComicFavorited(String comicId) {
+    return store.isComicFavorited(comicId);
+  }
+
+  @override
   Future<void> deleteReaderSession(String sessionId) {
     return store.deleteReaderSession(sessionId);
   }

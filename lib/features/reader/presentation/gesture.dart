@@ -9,7 +9,8 @@ class _ReaderGestureDetector extends StatefulWidget {
   State<_ReaderGestureDetector> createState() => _ReaderGestureDetectorState();
 }
 
-class _ReaderGestureDetectorState extends AutomaticGlobalState<_ReaderGestureDetector> {
+class _ReaderGestureDetectorState
+    extends AutomaticGlobalState<_ReaderGestureDetector> {
   late TapGestureRecognizer _tapGestureRecognizer;
 
   static const _kDoubleTapMaxTime = Duration(milliseconds: 200);
@@ -72,6 +73,9 @@ class _ReaderGestureDetectorState extends AutomaticGlobalState<_ReaderGestureDet
           _dragInProgress = false;
         }
         Future.delayed(_kLongPressMinTime, () {
+          if (!mounted) {
+            return;
+          }
           if (_lastTapPointer == event.pointer && fingers == 1) {
             if (_lastTapMoveDistance!.distanceSquared < 20.0 * 20.0) {
               onLongPressedDown(event.position);
@@ -139,11 +143,13 @@ class _ReaderGestureDetectorState extends AutomaticGlobalState<_ReaderGestureDet
     }
     if (context.reader.mode.key.startsWith('gallery')) {
       if (forward) {
-        if (!context.reader.toNextPage() && !context.reader.isLastChapterOfGroup) {
+        if (!context.reader.toNextPage() &&
+            !context.reader.isLastChapterOfGroup) {
           context.reader.toNextChapter();
         }
       } else {
-        if (!context.reader.toPrevPage() && !context.reader.isFirstChapterOfGroup) {
+        if (!context.reader.toPrevPage() &&
+            !context.reader.isFirstChapterOfGroup) {
           context.reader.toPrevChapter(toLastPage: true);
         }
       }
@@ -160,8 +166,11 @@ class _ReaderGestureDetectorState extends AutomaticGlobalState<_ReaderGestureDet
 
   bool _dragInProgress = false;
 
-  bool get _enableDoubleTapToZoom =>
-      appdata.settings.getReaderSetting(reader.cid, reader.type.sourceKey, 'enableDoubleTapToZoom');
+  bool get _enableDoubleTapToZoom => appdata.settings.getReaderSetting(
+    reader.cid,
+    reader.type.sourceKey,
+    'enableDoubleTapToZoom',
+  );
 
   void onTapUp(TapUpDetails event) {
     if (event.globalPosition == Offset.zero &&
@@ -191,6 +200,9 @@ class _ReaderGestureDetectorState extends AutomaticGlobalState<_ReaderGestureDet
     }
     _previousEvent = event;
     Future.delayed(_kDoubleTapMaxTime, () {
+      if (!mounted) {
+        return;
+      }
       if (_previousEvent == event) {
         onTap(location);
         _previousEvent = null;
@@ -210,7 +222,10 @@ class _ReaderGestureDetectorState extends AutomaticGlobalState<_ReaderGestureDet
         return;
       }
       if (appdata.settings.getReaderSetting(
-          reader.cid, reader.type.sourceKey, 'enableTapToTurnPages')) {
+        reader.cid,
+        reader.type.sourceKey,
+        'enableTapToTurnPages',
+      )) {
         bool isLeft = false, isRight = false, isTop = false, isBottom = false;
         final width = context.width;
         final height = context.height;
@@ -230,7 +245,10 @@ class _ReaderGestureDetectorState extends AutomaticGlobalState<_ReaderGestureDet
         var prev = () => context.reader.toPrevPage();
         var next = () => context.reader.toNextPage();
         if (appdata.settings.getReaderSetting(
-            reader.cid, reader.type.sourceKey, 'reverseTapToTurnPages')) {
+          reader.cid,
+          reader.type.sourceKey,
+          'reverseTapToTurnPages',
+        )) {
           prev = () => context.reader.toNextPage();
           next = () => context.reader.toPrevPage();
         }
@@ -272,64 +290,87 @@ class _ReaderGestureDetectorState extends AutomaticGlobalState<_ReaderGestureDet
   }
 
   void onDoubleTap(Offset location) {
-    context.reader._imageViewController?.handleDoubleTap(location);
+    final controller = context.reader._imageViewController;
+    if (controller == null) {
+      reader.recordImageControllerLifecycle(
+        'use.beforeReady',
+        owner: 'gesture.doubleTap',
+        ready: false,
+      );
+      return;
+    }
+    controller.handleDoubleTap(location);
   }
 
   void onSecondaryTapUp(Offset location) {
-    showMenuX(
-      context,
-      location,
-      [
+    showMenuX(context, location, [
+      MenuEntry(
+        icon: Icons.settings,
+        text: "Settings".tl,
+        onClick: () {
+          context.readerScaffold.openSetting();
+        },
+      ),
+      MenuEntry(
+        icon: Icons.menu,
+        text: "Chapters".tl,
+        onClick: () {
+          context.readerScaffold.openChapterDrawer();
+        },
+      ),
+      MenuEntry(
+        icon: Icons.fullscreen,
+        text: "Fullscreen".tl,
+        onClick: () {
+          context.reader.fullscreen();
+        },
+      ),
+      MenuEntry(
+        icon: Icons.exit_to_app,
+        text: "Exit".tl,
+        onClick: () {
+          context.pop();
+        },
+      ),
+      if (App.isDesktop && !reader.isLoading)
         MenuEntry(
-          icon: Icons.settings,
-          text: "Settings".tl,
-          onClick: () {
-            context.readerScaffold.openSetting();
-          },
+          icon: Icons.copy,
+          text: "Copy Image".tl,
+          onClick: () => copyImage(location),
         ),
+      if (!reader.isLoading)
         MenuEntry(
-          icon: Icons.menu,
-          text: "Chapters".tl,
-          onClick: () {
-            context.readerScaffold.openChapterDrawer();
-          },
+          icon: Icons.download_outlined,
+          text: "Save Image".tl,
+          onClick: () => saveImage(location),
         ),
-        MenuEntry(
-          icon: Icons.fullscreen,
-          text: "Fullscreen".tl,
-          onClick: () {
-            context.reader.fullscreen();
-          },
-        ),
-        MenuEntry(
-          icon: Icons.exit_to_app,
-          text: "Exit".tl,
-          onClick: () {
-            context.pop();
-          },
-        ),
-        if (App.isDesktop && !reader.isLoading)
-          MenuEntry(
-            icon: Icons.copy,
-            text: "Copy Image".tl,
-            onClick: () => copyImage(location),
-          ),
-        if (!reader.isLoading)
-          MenuEntry(
-            icon: Icons.download_outlined,
-            text: "Save Image".tl,
-            onClick: () => saveImage(location),
-          ),
-      ],
-    );
+    ]);
   }
 
   void onLongPressedUp(Offset location) {
-    context.reader._imageViewController?.handleLongPressUp(location);
+    final controller = context.reader._imageViewController;
+    if (controller == null) {
+      reader.recordImageControllerLifecycle(
+        'use.beforeReady',
+        owner: 'gesture.longPressUp',
+        ready: false,
+      );
+      return;
+    }
+    controller.handleLongPressUp(location);
   }
 
   void onLongPressedDown(Offset location) {
-    context.reader._imageViewController?.handleLongPressDown(location);
+    final controller = context.reader._imageViewController;
+    if (controller == null) {
+      reader.recordImageControllerLifecycle(
+        'use.beforeReady',
+        owner: 'gesture.longPressDown',
+        ready: false,
+      );
+      return;
+    }
+    controller.handleLongPressDown(location);
   }
 
   void addDragListener(_DragListener listener) {
@@ -345,7 +386,16 @@ class _ReaderGestureDetectorState extends AutomaticGlobalState<_ReaderGestureDet
 
   void copyImage(Offset location) async {
     var controller = reader._imageViewController;
-    var image = await controller!.getImageByOffset(location);
+    if (controller == null) {
+      reader.recordImageControllerLifecycle(
+        'use.beforeReady',
+        owner: 'gesture.copyImage',
+        ready: false,
+      );
+      context.showMessage(message: "No Image");
+      return;
+    }
+    var image = await controller.getImageByOffset(location);
     if (image != null) {
       writeImageToClipboard(image);
     } else {
@@ -355,7 +405,16 @@ class _ReaderGestureDetectorState extends AutomaticGlobalState<_ReaderGestureDet
 
   void saveImage(Offset location) async {
     var controller = reader._imageViewController;
-    var image = await controller!.getImageByOffset(location);
+    if (controller == null) {
+      reader.recordImageControllerLifecycle(
+        'use.beforeReady',
+        owner: 'gesture.saveImage',
+        ready: false,
+      );
+      context.showMessage(message: "No Image");
+      return;
+    }
+    var image = await controller.getImageByOffset(location);
     if (image != null) {
       var filetype = detectFileType(image);
       saveFile(filename: "image${filetype.ext}", data: image);
