@@ -382,21 +382,11 @@ class LocalManager with ChangeNotifier {
     if (bookmark == null) {
       return null;
     }
-    final permission = await startAccessingDirectoryIOS(bookmark);
-    if (permission == null) {
-      Log.error(
-        "IO",
-        "Failed to restore bookmarked local directory. Falling back to default path.",
-      );
-      return null;
-    }
-    if (permission.isStale) {
-      Log.info(
-        "IO",
-        "Bookmarked local directory resolved with a stale bookmark.",
-      );
-    }
-    return permission.path;
+    Log.warning(
+      "IO",
+      "iOS local directory bookmark restore is unavailable; falling back to default path.",
+    );
+    return null;
   }
 
   String _metadataSeriesKey(LocalComic comic) {
