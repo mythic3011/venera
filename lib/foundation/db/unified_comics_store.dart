@@ -104,6 +104,10 @@ class ComicSourceLinkRecord {
     required this.sourceComicId,
     this.linkStatus = 'active',
     this.isPrimary = false,
+    this.sourceUrl,
+    this.sourceTitle,
+    this.downloadedAt,
+    this.lastVerifiedAt,
     this.linkedAt,
     this.updatedAt,
     this.metadataJson,
@@ -115,9 +119,141 @@ class ComicSourceLinkRecord {
   final String sourceComicId;
   final String linkStatus;
   final bool isPrimary;
+  final String? sourceUrl;
+  final String? sourceTitle;
+  final String? downloadedAt;
+  final String? lastVerifiedAt;
   final String? linkedAt;
   final String? updatedAt;
   final String? metadataJson;
+}
+
+class ChapterSourceLinkRecord {
+  const ChapterSourceLinkRecord({
+    required this.id,
+    required this.chapterId,
+    required this.comicSourceLinkId,
+    required this.sourceChapterId,
+    this.sourceUrl,
+    this.linkedAt,
+    this.updatedAt,
+    this.metadataJson,
+  });
+
+  final String id;
+  final String chapterId;
+  final String comicSourceLinkId;
+  final String sourceChapterId;
+  final String? sourceUrl;
+  final String? linkedAt;
+  final String? updatedAt;
+  final String? metadataJson;
+}
+
+class PageSourceLinkRecord {
+  const PageSourceLinkRecord({
+    required this.id,
+    required this.pageId,
+    required this.comicSourceLinkId,
+    required this.sourcePageId,
+    this.chapterSourceLinkId,
+    this.sourceUrl,
+    this.linkedAt,
+    this.updatedAt,
+    this.metadataJson,
+  });
+
+  final String id;
+  final String pageId;
+  final String comicSourceLinkId;
+  final String sourcePageId;
+  final String? chapterSourceLinkId;
+  final String? sourceUrl;
+  final String? linkedAt;
+  final String? updatedAt;
+  final String? metadataJson;
+}
+
+class SourceTagRecord {
+  const SourceTagRecord({
+    required this.id,
+    required this.sourcePlatformId,
+    required this.namespace,
+    required this.tagKey,
+    required this.displayName,
+    this.createdAt,
+  });
+
+  final String id;
+  final String sourcePlatformId;
+  final String namespace;
+  final String tagKey;
+  final String displayName;
+  final String? createdAt;
+}
+
+class ComicSourceLinkTagRecord {
+  const ComicSourceLinkTagRecord({
+    required this.comicSourceLinkId,
+    required this.sourceTagId,
+    this.addedAt,
+  });
+
+  final String comicSourceLinkId;
+  final String sourceTagId;
+  final String? addedAt;
+}
+
+class UserTagRecord {
+  const UserTagRecord({
+    required this.id,
+    required this.name,
+    required this.normalizedName,
+    this.color,
+    this.createdAt,
+    this.updatedAt,
+  });
+
+  final String id;
+  final String name;
+  final String normalizedName;
+  final String? color;
+  final String? createdAt;
+  final String? updatedAt;
+}
+
+class ComicUserTagRecord {
+  const ComicUserTagRecord({
+    required this.comicId,
+    required this.userTagId,
+    this.addedAt,
+  });
+
+  final String comicId;
+  final String userTagId;
+  final String? addedAt;
+}
+
+class EhTagTaxonomyRecord {
+  const EhTagTaxonomyRecord({
+    required this.providerKey,
+    required this.locale,
+    required this.namespace,
+    required this.tagKey,
+    required this.translatedLabel,
+    this.sourceSha,
+    this.sourceVersion,
+    this.updatedAt,
+  });
+
+  final String providerKey;
+  final String locale;
+  final String namespace;
+  final String tagKey;
+  final String translatedLabel;
+  final String? sourceSha;
+  final int? sourceVersion;
+  final String? updatedAt;
 }
 
 class LocalLibraryItemRecord {
@@ -256,6 +392,28 @@ class PageOrderSummaryRecord {
   final int visiblePageCount;
 }
 
+class LocalLibraryBrowseRecord {
+  const LocalLibraryBrowseRecord({
+    required this.comicId,
+    required this.title,
+    required this.normalizedTitle,
+    this.storageType,
+    this.importedAt,
+    this.updatedAt,
+    this.userTags = const <String>[],
+    this.sourceTags = const <String>[],
+  });
+
+  final String comicId;
+  final String title;
+  final String normalizedTitle;
+  final String? storageType;
+  final String? importedAt;
+  final String? updatedAt;
+  final List<String> userTags;
+  final List<String> sourceTags;
+}
+
 class HistoryEventRecord {
   const HistoryEventRecord({
     required this.id,
@@ -357,7 +515,7 @@ class UnifiedComicsStore extends GeneratedDatabase {
   Iterable<TableInfo<Table, Object?>> get allTables => const [];
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   Future<void> init() async {
     await customStatement('''
@@ -492,10 +650,125 @@ class UnifiedComicsStore extends GeneratedDatabase {
         UNIQUE(comic_id, source_platform_id, source_comic_id)
       );
     ''');
+    await _ensureTextColumn('comic_source_links', 'source_url');
+    await _ensureTextColumn('comic_source_links', 'source_title');
+    await _ensureTextColumn('comic_source_links', 'downloaded_at');
+    await _ensureTextColumn('comic_source_links', 'last_verified_at');
     await customStatement('''
       CREATE UNIQUE INDEX IF NOT EXISTS idx_comic_source_links_one_primary_per_comic
       ON comic_source_links(comic_id)
       WHERE is_primary = 1;
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS chapter_source_links (
+        id TEXT PRIMARY KEY,
+        chapter_id TEXT NOT NULL,
+        comic_source_link_id TEXT NOT NULL,
+        source_chapter_id TEXT NOT NULL,
+        source_url TEXT,
+        linked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        metadata_json TEXT,
+        FOREIGN KEY (chapter_id)
+          REFERENCES chapters(id)
+          ON DELETE CASCADE,
+        FOREIGN KEY (comic_source_link_id)
+          REFERENCES comic_source_links(id)
+          ON DELETE CASCADE,
+        UNIQUE(chapter_id, comic_source_link_id, source_chapter_id)
+      );
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS page_source_links (
+        id TEXT PRIMARY KEY,
+        page_id TEXT NOT NULL,
+        comic_source_link_id TEXT NOT NULL,
+        chapter_source_link_id TEXT,
+        source_page_id TEXT NOT NULL,
+        source_url TEXT,
+        linked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        metadata_json TEXT,
+        FOREIGN KEY (page_id)
+          REFERENCES pages(id)
+          ON DELETE CASCADE,
+        FOREIGN KEY (comic_source_link_id)
+          REFERENCES comic_source_links(id)
+          ON DELETE CASCADE,
+        FOREIGN KEY (chapter_source_link_id)
+          REFERENCES chapter_source_links(id)
+          ON DELETE SET NULL,
+        UNIQUE(page_id, comic_source_link_id, source_page_id)
+      );
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS source_tags (
+        id TEXT PRIMARY KEY,
+        source_platform_id TEXT NOT NULL,
+        namespace TEXT NOT NULL,
+        tag_key TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (source_platform_id)
+          REFERENCES source_platforms(id)
+          ON DELETE CASCADE,
+        UNIQUE(source_platform_id, namespace, tag_key)
+      );
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS comic_source_link_tags (
+        comic_source_link_id TEXT NOT NULL,
+        source_tag_id TEXT NOT NULL,
+        added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (comic_source_link_id, source_tag_id),
+        FOREIGN KEY (comic_source_link_id)
+          REFERENCES comic_source_links(id)
+          ON DELETE CASCADE,
+        FOREIGN KEY (source_tag_id)
+          REFERENCES source_tags(id)
+          ON DELETE CASCADE
+      );
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS user_tags (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        normalized_name TEXT NOT NULL UNIQUE,
+        color TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS comic_user_tags (
+        comic_id TEXT NOT NULL,
+        user_tag_id TEXT NOT NULL,
+        added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (comic_id, user_tag_id),
+        FOREIGN KEY (comic_id)
+          REFERENCES comics(id)
+          ON DELETE CASCADE,
+        FOREIGN KEY (user_tag_id)
+          REFERENCES user_tags(id)
+          ON DELETE CASCADE
+      );
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS eh_tag_taxonomy (
+        provider_key TEXT NOT NULL,
+        locale TEXT NOT NULL,
+        namespace TEXT NOT NULL,
+        tag_key TEXT NOT NULL,
+        translated_label TEXT NOT NULL,
+        source_sha TEXT,
+        source_version INTEGER,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (provider_key, locale, namespace, tag_key)
+      );
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_eh_tag_taxonomy_lookup
+      ON eh_tag_taxonomy(provider_key, locale, namespace, tag_key);
     ''');
     await customStatement('''
       CREATE INDEX IF NOT EXISTS idx_local_library_items_storage_updated
@@ -624,6 +897,11 @@ class UnifiedComicsStore extends GeneratedDatabase {
     final rows = await customSelect(
       "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name;",
     ).get();
+    return rows.map((row) => row.read<String>('name')).toList();
+  }
+
+  Future<List<String>> listColumns(String tableName) async {
+    final rows = await customSelect('PRAGMA table_info($tableName);').get();
     return rows.map((row) => row.read<String>('name')).toList();
   }
 
@@ -867,6 +1145,12 @@ class UnifiedComicsStore extends GeneratedDatabase {
     ]);
   }
 
+  Future<void> deletePagesForChapter(String chapterId) {
+    return customStatement('DELETE FROM pages WHERE chapter_id = ?;', [
+      chapterId,
+    ]);
+  }
+
   Future<void> upsertLocalLibraryItem(LocalLibraryItemRecord record) {
     return customStatement(
       '''
@@ -931,15 +1215,23 @@ class UnifiedComicsStore extends GeneratedDatabase {
           source_comic_id,
           link_status,
           is_primary,
+          source_url,
+          source_title,
+          downloaded_at,
+          last_verified_at,
           linked_at,
           updated_at,
           metadata_json
         )
-        VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP), ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP), ?)
         ON CONFLICT(comic_id, source_platform_id, source_comic_id) DO UPDATE SET
           id = excluded.id,
           link_status = excluded.link_status,
           is_primary = excluded.is_primary,
+          source_url = excluded.source_url,
+          source_title = excluded.source_title,
+          downloaded_at = COALESCE(excluded.downloaded_at, comic_source_links.downloaded_at),
+          last_verified_at = COALESCE(excluded.last_verified_at, comic_source_links.last_verified_at),
           linked_at = COALESCE(excluded.linked_at, comic_source_links.linked_at),
           updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP),
           metadata_json = excluded.metadata_json;
@@ -951,6 +1243,10 @@ class UnifiedComicsStore extends GeneratedDatabase {
           record.sourceComicId,
           record.linkStatus,
           record.isPrimary ? 1 : 0,
+          record.sourceUrl,
+          record.sourceTitle,
+          record.downloadedAt,
+          record.lastVerifiedAt,
           record.linkedAt,
           record.updatedAt,
           record.metadataJson,
@@ -959,7 +1255,34 @@ class UnifiedComicsStore extends GeneratedDatabase {
     });
   }
 
-  Future<ComicSourceLinkRecord?> loadPrimaryComicSourceLink(String comicId) async {
+  Future<SourcePlatformRecord?> loadSourcePlatformById(
+    String platformId,
+  ) async {
+    final row = await customSelect(
+      '''
+      SELECT * FROM source_platforms
+      WHERE id = ?
+      LIMIT 1;
+      ''',
+      variables: [Variable<String>(platformId)],
+    ).getSingleOrNull();
+    if (row == null) {
+      return null;
+    }
+    return SourcePlatformRecord(
+      id: row.read<String>('id'),
+      canonicalKey: row.read<String>('canonical_key'),
+      displayName: row.read<String>('display_name'),
+      kind: row.read<String>('kind'),
+      isEnabled: row.read<int>('is_enabled') == 1,
+      createdAt: row.read<String>('created_at'),
+      updatedAt: row.read<String>('updated_at'),
+    );
+  }
+
+  Future<ComicSourceLinkRecord?> loadPrimaryComicSourceLink(
+    String comicId,
+  ) async {
     final row = await customSelect(
       '''
       SELECT * FROM comic_source_links
@@ -975,7 +1298,9 @@ class UnifiedComicsStore extends GeneratedDatabase {
     return _comicSourceLinkRecordFromRow(row);
   }
 
-  Future<List<ComicSourceLinkRecord>> loadComicSourceLinks(String comicId) async {
+  Future<List<ComicSourceLinkRecord>> loadComicSourceLinks(
+    String comicId,
+  ) async {
     final rows = await customSelect(
       '''
       SELECT * FROM comic_source_links
@@ -985,6 +1310,372 @@ class UnifiedComicsStore extends GeneratedDatabase {
       variables: [Variable<String>(comicId)],
     ).get();
     return rows.map(_comicSourceLinkRecordFromRow).toList();
+  }
+
+  Future<List<ChapterSourceLinkRecord>>
+  loadChapterSourceLinksForComicSourceLink(String comicSourceLinkId) async {
+    final rows = await customSelect(
+      '''
+      SELECT * FROM chapter_source_links
+      WHERE comic_source_link_id = ?
+      ORDER BY chapter_id ASC, source_chapter_id ASC, id ASC;
+      ''',
+      variables: [Variable<String>(comicSourceLinkId)],
+    ).get();
+    return rows.map(_chapterSourceLinkRecordFromRow).toList();
+  }
+
+  Future<List<PageSourceLinkRecord>> loadPageSourceLinksForComicSourceLink(
+    String comicSourceLinkId,
+  ) async {
+    final rows = await customSelect(
+      '''
+      SELECT * FROM page_source_links
+      WHERE comic_source_link_id = ?
+      ORDER BY page_id ASC, source_page_id ASC, id ASC;
+      ''',
+      variables: [Variable<String>(comicSourceLinkId)],
+    ).get();
+    return rows.map(_pageSourceLinkRecordFromRow).toList();
+  }
+
+  Future<void> upsertChapterSourceLink(ChapterSourceLinkRecord record) {
+    return customStatement(
+      '''
+      INSERT INTO chapter_source_links (
+        id,
+        chapter_id,
+        comic_source_link_id,
+        source_chapter_id,
+        source_url,
+        linked_at,
+        updated_at,
+        metadata_json
+      )
+      VALUES (?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP), ?)
+      ON CONFLICT(chapter_id, comic_source_link_id, source_chapter_id) DO UPDATE SET
+        id = excluded.id,
+        source_url = excluded.source_url,
+        linked_at = COALESCE(excluded.linked_at, chapter_source_links.linked_at),
+        updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP),
+        metadata_json = excluded.metadata_json;
+      ''',
+      [
+        record.id,
+        record.chapterId,
+        record.comicSourceLinkId,
+        record.sourceChapterId,
+        record.sourceUrl,
+        record.linkedAt,
+        record.updatedAt,
+        record.metadataJson,
+      ],
+    );
+  }
+
+  Future<void> upsertPageSourceLink(PageSourceLinkRecord record) {
+    return customStatement(
+      '''
+      INSERT INTO page_source_links (
+        id,
+        page_id,
+        comic_source_link_id,
+        chapter_source_link_id,
+        source_page_id,
+        source_url,
+        linked_at,
+        updated_at,
+        metadata_json
+      )
+      VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP), ?)
+      ON CONFLICT(page_id, comic_source_link_id, source_page_id) DO UPDATE SET
+        id = excluded.id,
+        chapter_source_link_id = excluded.chapter_source_link_id,
+        source_url = excluded.source_url,
+        linked_at = COALESCE(excluded.linked_at, page_source_links.linked_at),
+        updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP),
+        metadata_json = excluded.metadata_json;
+      ''',
+      [
+        record.id,
+        record.pageId,
+        record.comicSourceLinkId,
+        record.chapterSourceLinkId,
+        record.sourcePageId,
+        record.sourceUrl,
+        record.linkedAt,
+        record.updatedAt,
+        record.metadataJson,
+      ],
+    );
+  }
+
+  Future<void> upsertSourceTag(SourceTagRecord record) {
+    return customStatement(
+      '''
+      INSERT INTO source_tags (
+        id,
+        source_platform_id,
+        namespace,
+        tag_key,
+        display_name,
+        created_at
+      )
+      VALUES (?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+      ON CONFLICT(source_platform_id, namespace, tag_key) DO UPDATE SET
+        id = excluded.id,
+        display_name = excluded.display_name;
+      ''',
+      [
+        record.id,
+        record.sourcePlatformId,
+        record.namespace,
+        record.tagKey,
+        record.displayName,
+        record.createdAt,
+      ],
+    );
+  }
+
+  Future<void> attachSourceTagToComicSourceLink(
+    ComicSourceLinkTagRecord record,
+  ) {
+    return customStatement(
+      '''
+      INSERT INTO comic_source_link_tags (
+        comic_source_link_id,
+        source_tag_id,
+        added_at
+      )
+      VALUES (?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+      ON CONFLICT(comic_source_link_id, source_tag_id) DO NOTHING;
+      ''',
+      [record.comicSourceLinkId, record.sourceTagId, record.addedAt],
+    );
+  }
+
+  Future<List<SourceTagRecord>> loadSourceTagsForComicSourceLink(
+    String comicSourceLinkId,
+  ) async {
+    final rows = await customSelect(
+      '''
+      SELECT st.*
+      FROM comic_source_link_tags cslt
+      JOIN source_tags st ON st.id = cslt.source_tag_id
+      WHERE cslt.comic_source_link_id = ?
+      ORDER BY st.namespace ASC, st.display_name ASC, st.tag_key ASC;
+      ''',
+      variables: [Variable<String>(comicSourceLinkId)],
+    ).get();
+    return rows.map(_sourceTagRecordFromRow).toList();
+  }
+
+  Future<void> clearSourceTagsForComicSourceLink(String comicSourceLinkId) {
+    return customStatement(
+      '''
+      DELETE FROM comic_source_link_tags
+      WHERE comic_source_link_id = ?;
+      ''',
+      [comicSourceLinkId],
+    );
+  }
+
+  Future<void> upsertUserTag(UserTagRecord record) {
+    return customStatement(
+      '''
+      INSERT INTO user_tags (
+        id,
+        name,
+        normalized_name,
+        color,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
+      ON CONFLICT(normalized_name) DO UPDATE SET
+        id = excluded.id,
+        name = excluded.name,
+        color = excluded.color,
+        updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP);
+      ''',
+      [
+        record.id,
+        record.name,
+        record.normalizedName,
+        record.color,
+        record.createdAt,
+        record.updatedAt,
+      ],
+    );
+  }
+
+  Future<void> attachUserTagToComic(ComicUserTagRecord record) {
+    return customStatement(
+      '''
+      INSERT INTO comic_user_tags (
+        comic_id,
+        user_tag_id,
+        added_at
+      )
+      VALUES (?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+      ON CONFLICT(comic_id, user_tag_id) DO NOTHING;
+      ''',
+      [record.comicId, record.userTagId, record.addedAt],
+    );
+  }
+
+  Future<void> removeUserTagFromComic({
+    required String comicId,
+    required String userTagId,
+  }) {
+    return customStatement(
+      '''
+      DELETE FROM comic_user_tags
+      WHERE comic_id = ?
+        AND user_tag_id = ?;
+      ''',
+      [comicId, userTagId],
+    );
+  }
+
+  Future<List<UserTagRecord>> loadUserTagsForComic(String comicId) async {
+    final rows = await customSelect(
+      '''
+      SELECT ut.*
+      FROM comic_user_tags cut
+      JOIN user_tags ut ON ut.id = cut.user_tag_id
+      WHERE cut.comic_id = ?
+      ORDER BY ut.name ASC, ut.id ASC;
+      ''',
+      variables: [Variable<String>(comicId)],
+    ).get();
+    return rows.map(_userTagRecordFromRow).toList();
+  }
+
+  Future<void> replaceEhTagTaxonomyRecords(
+    String providerKey,
+    Iterable<EhTagTaxonomyRecord> records,
+  ) async {
+    await transaction(() async {
+      await customStatement(
+        'DELETE FROM eh_tag_taxonomy WHERE provider_key = ?;',
+        [providerKey],
+      );
+      for (final record in records) {
+        await customStatement(
+          '''
+          INSERT INTO eh_tag_taxonomy (
+            provider_key,
+            locale,
+            namespace,
+            tag_key,
+            translated_label,
+            source_sha,
+            source_version,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP));
+          ''',
+          [
+            record.providerKey,
+            record.locale,
+            record.namespace,
+            record.tagKey,
+            record.translatedLabel,
+            record.sourceSha,
+            record.sourceVersion,
+            record.updatedAt,
+          ],
+        );
+      }
+    });
+  }
+
+  Future<List<EhTagTaxonomyRecord>> loadEhTagTaxonomy({
+    required String providerKey,
+    required String locale,
+  }) async {
+    final rows = await customSelect(
+      '''
+      SELECT * FROM eh_tag_taxonomy
+      WHERE provider_key = ?
+        AND locale = ?
+      ORDER BY namespace ASC, tag_key ASC;
+      ''',
+      variables: [Variable<String>(providerKey), Variable<String>(locale)],
+    ).get();
+    return rows.map(_ehTagTaxonomyRecordFromRow).toList();
+  }
+
+  Future<List<LocalLibraryBrowseRecord>> loadLocalLibraryBrowseRecords() async {
+    final rows = await customSelect('''
+      SELECT
+        c.id AS comic_id,
+        c.title AS title,
+        c.normalized_title AS normalized_title,
+        (
+          SELECT lli.storage_type
+          FROM local_library_items lli
+          WHERE lli.comic_id = c.id
+          ORDER BY lli.updated_at DESC, lli.imported_at DESC, lli.id DESC
+          LIMIT 1
+        ) AS storage_type,
+        (
+          SELECT lli.imported_at
+          FROM local_library_items lli
+          WHERE lli.comic_id = c.id
+          ORDER BY lli.updated_at DESC, lli.imported_at DESC, lli.id DESC
+          LIMIT 1
+        ) AS imported_at,
+        (
+          SELECT lli.updated_at
+          FROM local_library_items lli
+          WHERE lli.comic_id = c.id
+          ORDER BY lli.updated_at DESC, lli.imported_at DESC, lli.id DESC
+          LIMIT 1
+        ) AS updated_at,
+        (
+          SELECT GROUP_CONCAT(ut.name)
+          FROM comic_user_tags cut
+          JOIN user_tags ut ON ut.id = cut.user_tag_id
+          WHERE cut.comic_id = c.id
+        ) AS user_tags,
+        (
+          SELECT GROUP_CONCAT(
+            CASE
+              WHEN st.namespace = '' THEN st.display_name
+              ELSE st.namespace || ':' || st.display_name
+            END
+          )
+          FROM comic_source_links csl
+          JOIN comic_source_link_tags cslt
+            ON cslt.comic_source_link_id = csl.id
+          JOIN source_tags st
+            ON st.id = cslt.source_tag_id
+          WHERE csl.comic_id = c.id
+            AND csl.is_primary = 1
+        ) AS source_tags
+      FROM comics c
+      WHERE EXISTS (
+        SELECT 1 FROM local_library_items lli
+        WHERE lli.comic_id = c.id
+      )
+      ORDER BY c.title ASC, c.id ASC;
+      ''').get();
+    return rows
+        .map(
+          (row) => LocalLibraryBrowseRecord(
+            comicId: row.read<String>('comic_id'),
+            title: row.read<String>('title'),
+            normalizedTitle: row.read<String>('normalized_title'),
+            storageType: row.read<String?>('storage_type'),
+            importedAt: row.read<String?>('imported_at'),
+            updatedAt: row.read<String?>('updated_at'),
+            userTags: _splitGroupedStrings(row.read<String?>('user_tags')),
+            sourceTags: _splitGroupedStrings(row.read<String?>('source_tags')),
+          ),
+        )
+        .toList();
   }
 
   Future<void> upsertFavorite(FavoriteRecord record) {
@@ -1456,9 +2147,75 @@ class UnifiedComicsStore extends GeneratedDatabase {
       sourceComicId: row.read<String>('source_comic_id'),
       linkStatus: row.read<String>('link_status'),
       isPrimary: row.read<int>('is_primary') == 1,
+      sourceUrl: row.read<String?>('source_url'),
+      sourceTitle: row.read<String?>('source_title'),
+      downloadedAt: row.read<String?>('downloaded_at'),
+      lastVerifiedAt: row.read<String?>('last_verified_at'),
       linkedAt: row.read<String>('linked_at'),
       updatedAt: row.read<String>('updated_at'),
       metadataJson: row.read<String?>('metadata_json'),
+    );
+  }
+
+  ChapterSourceLinkRecord _chapterSourceLinkRecordFromRow(QueryRow row) {
+    return ChapterSourceLinkRecord(
+      id: row.read<String>('id'),
+      chapterId: row.read<String>('chapter_id'),
+      comicSourceLinkId: row.read<String>('comic_source_link_id'),
+      sourceChapterId: row.read<String>('source_chapter_id'),
+      sourceUrl: row.read<String?>('source_url'),
+      linkedAt: row.read<String>('linked_at'),
+      updatedAt: row.read<String>('updated_at'),
+      metadataJson: row.read<String?>('metadata_json'),
+    );
+  }
+
+  PageSourceLinkRecord _pageSourceLinkRecordFromRow(QueryRow row) {
+    return PageSourceLinkRecord(
+      id: row.read<String>('id'),
+      pageId: row.read<String>('page_id'),
+      comicSourceLinkId: row.read<String>('comic_source_link_id'),
+      chapterSourceLinkId: row.read<String?>('chapter_source_link_id'),
+      sourcePageId: row.read<String>('source_page_id'),
+      sourceUrl: row.read<String?>('source_url'),
+      linkedAt: row.read<String>('linked_at'),
+      updatedAt: row.read<String>('updated_at'),
+      metadataJson: row.read<String?>('metadata_json'),
+    );
+  }
+
+  SourceTagRecord _sourceTagRecordFromRow(QueryRow row) {
+    return SourceTagRecord(
+      id: row.read<String>('id'),
+      sourcePlatformId: row.read<String>('source_platform_id'),
+      namespace: row.read<String>('namespace'),
+      tagKey: row.read<String>('tag_key'),
+      displayName: row.read<String>('display_name'),
+      createdAt: row.read<String>('created_at'),
+    );
+  }
+
+  UserTagRecord _userTagRecordFromRow(QueryRow row) {
+    return UserTagRecord(
+      id: row.read<String>('id'),
+      name: row.read<String>('name'),
+      normalizedName: row.read<String>('normalized_name'),
+      color: row.read<String?>('color'),
+      createdAt: row.read<String>('created_at'),
+      updatedAt: row.read<String>('updated_at'),
+    );
+  }
+
+  EhTagTaxonomyRecord _ehTagTaxonomyRecordFromRow(QueryRow row) {
+    return EhTagTaxonomyRecord(
+      providerKey: row.read<String>('provider_key'),
+      locale: row.read<String>('locale'),
+      namespace: row.read<String>('namespace'),
+      tagKey: row.read<String>('tag_key'),
+      translatedLabel: row.read<String>('translated_label'),
+      sourceSha: row.read<String?>('source_sha'),
+      sourceVersion: row.read<int?>('source_version'),
+      updatedAt: row.read<String>('updated_at'),
     );
   }
 
@@ -1539,6 +2296,27 @@ class UnifiedComicsStore extends GeneratedDatabase {
       sourceContext: row.read<String>('source_context'),
       legacyIntType: row.read<int?>('legacy_int_type'),
     );
+  }
+
+  Future<void> _ensureTextColumn(String tableName, String columnName) async {
+    final columns = await listColumns(tableName);
+    if (columns.contains(columnName)) {
+      return;
+    }
+    await customStatement(
+      'ALTER TABLE $tableName ADD COLUMN $columnName TEXT;',
+    );
+  }
+
+  List<String> _splitGroupedStrings(String? raw) {
+    if (raw == null || raw.isEmpty) {
+      return const <String>[];
+    }
+    return raw
+        .split(',')
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toList(growable: false);
   }
 }
 

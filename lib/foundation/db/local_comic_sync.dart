@@ -17,6 +17,7 @@ class LocalComicCanonicalSyncService {
   Future<void> syncComic(LocalComic comic) async {
     final importedAt = comic.createdAt.toIso8601String();
     final chapterInputs = await _buildChapterInputs(comic);
+    final sourceLinkId = _localComicSourceLinkId(comic.id);
     final fileCount = chapterInputs.fold<int>(
       0,
       (total, chapter) => total + chapter.pages.length,
@@ -33,7 +34,9 @@ class LocalComicCanonicalSyncService {
           id: comic.id,
           title: comic.title,
           normalizedTitle: _normalizeText(comic.title),
-          coverLocalPath: comic.coverFile.existsSync() ? comic.coverFile.path : null,
+          coverLocalPath: comic.coverFile.existsSync()
+              ? comic.coverFile.path
+              : null,
           createdAt: importedAt,
           updatedAt: importedAt,
         ),
@@ -61,9 +64,28 @@ class LocalComicCanonicalSyncService {
           updatedAt: importedAt,
         ),
       );
+      await store.upsertComicSourceLink(
+        ComicSourceLinkRecord(
+          id: sourceLinkId,
+          comicId: comic.id,
+          sourcePlatformId: 'local',
+          sourceComicId: comic.baseDir,
+          linkStatus: 'candidate',
+          isPrimary: false,
+          sourceUrl: Directory(comic.baseDir).uri.toString(),
+          sourceTitle: comic.title,
+          linkedAt: importedAt,
+          updatedAt: importedAt,
+          metadataJson: '{"origin":"local_import"}',
+        ),
+      );
       await store.deleteChaptersForComic(comic.id);
 
-      for (var chapterIndex = 0; chapterIndex < chapterInputs.length; chapterIndex++) {
+      for (
+        var chapterIndex = 0;
+        chapterIndex < chapterInputs.length;
+        chapterIndex++
+      ) {
         final chapter = chapterInputs[chapterIndex];
         final chapterNo =
             chapterInputs.length == 1 &&
@@ -81,16 +103,44 @@ class LocalComicCanonicalSyncService {
             updatedAt: importedAt,
           ),
         );
+        final chapterSourceLinkId =
+            '$sourceLinkId:chapter:${chapter.sourceChapterId}';
+        await store.upsertChapterSourceLink(
+          ChapterSourceLinkRecord(
+            id: chapterSourceLinkId,
+            chapterId: chapter.chapterId,
+            comicSourceLinkId: sourceLinkId,
+            sourceChapterId: chapter.sourceChapterId,
+            sourceUrl: chapter.directory.uri.toString(),
+            linkedAt: importedAt,
+            updatedAt: importedAt,
+            metadataJson: '{"origin":"local_import"}',
+          ),
+        );
         for (var pageIndex = 0; pageIndex < chapter.pages.length; pageIndex++) {
           final page = chapter.pages[pageIndex];
+          final pageId = '${chapter.chapterId}:$pageIndex';
           await store.upsertPage(
             PageRecord(
-              id: '${chapter.chapterId}:$pageIndex',
+              id: pageId,
               chapterId: chapter.chapterId,
               pageIndex: pageIndex,
               localPath: page.path,
               bytes: page.bytes,
               createdAt: importedAt,
+            ),
+          );
+          await store.upsertPageSourceLink(
+            PageSourceLinkRecord(
+              id: '$chapterSourceLinkId:page:$pageIndex',
+              pageId: pageId,
+              comicSourceLinkId: sourceLinkId,
+              chapterSourceLinkId: chapterSourceLinkId,
+              sourcePageId: page.sourcePageId,
+              sourceUrl: File(page.path).uri.toString(),
+              linkedAt: importedAt,
+              updatedAt: importedAt,
+              metadataJson: '{"origin":"local_import"}',
             ),
           );
         }
@@ -100,7 +150,9 @@ class LocalComicCanonicalSyncService {
             id: orderId,
             chapterId: chapter.chapterId,
             orderName: canonicalLocalDefaultPageOrderName,
-            normalizedOrderName: _normalizeText(canonicalLocalDefaultPageOrderName),
+            normalizedOrderName: _normalizeText(
+              canonicalLocalDefaultPageOrderName,
+            ),
             orderType: 'source_default',
             isActive: true,
             createdAt: importedAt,
@@ -120,14 +172,19 @@ class LocalComicCanonicalSyncService {
   }
 
   String _localLibraryItemId(String comicId) => 'local_item:$comicId';
+  String _localComicSourceLinkId(String comicId) =>
+      'source_link:local:$comicId';
 
-  Future<List<_ImportedChapterInput>> _buildChapterInputs(LocalComic comic) async {
+  Future<List<_ImportedChapterInput>> _buildChapterInputs(
+    LocalComic comic,
+  ) async {
     if (comic.chapters == null || comic.downloadedChapters.isEmpty) {
       return [
         _ImportedChapterInput(
           sourceChapterId: canonicalLocalFallbackChapterId,
           chapterId: '${comic.id}:$canonicalLocalFallbackChapterId',
           title: comic.title,
+          directory: Directory(comic.baseDir),
           pages: await _listPages(Directory(comic.baseDir)),
         ),
       ];
@@ -150,6 +207,7 @@ class LocalComicCanonicalSyncService {
           sourceChapterId: sourceChapterId,
           chapterId: '${comic.id}:$sourceChapterId',
           title: chapterMap[sourceChapterId] ?? sourceChapterId,
+          directory: chapterDirectory,
           pages: await _listPages(chapterDirectory),
         ),
       );
@@ -167,9 +225,17 @@ class LocalComicCanonicalSyncService {
         continue;
       }
       final stat = await entity.stat();
-      pages.add(_ImportedPageInput(path: entity.path, bytes: stat.size));
+      pages.add(
+        _ImportedPageInput(
+          path: entity.path,
+          bytes: stat.size,
+          sourcePageId: pathBasename(entity.path),
+        ),
+      );
     }
-    pages.sort((a, b) => naturalCompare(pathBasename(a.path), pathBasename(b.path)));
+    pages.sort(
+      (a, b) => naturalCompare(pathBasename(a.path), pathBasename(b.path)),
+    );
     return pages;
   }
 }
@@ -179,20 +245,27 @@ class _ImportedChapterInput {
     required this.sourceChapterId,
     required this.chapterId,
     required this.title,
+    required this.directory,
     required this.pages,
   });
 
   final String sourceChapterId;
   final String chapterId;
   final String title;
+  final Directory directory;
   final List<_ImportedPageInput> pages;
 }
 
 class _ImportedPageInput {
-  const _ImportedPageInput({required this.path, required this.bytes});
+  const _ImportedPageInput({
+    required this.path,
+    required this.bytes,
+    required this.sourcePageId,
+  });
 
   final String path;
   final int bytes;
+  final String sourcePageId;
 }
 
 String _normalizeText(String value) => value.trim().toLowerCase();

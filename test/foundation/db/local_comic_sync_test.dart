@@ -26,83 +26,127 @@ void main() {
     }
   });
 
-  test('syncs flat local comic into canonical tables with default chapter', () async {
-    final comicDir = Directory(p.join(tempDir.path, 'Flat Comic'))
-      ..createSync(recursive: true);
-    File(p.join(comicDir.path, 'cover.png')).writeAsBytesSync([1, 2, 3]);
-    File(p.join(comicDir.path, '1.png')).writeAsBytesSync([1]);
-    File(p.join(comicDir.path, '2.png')).writeAsBytesSync([1, 2]);
+  test(
+    'syncs flat local comic into canonical tables with default chapter',
+    () async {
+      final comicDir = Directory(p.join(tempDir.path, 'Flat Comic'))
+        ..createSync(recursive: true);
+      File(p.join(comicDir.path, 'cover.png')).writeAsBytesSync([1, 2, 3]);
+      File(p.join(comicDir.path, '1.png')).writeAsBytesSync([1]);
+      File(p.join(comicDir.path, '2.png')).writeAsBytesSync([1, 2]);
 
-    final comic = LocalComic(
-      id: 'flat-1',
-      title: 'Flat Comic',
-      subtitle: 'Local subtitle',
-      tags: const ['artist:test'],
-      directory: comicDir.path,
-      chapters: null,
-      cover: 'cover.png',
-      comicType: ComicType.local,
-      downloadedChapters: const [],
-      createdAt: DateTime.utc(2026, 4, 30),
-    );
+      final comic = LocalComic(
+        id: 'flat-1',
+        title: 'Flat Comic',
+        subtitle: 'Local subtitle',
+        tags: const ['artist:test'],
+        directory: comicDir.path,
+        chapters: null,
+        cover: 'cover.png',
+        comicType: ComicType.local,
+        downloadedChapters: const [],
+        createdAt: DateTime.utc(2026, 4, 30),
+      );
 
-    await LocalComicCanonicalSyncService(store: store).syncComic(comic);
+      await LocalComicCanonicalSyncService(store: store).syncComic(comic);
 
-    final snapshot = await store.loadComicSnapshot('flat-1');
-    final summary = await store.loadPageOrderSummary('flat-1');
+      final snapshot = await store.loadComicSnapshot('flat-1');
+      final summary = await store.loadPageOrderSummary('flat-1');
+      final sourceLinks = await store.loadComicSourceLinks('flat-1');
 
-    expect(snapshot, isNotNull);
-    expect(snapshot!.comic.title, 'Flat Comic');
-    expect(snapshot.localLibraryItems.single.localRootPath, comicDir.path);
-    expect(snapshot.chapters, hasLength(1));
-    expect(snapshot.chapters.single.id, 'flat-1:__imported__');
-    expect(summary.totalPageCount, 3);
-    expect(summary.activeOrderType, 'source_default');
-  });
+      expect(snapshot, isNotNull);
+      expect(snapshot!.comic.title, 'Flat Comic');
+      expect(snapshot.localLibraryItems.single.localRootPath, comicDir.path);
+      expect(snapshot.chapters, hasLength(1));
+      expect(snapshot.chapters.single.id, 'flat-1:__imported__');
+      expect(sourceLinks, hasLength(1));
+      expect(sourceLinks.single.sourcePlatformId, 'local');
+      expect(sourceLinks.single.isPrimary, isFalse);
+      final chapterSourceLinks = await store
+          .loadChapterSourceLinksForComicSourceLink(sourceLinks.single.id);
+      final pageSourceLinks = await store.loadPageSourceLinksForComicSourceLink(
+        sourceLinks.single.id,
+      );
+      expect(chapterSourceLinks, hasLength(1));
+      expect(
+        chapterSourceLinks.single.sourceChapterId,
+        canonicalLocalFallbackChapterId,
+      );
+      expect(pageSourceLinks, hasLength(3));
+      expect(pageSourceLinks.map((link) => link.sourcePageId).toList(), [
+        '1.png',
+        '2.png',
+        'cover.png',
+      ]);
+      expect(summary.totalPageCount, 3);
+      expect(summary.activeOrderType, 'source_default');
+    },
+  );
 
-  test('syncs chaptered local comic with chapter ids and page counts', () async {
-    final comicDir = Directory(p.join(tempDir.path, 'Chaptered Comic'))
-      ..createSync(recursive: true);
-    File(p.join(comicDir.path, 'cover.png')).writeAsBytesSync([9]);
-    final chapterOneDir = Directory(
-      p.join(comicDir.path, LocalManager.getChapterDirectoryName('Chapter/1')),
-    )..createSync(recursive: true);
-    final chapterTwoDir = Directory(
-      p.join(comicDir.path, LocalManager.getChapterDirectoryName('Chapter:2')),
-    )..createSync(recursive: true);
-    File(p.join(chapterOneDir.path, '2.png')).writeAsBytesSync([2]);
-    File(p.join(chapterOneDir.path, '1.png')).writeAsBytesSync([1]);
-    File(p.join(chapterTwoDir.path, '1.png')).writeAsBytesSync([3]);
+  test(
+    'syncs chaptered local comic with chapter ids and page counts',
+    () async {
+      final comicDir = Directory(p.join(tempDir.path, 'Chaptered Comic'))
+        ..createSync(recursive: true);
+      File(p.join(comicDir.path, 'cover.png')).writeAsBytesSync([9]);
+      final chapterOneDir = Directory(
+        p.join(
+          comicDir.path,
+          LocalManager.getChapterDirectoryName('Chapter/1'),
+        ),
+      )..createSync(recursive: true);
+      final chapterTwoDir = Directory(
+        p.join(
+          comicDir.path,
+          LocalManager.getChapterDirectoryName('Chapter:2'),
+        ),
+      )..createSync(recursive: true);
+      File(p.join(chapterOneDir.path, '2.png')).writeAsBytesSync([2]);
+      File(p.join(chapterOneDir.path, '1.png')).writeAsBytesSync([1]);
+      File(p.join(chapterTwoDir.path, '1.png')).writeAsBytesSync([3]);
 
-    final comic = LocalComic(
-      id: 'chap-1',
-      title: 'Chaptered Comic',
-      subtitle: '',
-      tags: const [],
-      directory: comicDir.path,
-      chapters: ComicChapters({
-        'Chapter/1': 'Opening',
-        'Chapter:2': 'Ending',
-      }),
-      cover: 'cover.png',
-      comicType: ComicType.local,
-      downloadedChapters: const ['Chapter/1', 'Chapter:2'],
-      createdAt: DateTime.utc(2026, 4, 30, 12),
-    );
+      final comic = LocalComic(
+        id: 'chap-1',
+        title: 'Chaptered Comic',
+        subtitle: '',
+        tags: const [],
+        directory: comicDir.path,
+        chapters: ComicChapters({
+          'Chapter/1': 'Opening',
+          'Chapter:2': 'Ending',
+        }),
+        cover: 'cover.png',
+        comicType: ComicType.local,
+        downloadedChapters: const ['Chapter/1', 'Chapter:2'],
+        createdAt: DateTime.utc(2026, 4, 30, 12),
+      );
 
-    await LocalComicCanonicalSyncService(store: store).syncComic(comic);
+      await LocalComicCanonicalSyncService(store: store).syncComic(comic);
 
-    final snapshot = await store.loadComicSnapshot('chap-1');
-    final summary = await store.loadPageOrderSummary('chap-1');
+      final snapshot = await store.loadComicSnapshot('chap-1');
+      final summary = await store.loadPageOrderSummary('chap-1');
+      final sourceLinks = await store.loadComicSourceLinks('chap-1');
 
-    expect(snapshot, isNotNull);
-    expect(snapshot!.chapters.map((e) => e.id), [
-      'chap-1:Chapter/1',
-      'chap-1:Chapter:2',
-    ]);
-    expect(await store.countPagesForChapter('chap-1:Chapter/1'), 2);
-    expect(await store.countPagesForChapter('chap-1:Chapter:2'), 1);
-    expect(summary.totalOrders, 2);
-    expect(summary.totalPageCount, 3);
-  });
+      expect(snapshot, isNotNull);
+      expect(snapshot!.chapters.map((e) => e.id), [
+        'chap-1:Chapter/1',
+        'chap-1:Chapter:2',
+      ]);
+      expect(await store.countPagesForChapter('chap-1:Chapter/1'), 2);
+      expect(await store.countPagesForChapter('chap-1:Chapter:2'), 1);
+      expect(sourceLinks, hasLength(1));
+      final chapterSourceLinks = await store
+          .loadChapterSourceLinksForComicSourceLink(sourceLinks.single.id);
+      final pageSourceLinks = await store.loadPageSourceLinksForComicSourceLink(
+        sourceLinks.single.id,
+      );
+      expect(chapterSourceLinks.map((link) => link.sourceChapterId).toList(), [
+        'Chapter/1',
+        'Chapter:2',
+      ]);
+      expect(pageSourceLinks, hasLength(3));
+      expect(summary.totalOrders, 2);
+      expect(summary.totalPageCount, 3);
+    },
+  );
 }

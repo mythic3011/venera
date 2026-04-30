@@ -30,19 +30,27 @@ void main() {
       tables,
       containsAll(<String>[
         'chapters',
+        'chapter_source_links',
         'comic_source_links',
+        'comic_source_link_tags',
         'comic_titles',
+        'comic_user_tags',
         'comics',
+        'eh_tag_taxonomy',
         'favorites',
         'history_events',
         'local_library_items',
         'page_order_items',
         'page_orders',
+        'page_source_links',
         'pages',
+        'source_tags',
         'source_platform_aliases',
         'source_platforms',
+        'user_tags',
       ]),
     );
+    expect(tables, isNot(contains('comic_sources')));
   });
 
   test('foreign key enforcement is enabled on store connection', () async {
@@ -71,6 +79,20 @@ void main() {
     );
     expect(await store.currentJournalMode(), 'wal');
     expect(await store.foreignKeysEnabled(), 1);
+  });
+
+  test('comic source links include V1 citation columns', () async {
+    final columns = await store.listColumns('comic_source_links');
+
+    expect(
+      columns,
+      containsAll(<String>[
+        'source_url',
+        'source_title',
+        'downloaded_at',
+        'last_verified_at',
+      ]),
+    );
   });
 
   test(
@@ -268,6 +290,10 @@ void main() {
         sourceComicId: 'remote-123',
         linkStatus: 'active',
         isPrimary: true,
+        sourceUrl: 'https://example.com/comic/remote-123',
+        sourceTitle: 'Remote Title',
+        downloadedAt: '2026-04-30T12:00:00.000Z',
+        lastVerifiedAt: '2026-04-30T13:00:00.000Z',
         metadataJson: '{"origin":"import"}',
       ),
     );
@@ -280,63 +306,340 @@ void main() {
     expect(primary?.isPrimary, isTrue);
     expect(primary?.sourcePlatformId, 'platform-a');
     expect(primary?.sourceComicId, 'remote-123');
+    expect(primary?.sourceUrl, 'https://example.com/comic/remote-123');
+    expect(primary?.sourceTitle, 'Remote Title');
+    expect(primary?.downloadedAt, '2026-04-30T12:00:00.000Z');
+    expect(primary?.lastVerifiedAt, '2026-04-30T13:00:00.000Z');
     expect(primary?.metadataJson, '{"origin":"import"}');
     expect(all.length, 1);
   });
 
-  test('primary ordering keeps primary first when multiple links exist', () async {
-    await store.upsertSourcePlatform(
-      const SourcePlatformRecord(
-        id: 'platform-a',
-        canonicalKey: 'platform-a',
-        displayName: 'Platform A',
-        kind: 'remote',
-      ),
-    );
-    await store.upsertSourcePlatform(
-      const SourcePlatformRecord(
-        id: 'platform-b',
-        canonicalKey: 'platform-b',
-        displayName: 'Platform B',
-        kind: 'remote',
-      ),
-    );
-    await store.upsertComic(
-      const ComicRecord(
-        id: 'comic-source-2',
-        title: 'Source Comic 2',
-        normalizedTitle: 'source comic 2',
-      ),
-    );
-    await store.upsertComicSourceLink(
-      const ComicSourceLinkRecord(
-        id: 'link-a',
-        comicId: 'comic-source-2',
-        sourcePlatformId: 'platform-a',
-        sourceComicId: 'a-1',
-        isPrimary: false,
-      ),
-    );
-    await store.upsertComicSourceLink(
-      const ComicSourceLinkRecord(
-        id: 'link-b',
-        comicId: 'comic-source-2',
-        sourcePlatformId: 'platform-b',
-        sourceComicId: 'b-1',
-        isPrimary: true,
-      ),
-    );
+  test(
+    'primary ordering keeps primary first when multiple links exist',
+    () async {
+      await store.upsertSourcePlatform(
+        const SourcePlatformRecord(
+          id: 'platform-a',
+          canonicalKey: 'platform-a',
+          displayName: 'Platform A',
+          kind: 'remote',
+        ),
+      );
+      await store.upsertSourcePlatform(
+        const SourcePlatformRecord(
+          id: 'platform-b',
+          canonicalKey: 'platform-b',
+          displayName: 'Platform B',
+          kind: 'remote',
+        ),
+      );
+      await store.upsertComic(
+        const ComicRecord(
+          id: 'comic-source-2',
+          title: 'Source Comic 2',
+          normalizedTitle: 'source comic 2',
+        ),
+      );
+      await store.upsertComicSourceLink(
+        const ComicSourceLinkRecord(
+          id: 'link-a',
+          comicId: 'comic-source-2',
+          sourcePlatformId: 'platform-a',
+          sourceComicId: 'a-1',
+          isPrimary: false,
+        ),
+      );
+      await store.upsertComicSourceLink(
+        const ComicSourceLinkRecord(
+          id: 'link-b',
+          comicId: 'comic-source-2',
+          sourcePlatformId: 'platform-b',
+          sourceComicId: 'b-1',
+          isPrimary: true,
+        ),
+      );
 
-    final links = await store.loadComicSourceLinks('comic-source-2');
-    final primary = await store.loadPrimaryComicSourceLink('comic-source-2');
+      final links = await store.loadComicSourceLinks('comic-source-2');
+      final primary = await store.loadPrimaryComicSourceLink('comic-source-2');
 
-    expect(links.length, 2);
-    expect(links.first.id, 'link-b');
-    expect(links.first.isPrimary, isTrue);
-    expect(links.last.id, 'link-a');
-    expect(links.last.isPrimary, isFalse);
-    expect(primary?.id, 'link-b');
+      expect(links.length, 2);
+      expect(links.first.id, 'link-b');
+      expect(links.first.isPrimary, isTrue);
+      expect(links.last.id, 'link-a');
+      expect(links.last.isPrimary, isFalse);
+      expect(primary?.id, 'link-b');
+    },
+  );
+
+  test('legacy comic_source_links rows survive V1 column extension', () async {
+    final legacyPath = '${tempDir.path}/legacy_source_links.db';
+    final legacyDb = sqlite3.open(legacyPath);
+    addTearDown(legacyDb.dispose);
+    legacyDb.execute('PRAGMA foreign_keys = ON;');
+    legacyDb.execute('''
+      CREATE TABLE source_platforms (
+        id TEXT PRIMARY KEY,
+        canonical_key TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        is_enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    ''');
+    legacyDb.execute('''
+      CREATE TABLE comics (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        normalized_title TEXT NOT NULL,
+        cover_local_path TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    ''');
+    legacyDb.execute('''
+      CREATE TABLE comic_source_links (
+        id TEXT PRIMARY KEY,
+        comic_id TEXT NOT NULL,
+        source_platform_id TEXT NOT NULL,
+        source_comic_id TEXT NOT NULL,
+        link_status TEXT NOT NULL DEFAULT 'active',
+        is_primary INTEGER NOT NULL DEFAULT 0,
+        linked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        metadata_json TEXT,
+        FOREIGN KEY (comic_id) REFERENCES comics(id) ON DELETE CASCADE,
+        FOREIGN KEY (source_platform_id) REFERENCES source_platforms(id) ON DELETE RESTRICT,
+        UNIQUE(comic_id, source_platform_id, source_comic_id)
+      );
+    ''');
+    legacyDb.execute(
+      '''
+      INSERT INTO source_platforms (id, canonical_key, display_name, kind)
+      VALUES (?, ?, ?, ?);
+      ''',
+      ['platform-old', 'platform-old', 'Platform Old', 'remote'],
+    );
+    legacyDb.execute(
+      '''
+      INSERT INTO comics (id, title, normalized_title)
+      VALUES (?, ?, ?);
+      ''',
+      ['comic-old', 'Old Comic', 'old comic'],
+    );
+    legacyDb.execute(
+      '''
+      INSERT INTO comic_source_links (
+        id, comic_id, source_platform_id, source_comic_id, link_status, is_primary, metadata_json
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?);
+      ''',
+      [
+        'legacy-link',
+        'comic-old',
+        'platform-old',
+        'legacy-123',
+        'active',
+        1,
+        '{"legacy":true}',
+      ],
+    );
+    legacyDb.dispose();
+
+    final migratedStore = UnifiedComicsStore(legacyPath);
+    addTearDown(() => migratedStore.close());
+    await migratedStore.init();
+
+    final link = await migratedStore.loadPrimaryComicSourceLink('comic-old');
+
+    expect(link, isNotNull);
+    expect(link?.id, 'legacy-link');
+    expect(link?.sourceComicId, 'legacy-123');
+    expect(link?.metadataJson, '{"legacy":true}');
   });
+
+  test(
+    'source tags stay scoped to comic source link and user tags stay separate',
+    () async {
+      await store.upsertSourcePlatform(
+        const SourcePlatformRecord(
+          id: 'platform-tags',
+          canonicalKey: 'platform-tags',
+          displayName: 'Platform Tags',
+          kind: 'remote',
+        ),
+      );
+      await store.upsertComic(
+        const ComicRecord(
+          id: 'comic-tags',
+          title: 'Comic Tags',
+          normalizedTitle: 'comic tags',
+        ),
+      );
+      await store.upsertComicSourceLink(
+        const ComicSourceLinkRecord(
+          id: 'link-tags-a',
+          comicId: 'comic-tags',
+          sourcePlatformId: 'platform-tags',
+          sourceComicId: 'remote-a',
+          isPrimary: true,
+        ),
+      );
+      await store.upsertComicSourceLink(
+        const ComicSourceLinkRecord(
+          id: 'link-tags-b',
+          comicId: 'comic-tags',
+          sourcePlatformId: 'platform-tags',
+          sourceComicId: 'remote-b',
+        ),
+      );
+      await store.upsertSourceTag(
+        const SourceTagRecord(
+          id: 'source-tag-a',
+          sourcePlatformId: 'platform-tags',
+          namespace: 'female',
+          tagKey: 'heroine',
+          displayName: 'heroine',
+        ),
+      );
+      await store.upsertSourceTag(
+        const SourceTagRecord(
+          id: 'source-tag-b',
+          sourcePlatformId: 'platform-tags',
+          namespace: 'male',
+          tagKey: 'rival',
+          displayName: 'rival',
+        ),
+      );
+      await store.attachSourceTagToComicSourceLink(
+        const ComicSourceLinkTagRecord(
+          comicSourceLinkId: 'link-tags-a',
+          sourceTagId: 'source-tag-a',
+        ),
+      );
+      await store.attachSourceTagToComicSourceLink(
+        const ComicSourceLinkTagRecord(
+          comicSourceLinkId: 'link-tags-b',
+          sourceTagId: 'source-tag-b',
+        ),
+      );
+      await store.upsertUserTag(
+        const UserTagRecord(
+          id: 'user-tag-a',
+          name: 'reading',
+          normalizedName: 'reading',
+        ),
+      );
+      await store.attachUserTagToComic(
+        const ComicUserTagRecord(
+          comicId: 'comic-tags',
+          userTagId: 'user-tag-a',
+        ),
+      );
+
+      final linkATags = await store.loadSourceTagsForComicSourceLink(
+        'link-tags-a',
+      );
+      final linkBTags = await store.loadSourceTagsForComicSourceLink(
+        'link-tags-b',
+      );
+      final userTags = await store.loadUserTagsForComic('comic-tags');
+
+      expect(linkATags.map((tag) => tag.displayName), ['heroine']);
+      expect(linkBTags.map((tag) => tag.displayName), ['rival']);
+      expect(userTags.map((tag) => tag.name), ['reading']);
+    },
+  );
+
+  test(
+    'eh tag taxonomy and local library browse records round-trip canonical data',
+    () async {
+      await store.upsertSourcePlatform(
+        const SourcePlatformRecord(
+          id: 'ehentai',
+          canonicalKey: 'ehentai',
+          displayName: 'E-Hentai',
+          kind: 'remote',
+        ),
+      );
+      await store.upsertComic(
+        const ComicRecord(
+          id: 'comic-browse',
+          title: 'Browse Comic',
+          normalizedTitle: 'browse comic',
+        ),
+      );
+      await store.upsertLocalLibraryItem(
+        const LocalLibraryItemRecord(
+          id: 'local-browse',
+          comicId: 'comic-browse',
+          storageType: 'user_imported',
+          localRootPath: '/library/browse',
+          updatedAt: '2026-04-30T10:00:00.000Z',
+        ),
+      );
+      await store.upsertComicSourceLink(
+        const ComicSourceLinkRecord(
+          id: 'browse-link',
+          comicId: 'comic-browse',
+          sourcePlatformId: 'ehentai',
+          sourceComicId: 'eh-1',
+          isPrimary: true,
+        ),
+      );
+      await store.upsertSourceTag(
+        const SourceTagRecord(
+          id: 'browse-source-tag',
+          sourcePlatformId: 'ehentai',
+          namespace: 'female',
+          tagKey: 'glasses',
+          displayName: 'glasses',
+        ),
+      );
+      await store.attachSourceTagToComicSourceLink(
+        const ComicSourceLinkTagRecord(
+          comicSourceLinkId: 'browse-link',
+          sourceTagId: 'browse-source-tag',
+        ),
+      );
+      await store.upsertUserTag(
+        const UserTagRecord(
+          id: 'browse-user-tag',
+          name: 'queued',
+          normalizedName: 'queued',
+        ),
+      );
+      await store.attachUserTagToComic(
+        const ComicUserTagRecord(
+          comicId: 'comic-browse',
+          userTagId: 'browse-user-tag',
+        ),
+      );
+      await store.replaceEhTagTaxonomyRecords(_ehentaiProvider, const [
+        EhTagTaxonomyRecord(
+          providerKey: _ehentaiProvider,
+          locale: 'zh_CN',
+          namespace: 'female',
+          tagKey: 'glasses',
+          translatedLabel: '眼镜',
+          sourceSha: 'sha-1',
+          sourceVersion: 7,
+        ),
+      ]);
+
+      final taxonomy = await store.loadEhTagTaxonomy(
+        providerKey: _ehentaiProvider,
+        locale: 'zh_CN',
+      );
+      final browseRows = await store.loadLocalLibraryBrowseRecords();
+
+      expect(taxonomy.single.translatedLabel, '眼镜');
+      expect(taxonomy.single.sourceSha, 'sha-1');
+      expect(browseRows.single.comicId, 'comic-browse');
+      expect(browseRows.single.userTags, ['queued']);
+      expect(browseRows.single.sourceTags, ['female:glasses']);
+    },
+  );
 
   test('loads active visible pages in page-order sequence', () async {
     await _insertReaderFixture(store);
@@ -389,7 +692,35 @@ void main() {
       expect(pages, isEmpty);
     },
   );
+
+  test(
+    'replacePageOrderItems rewrites order membership without stale rows',
+    () async {
+      await _insertReaderFixture(store);
+      await store.upsertPage(
+        const PageRecord(
+          id: 'page-c',
+          chapterId: 'chapter-1',
+          pageIndex: 2,
+          localPath: '/library/comic-1/3.png',
+        ),
+      );
+
+      await store.replacePageOrderItems('order-1', const [
+        PageOrderItemRecord(
+          pageOrderId: 'order-1',
+          pageId: 'page-c',
+          sortOrder: 0,
+        ),
+      ]);
+
+      final pages = await store.loadActivePageOrderPages('chapter-1');
+      expect(pages.map((page) => page.id), ['page-c']);
+    },
+  );
 }
+
+const _ehentaiProvider = 'ehentai';
 
 Future<void> _insertReaderFixture(
   UnifiedComicsStore store, {

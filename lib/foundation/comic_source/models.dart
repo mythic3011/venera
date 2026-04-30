@@ -186,6 +186,34 @@ class ComicDetails with HistoryMixin {
 
   final List<Comment>? comments;
 
+  ComicDetails({
+    required this.title,
+    required this.subTitle,
+    required this.cover,
+    required this.description,
+    required Map<String, List<String>> tags,
+    required this.chapters,
+    required this.thumbnails,
+    required this.recommend,
+    required this.sourceKey,
+    required this.comicId,
+    required this.isFavorite,
+    required this.subId,
+    required this.isLiked,
+    required this.likesCount,
+    required this.commentCount,
+    required this.uploader,
+    required this.uploadTime,
+    required this.updateTime,
+    required this.url,
+    required this.stars,
+    required this.maxPage,
+    required this.comments,
+  }) : tags = {
+         for (final entry in tags.entries)
+           entry.key: List<String>.from(entry.value),
+       };
+
   static Map<String, List<String>> _generateMap(Map<dynamic, dynamic> map) {
     var res = <String, List<String>>{};
     map.forEach((key, value) {
@@ -223,6 +251,56 @@ class ComicDetails with HistoryMixin {
       comments = (json["comments"] as List?)
           ?.map((e) => Comment.fromJson(e))
           .toList();
+
+  ComicDetails copyWith({
+    String? title,
+    String? subTitle,
+    String? cover,
+    String? description,
+    Map<String, List<String>>? tags,
+    ComicChapters? chapters,
+    List<String>? thumbnails,
+    List<Comic>? recommend,
+    String? sourceKey,
+    String? comicId,
+    bool? isFavorite,
+    String? subId,
+    bool? isLiked,
+    int? likesCount,
+    int? commentCount,
+    String? uploader,
+    String? uploadTime,
+    String? updateTime,
+    String? url,
+    double? stars,
+    int? maxPage,
+    List<Comment>? comments,
+  }) {
+    return ComicDetails(
+      title: title ?? this.title,
+      subTitle: subTitle ?? this.subTitle,
+      cover: cover ?? this.cover,
+      description: description ?? this.description,
+      tags: tags ?? this.tags,
+      chapters: chapters ?? this.chapters,
+      thumbnails: thumbnails ?? this.thumbnails,
+      recommend: recommend ?? this.recommend,
+      sourceKey: sourceKey ?? this.sourceKey,
+      comicId: comicId ?? this.comicId,
+      isFavorite: isFavorite ?? this.isFavorite,
+      subId: subId ?? this.subId,
+      isLiked: isLiked ?? this.isLiked,
+      likesCount: likesCount ?? this.likesCount,
+      commentCount: commentCount ?? this.commentCount,
+      uploader: uploader ?? this.uploader,
+      uploadTime: uploadTime ?? this.uploadTime,
+      updateTime: updateTime ?? this.updateTime,
+      url: url ?? this.url,
+      stars: stars ?? this.stars,
+      maxPage: maxPage ?? this.maxPage,
+      comments: comments ?? this.comments,
+    );
+  }
 
   Map<String, dynamic> toJson() {
     return {
