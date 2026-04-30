@@ -9,6 +9,49 @@ import 'package:venera/utils/ext.dart';
 import 'package:venera/utils/tags_translation.dart';
 import 'package:venera/utils/translations.dart';
 
+String applyAutoLanguageFilter({
+  required String query,
+  required SearchPageData? searchPageData,
+  required String setting,
+}) {
+  if (setting == 'none') {
+    return query;
+  }
+  if (!supportsAutoLanguageFilter(searchPageData)) {
+    return query;
+  }
+  final hasLanguageToken = RegExp(r'(^|\s)language\s*:', caseSensitive: false)
+      .hasMatch(query);
+  if (hasLanguageToken) {
+    return query;
+  }
+  final trimmed = query.trim();
+  if (trimmed.isEmpty) {
+    return 'language:$setting';
+  }
+  return '$trimmed language:$setting';
+}
+
+bool supportsAutoLanguageFilter(SearchPageData? searchPageData) {
+  final searchOptions = searchPageData?.searchOptions;
+  if (searchOptions == null || searchOptions.isEmpty) {
+    return false;
+  }
+  for (final option in searchOptions) {
+    final label = option.label.trim().toLowerCase();
+    if (label == 'language' || label == 'languages') {
+      return true;
+    }
+    final hasLanguageNamespace = option.options.keys.any(
+      (key) => key.trim().toLowerCase().startsWith('language:'),
+    );
+    if (hasLanguageNamespace) {
+      return true;
+    }
+  }
+  return false;
+}
+
 class SearchResultPage extends StatefulWidget {
   const SearchResultPage({
     super.key,
@@ -94,23 +137,12 @@ class _SearchResultPageState extends State<SearchResultPage> {
   }
 
   String checkAutoLanguage(String text) {
-    var setting = appdata.settings["autoAddLanguageFilter"] ?? 'none';
-    if (setting == 'none') {
-      return text;
-    }
-    var searchSource = sourceKey;
-    // TODO: Move it to a better place
-    const enabledSources = [
-      'nhentai',
-      'ehentai',
-    ];
-    if (!enabledSources.contains(searchSource)) {
-      return text;
-    }
-    if (!text.contains('language:')) {
-      return '$text language:$setting';
-    }
-    return text;
+    final setting = appdata.settings["autoAddLanguageFilter"] ?? 'none';
+    return applyAutoLanguageFilter(
+      query: text,
+      searchPageData: ComicSource.find(sourceKey)?.searchPageData,
+      setting: setting,
+    );
   }
 
   @override
