@@ -1,5 +1,73 @@
 part of 'comic_source.dart';
 
+abstract final class _ModelJsonKey {
+  static const userName = 'userName';
+  static const avatar = 'avatar';
+  static const content = 'content';
+  static const time = 'time';
+  static const replyCount = 'replyCount';
+  static const id = 'id';
+  static const score = 'score';
+  static const isLiked = 'isLiked';
+  static const voteStatus = 'voteStatus';
+  static const title = 'title';
+  static const subtitle = 'subtitle';
+  static const subTitle = 'subTitle';
+  static const cover = 'cover';
+  static const tags = 'tags';
+  static const description = 'description';
+  static const sourceKey = 'sourceKey';
+  static const maxPage = 'maxPage';
+  static const language = 'language';
+  static const favoriteId = 'favoriteId';
+  static const stars = 'stars';
+  static const chapters = 'chapters';
+  static const comicId = 'comicId';
+  static const thumbnails = 'thumbnails';
+  static const recommend = 'recommend';
+  static const isFavorite = 'isFavorite';
+  static const subId = 'subId';
+  static const likesCount = 'likesCount';
+  static const commentCount = 'commentCount';
+  static const uploader = 'uploader';
+  static const uploadTime = 'uploadTime';
+  static const updateTime = 'updateTime';
+  static const url = 'url';
+  static const comments = 'comments';
+  static const page = 'page';
+  static const action = 'action';
+  static const keyword = 'keyword';
+  static const attributes = 'attributes';
+  static const options = 'options';
+  static const category = 'category';
+  static const param = 'param';
+  static const text = 'text';
+}
+
+extension _ModelJsonRead on Map<String, dynamic> {
+  String readString(String key, {String fallback = ''}) {
+    final value = this[key];
+    return value is String ? value : fallback;
+  }
+
+  String? readStringOrNull(String key) {
+    final value = this[key];
+    return value is String ? value : null;
+  }
+
+  int? readIntOrNull(String key) {
+    final value = this[key];
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return null;
+  }
+
+  bool? readBoolOrNull(String key) {
+    final value = this[key];
+    return value is bool ? value : null;
+  }
+}
+
 class Comment {
   final String userName;
   final String? avatar;
@@ -28,15 +96,15 @@ class Comment {
   }
 
   Comment.fromJson(Map<String, dynamic> json)
-    : userName = json["userName"],
-      avatar = json["avatar"],
-      content = json["content"],
-      time = parseTime(json["time"]),
-      replyCount = json["replyCount"],
-      id = json["id"].toString(),
-      score = json["score"],
-      isLiked = json["isLiked"],
-      voteStatus = json["voteStatus"];
+    : userName = json.readString(_ModelJsonKey.userName),
+      avatar = json.readStringOrNull(_ModelJsonKey.avatar),
+      content = json.readString(_ModelJsonKey.content),
+      time = parseTime(json[_ModelJsonKey.time]),
+      replyCount = json.readIntOrNull(_ModelJsonKey.replyCount),
+      id = json[_ModelJsonKey.id]?.toString(),
+      score = json.readIntOrNull(_ModelJsonKey.score),
+      isLiked = json.readBoolOrNull(_ModelJsonKey.isLiked),
+      voteStatus = json.readIntOrNull(_ModelJsonKey.voteStatus);
 }
 
 class Comic {
@@ -92,16 +160,19 @@ class Comic {
   }
 
   Comic.fromJson(Map<String, dynamic> json, this.sourceKey)
-    : title = json["title"],
-      subtitle = json["subtitle"] ?? json["subTitle"] ?? "",
-      cover = json["cover"],
-      id = json["id"],
-      tags = List<String>.from(json["tags"] ?? []),
-      description = json["description"] ?? "",
-      maxPage = json["maxPage"],
-      language = json["language"],
-      favoriteId = json["favoriteId"],
-      stars = (json["stars"] as num?)?.toDouble();
+    : title = json.readString(_ModelJsonKey.title),
+      subtitle =
+          json.readStringOrNull(_ModelJsonKey.subtitle) ??
+          json.readStringOrNull(_ModelJsonKey.subTitle) ??
+          "",
+      cover = json.readString(_ModelJsonKey.cover),
+      id = json.readString(_ModelJsonKey.id),
+      tags = List<String>.from(json[_ModelJsonKey.tags] ?? const <String>[]),
+      description = json.readString(_ModelJsonKey.description),
+      maxPage = json.readIntOrNull(_ModelJsonKey.maxPage),
+      language = json.readStringOrNull(_ModelJsonKey.language),
+      favoriteId = json.readStringOrNull(_ModelJsonKey.favoriteId),
+      stars = (json[_ModelJsonKey.stars] as num?)?.toDouble();
 
   @override
   bool operator ==(Object other) {
@@ -117,23 +188,57 @@ class Comic {
 }
 
 class ComicID {
+  final SourceComicId sourceComicId;
+
+  ComicID(this.type, this.id)
+    : sourceComicId = SourceComicId.fromComicType(type, id);
+
+  factory ComicID.fromSourceKey(String sourceKey, String id) {
+    return ComicID(ComicType(sourceTypeValueFromKey(sourceKey)), id);
+  }
+
   final ComicType type;
 
   final String id;
 
-  const ComicID(this.type, this.id);
+  String get sourceKey => sourceComicId.sourceKey;
 
   @override
   bool operator ==(Object other) {
     if (other is! ComicID) return false;
-    return other.type == type && other.id == id;
+    return other.sourceKey == sourceKey && other.id == id;
   }
 
   @override
-  int get hashCode => type.hashCode ^ id.hashCode;
+  int get hashCode => sourceKey.hashCode ^ id.hashCode;
 
   @override
-  String toString() => "$type@$id";
+  String toString() => "$sourceKey@$id";
+}
+
+class SourceComicId {
+  final String sourceKey;
+  final String id;
+
+  const SourceComicId({required this.sourceKey, required this.id});
+
+  factory SourceComicId.fromComicType(ComicType type, String id) {
+    return SourceComicId(sourceKey: type.sourceKey, id: id);
+  }
+
+  ComicType get comicType => ComicType(sourceTypeValueFromKey(sourceKey));
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! SourceComicId) return false;
+    return other.sourceKey == sourceKey && other.id == id;
+  }
+
+  @override
+  int get hashCode => sourceKey.hashCode ^ id.hashCode;
+
+  @override
+  String toString() => "$sourceKey@$id";
 }
 
 class ComicDetails with HistoryMixin {
@@ -225,30 +330,36 @@ class ComicDetails with HistoryMixin {
   }
 
   ComicDetails.fromJson(Map<String, dynamic> json)
-    : title = json["title"],
-      subTitle = json["subtitle"],
-      cover = json["cover"],
-      description = json["description"],
-      tags = _generateMap(json["tags"]),
-      chapters = ComicChapters.fromJsonOrNull(json["chapters"]),
-      sourceKey = json["sourceKey"],
-      comicId = json["comicId"],
-      thumbnails = ListOrNull.from(json["thumbnails"]),
-      recommend = (json["recommend"] as List?)
-          ?.map((e) => Comic.fromJson(e, json["sourceKey"]))
+    : title = json.readString(_ModelJsonKey.title),
+      subTitle = json.readStringOrNull(_ModelJsonKey.subtitle),
+      cover = json.readString(_ModelJsonKey.cover),
+      description = json.readStringOrNull(_ModelJsonKey.description),
+      tags = _generateMap(
+        Map<dynamic, dynamic>.from(
+          json[_ModelJsonKey.tags] as Map? ?? const <String, dynamic>{},
+        ),
+      ),
+      chapters = ComicChapters.fromJsonOrNull(json[_ModelJsonKey.chapters]),
+      sourceKey = json.readString(_ModelJsonKey.sourceKey),
+      comicId = json.readString(_ModelJsonKey.comicId),
+      thumbnails = ListOrNull.from(json[_ModelJsonKey.thumbnails]),
+      recommend = (json[_ModelJsonKey.recommend] as List?)
+          ?.map(
+            (e) => Comic.fromJson(e, json.readString(_ModelJsonKey.sourceKey)),
+          )
           .toList(),
-      isFavorite = json["isFavorite"],
-      subId = json["subId"],
-      likesCount = json["likesCount"],
-      isLiked = json["isLiked"],
-      commentCount = json["commentCount"],
-      uploader = json["uploader"],
-      uploadTime = json["uploadTime"],
-      updateTime = json["updateTime"],
-      url = json["url"],
-      stars = (json["stars"] as num?)?.toDouble(),
-      maxPage = json["maxPage"],
-      comments = (json["comments"] as List?)
+      isFavorite = json.readBoolOrNull(_ModelJsonKey.isFavorite),
+      subId = json.readStringOrNull(_ModelJsonKey.subId),
+      likesCount = json.readIntOrNull(_ModelJsonKey.likesCount),
+      isLiked = json.readBoolOrNull(_ModelJsonKey.isLiked),
+      commentCount = json.readIntOrNull(_ModelJsonKey.commentCount),
+      uploader = json.readStringOrNull(_ModelJsonKey.uploader),
+      uploadTime = json.readStringOrNull(_ModelJsonKey.uploadTime),
+      updateTime = json.readStringOrNull(_ModelJsonKey.updateTime),
+      url = json.readStringOrNull(_ModelJsonKey.url),
+      stars = (json[_ModelJsonKey.stars] as num?)?.toDouble(),
+      maxPage = json.readIntOrNull(_ModelJsonKey.maxPage),
+      comments = (json[_ModelJsonKey.comments] as List?)
           ?.map((e) => Comment.fromJson(e))
           .toList();
 
@@ -398,9 +509,9 @@ class ArchiveInfo {
   final String id;
 
   ArchiveInfo.fromJson(Map<String, dynamic> json)
-    : title = json["title"],
-      description = json["description"],
-      id = json["id"];
+    : title = json.readString(_ModelJsonKey.title),
+      description = json.readString(_ModelJsonKey.description),
+      id = json.readString(_ModelJsonKey.id);
 }
 
 class ComicChapters {
@@ -536,23 +647,24 @@ class PageJumpTarget {
 
   static PageJumpTarget parse(String sourceKey, dynamic value) {
     if (value is Map) {
-      if (value['page'] != null) {
+      final map = Map<String, dynamic>.from(value);
+      if (map[_ModelJsonKey.page] != null) {
         return PageJumpTarget(
           sourceKey,
-          value["page"] ?? "search",
-          value["attributes"],
+          map[_ModelJsonKey.page] ?? "search",
+          map[_ModelJsonKey.attributes],
         );
-      } else if (value["action"] != null) {
+      } else if (map[_ModelJsonKey.action] != null) {
         // old version `onClickTag`
-        var page = value["action"];
+        var page = map[_ModelJsonKey.action];
         if (page == "search") {
           return PageJumpTarget(sourceKey, "search", {
-            "text": value["keyword"],
+            _ModelJsonKey.text: map[_ModelJsonKey.keyword],
           });
         } else if (page == "category") {
           return PageJumpTarget(sourceKey, "category", {
-            "category": value["keyword"],
-            "param": value["param"],
+            _ModelJsonKey.category: map[_ModelJsonKey.keyword],
+            _ModelJsonKey.param: map[_ModelJsonKey.param],
           });
         } else {
           return PageJumpTarget(sourceKey, page, null);
@@ -586,9 +698,12 @@ class PageJumpTarget {
     if (page == "search") {
       context.to(
         () => SearchResultPage(
-          text: attributes?["text"] ?? attributes?["keyword"] ?? "",
+          text:
+              attributes?[_ModelJsonKey.text] ??
+              attributes?[_ModelJsonKey.keyword] ??
+              "",
           sourceKey: sourceKey,
-          options: List.from(attributes?["options"] ?? []),
+          options: List.from(attributes?[_ModelJsonKey.options] ?? []),
         ),
       );
     } else if (page == "category") {
@@ -597,10 +712,10 @@ class PageJumpTarget {
         () => CategoryComicsPage(
           categoryKey: key,
           category:
-              attributes?["category"] ??
+              attributes?[_ModelJsonKey.category] ??
               (throw ArgumentError("Category name is required")),
-          options: List.from(attributes?["options"] ?? []),
-          param: attributes?["param"],
+          options: List.from(attributes?[_ModelJsonKey.options] ?? []),
+          param: attributes?[_ModelJsonKey.param],
         ),
       );
     } else {

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:venera/foundation/comic_source/runtime.dart';
+import 'package:venera/features/sources/comic_source/runtime.dart';
 
 void main() {
   test('source_request_context_preserves_snapshot_fields', () {

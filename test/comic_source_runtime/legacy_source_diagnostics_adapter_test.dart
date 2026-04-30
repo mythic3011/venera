@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:venera/foundation/comic_source/runtime.dart';
+import 'package:venera/features/sources/comic_source/runtime.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 
 void main() {

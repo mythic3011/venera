@@ -13,6 +13,7 @@ import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/history.dart';
 import 'package:venera/foundation/res.dart';
 import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/features/sources/comic_source/runtime/source_capability_policy.dart';
 import 'package:venera/pages/category_comics_page.dart';
 import 'package:venera/pages/search_result_page.dart';
 import 'package:venera/utils/data_sync.dart';
@@ -21,8 +22,8 @@ import 'package:venera/utils/init.dart';
 import 'package:venera/utils/io.dart';
 import 'package:venera/utils/translations.dart';
 
-import '../js_engine.dart';
-import '../log.dart';
+import 'package:venera/foundation/js_engine.dart';
+import 'package:venera/foundation/log.dart';
 
 part 'category.dart';
 
@@ -49,8 +50,10 @@ class ComicSourceManager with ChangeNotifier, Init {
       _sources.firstWhereOrNull((element) => element.identity.matchesKey(key));
 
   ComicSource? fromIntKey(int key) => _sources.firstWhereOrNull(
-    (element) =>
-        matchesSourceIdentityTypeValue(identity: element.identity, typeValue: key),
+    (element) => matchesSourceIdentityTypeValue(
+      identity: element.identity,
+      typeValue: key,
+    ),
   );
 
   @override
@@ -82,6 +85,7 @@ class ComicSourceManager with ChangeNotifier, Init {
         }
       }
     }
+    _refreshTrustedSourceCapabilities();
   }
 
   Future reload() async {
@@ -93,11 +97,13 @@ class ComicSourceManager with ChangeNotifier, Init {
 
   void add(ComicSource source) {
     _sources.add(source);
+    _refreshTrustedSourceCapabilities();
     notifyListeners();
   }
 
   void remove(String key) {
     _sources.removeWhere((element) => element.key == key);
+    _refreshTrustedSourceCapabilities();
     notifyListeners();
   }
 
@@ -115,6 +121,18 @@ class ComicSourceManager with ChangeNotifier, Init {
 
   void notifyStateChange() {
     notifyListeners();
+  }
+
+  void _refreshTrustedSourceCapabilities() {
+    final denied = _sources
+        .where((source) => !source.securityCapabilities.allowSensitiveCrypto)
+        .map((source) => source.key);
+    final trusted = buildTrustedCryptoSourceKeys(
+      sourceKeys: _sources.map((s) => s.key),
+      deniedSourceKeys: denied,
+      mandatorySourceKey: localSourceKey,
+    );
+    configureTrustedCryptoSources(trusted);
   }
 }
 
@@ -174,6 +192,9 @@ class ComicSource {
   getThumbnailLoadingConfig;
 
   var data = <String, dynamic>{};
+
+  SourceSecurityCapabilities get securityCapabilities =>
+      SourceSecurityCapabilities.fromData(data);
 
   bool get isLogged => data["account"] != null;
 
@@ -338,9 +359,34 @@ class ComicSource {
     this.enableTagsSuggestions,
     this.enableTagsTranslate,
     this.starRatingFunc,
-    this.archiveDownloader,
-    {SourceIdentity? identity,}
-  ) : identity = identity ?? sourceIdentityFromKey(key, names: [name], version: version);
+    this.archiveDownloader, {
+    SourceIdentity? identity,
+  }) : identity =
+           identity ??
+           sourceIdentityFromKey(key, names: [name], version: version);
+}
+
+class SourceSecurityCapabilities {
+  final bool allowSensitiveCrypto;
+
+  const SourceSecurityCapabilities({required this.allowSensitiveCrypto});
+
+  factory SourceSecurityCapabilities.fromData(Map<String, dynamic> data) {
+    final raw = data[sourceSecurityField];
+    if (raw is! Map) {
+      return const SourceSecurityCapabilities(
+        allowSensitiveCrypto: defaultAllowSensitiveCrypto,
+      );
+    }
+    final security = Map<String, dynamic>.from(raw);
+    final allow = security[allowSensitiveCryptoField];
+    if (allow is bool) {
+      return SourceSecurityCapabilities(allowSensitiveCrypto: allow);
+    }
+    return const SourceSecurityCapabilities(
+      allowSensitiveCrypto: defaultAllowSensitiveCrypto,
+    );
+  }
 }
 
 class AccountConfig {

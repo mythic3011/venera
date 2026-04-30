@@ -51,6 +51,26 @@ class ComicSourceParseException implements Exception {
 }
 
 class ComicSourceParser {
+  static const _jsonKeyComics = 'comics';
+  static const _jsonKeyNext = 'next';
+  static const _jsonKeyData = 'data';
+  static const _jsonKeyTitle = 'title';
+  static const _jsonKeyViewMore = 'viewMore';
+  static const _jsonKeyMaxPage = 'maxPage';
+  static const _jsonKeyThumbnails = 'thumbnails';
+  static const _jsonKeyEnableRankingPage = 'enableRankingPage';
+
+  static const _identityField = 'identity';
+  static const _sourceIdField = 'sourceId';
+  static const _identityIdField = 'id';
+  static const _identityKindField = 'kind';
+  static const _identityAliasesField = 'aliases';
+  static const _identityNamesField = 'names';
+  static const _identityVersionField = 'version';
+
+  static const _tempInstance = "this['temp']";
+  static const _sourceRootPrefix = "ComicSource.sources";
+
   /// comic source key
   String? _key;
 
@@ -96,21 +116,15 @@ class ComicSourceParser {
     var className = line1.split("class")[1].split("extends ComicSource").first;
     className = className.trim();
     JsEngine().runCode("""(() => { $js
-        this['temp'] = new $className()
+        $_tempInstance = new $className()
       }).call()
     """, className);
-    _name =
-        JsEngine().runCode("this['temp'].name") ??
-        (throw ComicSourceParseException('name is required'));
-    var key =
-        JsEngine().runCode("this['temp'].key") ??
-        (throw ComicSourceParseException('key is required'));
-    var version =
-        JsEngine().runCode("this['temp'].version") ??
-        (throw ComicSourceParseException('version is required'));
-    var minAppVersion = JsEngine().runCode("this['temp'].minAppVersion");
-    var url = JsEngine().runCode("this['temp'].url");
-    final resolvedVersion = version ?? "1.0.0";
+    _name = _readTempRequiredString('name', 'name is required');
+    var key = _readTempRequiredString('key', 'key is required');
+    var version = _readTempRequiredString('version', 'version is required');
+    var minAppVersion = _readTempString('minAppVersion');
+    var url = _readTempString('url');
+    final resolvedVersion = version;
     final identity = _loadSourceIdentity(
       key: key,
       name: _name!,
@@ -131,15 +145,15 @@ class ComicSourceParser {
         throw ComicSourceParseException("key($key) already exists");
       }
       if (source.identity.id == identity.id) {
-        throw ComicSourceParseException("source identity id(${identity.id}) already exists");
+        throw ComicSourceParseException(
+          "source identity id(${identity.id}) already exists",
+        );
       }
     }
     _key = key;
     _checkKeyValidation();
 
-    JsEngine().runCode("""
-      ComicSource.sources.$_key = this['temp'];
-    """);
+    JsEngine().runCode("""$_sourceRootPrefix.$_key = $_tempInstance;""");
 
     var source = ComicSource(
       _name!,
@@ -158,7 +172,7 @@ class ComicSourceParser {
       _parseThumbnailLoadingConfigFunc(),
       filePath,
       url ?? "",
-      version ?? "1.0.0",
+      resolvedVersion,
       _parseCommentsLoader(),
       _parseSendCommentFunc(),
       _parseChapterCommentsLoader(),
@@ -171,8 +185,8 @@ class ComicSourceParser {
       _parseClickTagEvent(),
       _parseTagSuggestionSelectFunc(),
       _parseLinkHandler(),
-      _getValue("search.enableTagsSuggestions") ?? false,
-      _getValue("comic.enableTagsTranslate") ?? false,
+      _getValueAs<bool>("search.enableTagsSuggestions") ?? false,
+      _getValueAs<bool>("comic.enableTagsTranslate") ?? false,
       _parseStarRatingFunc(),
       _parseArchiveDownloader(),
       identity: identity,
@@ -202,31 +216,33 @@ class ComicSourceParser {
     required String version,
     required String filePath,
   }) {
-    final rawIdentity = JsEngine().runCode("this['temp'].identity");
-    final rawSourceId = JsEngine().runCode("this['temp'].sourceId");
+    final rawIdentity = _readTempValue(_identityField);
+    final rawSourceId = _readTempValue(_sourceIdField);
     if (rawIdentity != null && rawIdentity is! Map) {
       throw ComicSourceParseException('identity must be an object');
     }
     if (rawSourceId != null && rawSourceId is! String) {
       throw ComicSourceParseException('sourceId must be a string');
     }
-    final identityMap = rawIdentity is Map ? Map<String, dynamic>.from(rawIdentity) : const <String, dynamic>{};
-    final identityId = (identityMap['id'] as String?) ?? (rawSourceId as String?) ?? key;
+    final identityMap = rawIdentity is Map
+        ? Map<String, dynamic>.from(rawIdentity)
+        : const <String, dynamic>{};
+    final identityId =
+        (identityMap[_identityIdField] as String?) ??
+        (rawSourceId as String?) ??
+        key;
     if (!identityId.contains(RegExp(r"^[a-zA-Z0-9_]+$"))) {
       throw ComicSourceParseException("identity id $identityId is invalid");
     }
-    final aliases = identityMap['aliases'];
-    final names = identityMap['names'];
+    final aliases = identityMap[_identityAliasesField];
+    final names = identityMap[_identityNamesField];
     return SourceIdentity.legacy(
       key: key,
       id: identityId,
-      kind: identityMap['kind'] as String? ?? remoteSourceKind,
+      kind: identityMap[_identityKindField] as String? ?? remoteSourceKind,
       aliases: aliases is List ? aliases.whereType<String>() : const <String>[],
-      names: [
-        name,
-        if (names is List) ...names.whereType<String>(),
-      ],
-      version: identityMap['version'] as String? ?? version,
+      names: [name, if (names is List) ...names.whereType<String>()],
+      version: identityMap[_identityVersionField] as String? ?? version,
       audit: SourceIdentityAudit(
         source: 'comic_source_parser',
         loadedFrom: filePath,
@@ -237,13 +253,37 @@ class ComicSourceParser {
 
   bool _checkExists(String index) {
     return JsEngine().runCode(
-      "ComicSource.sources.$_key.$index !== null "
-      "&& ComicSource.sources.$_key.$index !== undefined",
-    );
+          "${_sourceExpr(index)} !== null && ${_sourceExpr(index)} !== undefined",
+        )
+        as bool;
+  }
+
+  T? _getValueAs<T>(String index) {
+    final value = JsEngine().runCode(_sourceExpr(index));
+    return value is T ? value : null;
   }
 
   dynamic _getValue(String index) {
-    return JsEngine().runCode("ComicSource.sources.$_key.$index");
+    return JsEngine().runCode(_sourceExpr(index));
+  }
+
+  String _sourceExpr(String index) => "$_sourceRootPrefix.$_key.$index";
+
+  dynamic _readTempValue(String field) {
+    return JsEngine().runCode("$_tempInstance.$field");
+  }
+
+  String? _readTempString(String field) {
+    final value = _readTempValue(field);
+    return value is String ? value : null;
+  }
+
+  String _readTempRequiredString(String field, String error) {
+    final value = _readTempValue(field);
+    if (value is String && value.isNotEmpty) {
+      return value;
+    }
+    throw ComicSourceParseException(error);
   }
 
   AccountConfig? _loadAccountConfig() {
@@ -390,10 +430,10 @@ class ComicSourceParser {
               );
               return Res(
                 List.generate(
-                  res["comics"].length,
-                  (index) => Comic.fromJson(res["comics"][index], _key!),
+                  res[_jsonKeyComics].length,
+                  (index) => Comic.fromJson(res[_jsonKeyComics][index], _key!),
                 ),
-                subData: res["next"],
+                subData: res[_jsonKeyNext],
               );
             } catch (e, s) {
               Log.error("Network", "$e\n$s");
@@ -412,10 +452,10 @@ class ComicSourceParser {
                 (res as List).map((e) {
                   return ExplorePagePart(
                     e['title'],
-                    (e['comics'] as List).map((e) {
+                    (e[_jsonKeyComics] as List).map((e) {
                       return Comic.fromJson(e, _key!);
                     }).toList(),
-                    PageJumpTarget.parse(_key!, e['viewMore']),
+                    PageJumpTarget.parse(_key!, e[_jsonKeyViewMore]),
                   );
                 }),
               ),
@@ -432,22 +472,22 @@ class ComicSourceParser {
               "ComicSource.sources.$_key.explore[$i].load(${jsonEncode(index)})",
             );
             var list = <Object>[];
-            for (var data in (res['data'] as List)) {
+            for (var data in (res[_jsonKeyData] as List)) {
               if (data is List) {
                 list.add(data.map((e) => Comic.fromJson(e, _key!)).toList());
               } else if (data is Map) {
                 list.add(
                   ExplorePagePart(
-                    data['title'],
-                    (data['comics'] as List).map((e) {
+                    data[_jsonKeyTitle],
+                    (data[_jsonKeyComics] as List).map((e) {
                       return Comic.fromJson(e, _key!);
                     }).toList(),
-                    data['viewMore'],
+                    data[_jsonKeyViewMore],
                   ),
                 );
               }
             }
-            return Res(list, subData: res['maxPage']);
+            return Res(list, subData: res[_jsonKeyMaxPage]);
           } catch (e, s) {
             Log.error("Network", "$e\n$s");
             return Res.error(e.toString());
@@ -480,12 +520,12 @@ class ComicSourceParser {
   CategoryData? _loadCategoryData() {
     var doc = _getValue("category");
 
-    if (doc?["title"] == null) {
+    if (doc?[_jsonKeyTitle] == null) {
       return null;
     }
 
-    final String title = doc["title"];
-    final bool? enableRankingPage = doc["enableRankingPage"];
+    final String title = doc[_jsonKeyTitle];
+    final bool? enableRankingPage = doc[_jsonKeyEnableRankingPage];
 
     var categoryParts = <BaseCategoryPart>[];
 
@@ -1151,7 +1191,10 @@ class ComicSourceParser {
         var res = await JsEngine().runCode("""
           ComicSource.sources.$_key.comic.loadThumbnails(${jsonEncode(id)}, ${jsonEncode(next)})
         """);
-        return Res(List<String>.from(res['thumbnails']), subData: res['next']);
+        return Res(
+          List<String>.from(res[_jsonKeyThumbnails]),
+          subData: res[_jsonKeyNext],
+        );
       } catch (e, s) {
         Log.error("Network", "$e\n$s");
         return Res.error(e.toString());
