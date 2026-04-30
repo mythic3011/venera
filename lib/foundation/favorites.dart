@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:sqlite3/sqlite3.dart';
 import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/db/favorites_store.dart';
+import 'package:venera/foundation/db/remote_comic_sync.dart';
+import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/image_provider/local_favorite_image.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/log.dart';
@@ -322,6 +324,49 @@ class LocalFavoritesManager with ChangeNotifier {
         _hashedIds.remove(hash);
       }
     }
+  }
+
+  String _canonicalComicIdForFavorite({
+    required String comicId,
+    required ComicType type,
+  }) {
+    if (type == ComicType.local) {
+      return comicId;
+    }
+    return canonicalRemoteComicId(
+      sourceKey: type.sourceKey,
+      comicId: comicId,
+    );
+  }
+
+  void _syncCanonicalFavoriteAdd(FavoriteItem comic) {
+    Future.microtask(() async {
+      await App.unifiedComicsStore.upsertFavorite(
+        FavoriteRecord(
+          comicId: _canonicalComicIdForFavorite(
+            comicId: comic.id,
+            type: comic.type,
+          ),
+          sourceKey: comic.sourceKey,
+          createdAt: null,
+        ),
+      );
+    });
+  }
+
+  void _syncCanonicalFavoriteDeleteIfOrphan({
+    required String comicId,
+    required ComicType type,
+  }) {
+    final hash = comicId.hashCode ^ type.value;
+    if (_hashedIds.containsKey(hash)) {
+      return;
+    }
+    Future.microtask(() async {
+      await App.unifiedComicsStore.deleteFavorite(
+        _canonicalComicIdForFavorite(comicId: comicId, type: type),
+      );
+    });
   }
 
   List<String> find(String id, ComicType type) {
@@ -667,6 +712,7 @@ class LocalFavoritesManager with ChangeNotifier {
     }
     var hash = comic.id.hashCode ^ comic.type.value;
     _hashedIds[hash] = (_hashedIds[hash] ?? 0) + 1;
+    _syncCanonicalFavoriteAdd(comic);
     notifyListeners();
     return true;
   }
@@ -814,6 +860,7 @@ class LocalFavoritesManager with ChangeNotifier {
       counts[folder] = count(folder);
     }
     reduceHashedId(id, type.value);
+    _syncCanonicalFavoriteDeleteIfOrphan(comicId: id, type: type);
     notifyListeners();
   }
 
@@ -864,6 +911,7 @@ class LocalFavoritesManager with ChangeNotifier {
     }
     for (var comic in comics) {
       reduceHashedId(comic.id, comic.type.value);
+      _syncCanonicalFavoriteDeleteIfOrphan(comicId: comic.id, type: comic.type);
     }
     notifyListeners();
   }
@@ -894,6 +942,10 @@ class LocalFavoritesManager with ChangeNotifier {
     for (var comic in comics) {
       var hash = comic.id.hashCode ^ comic.type.value;
       _hashedIds.remove(hash);
+      _syncCanonicalFavoriteDeleteIfOrphan(
+        comicId: comic.id,
+        type: ComicType(comic.type.value),
+      );
     }
     notifyListeners();
   }
