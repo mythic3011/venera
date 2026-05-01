@@ -84,6 +84,16 @@ Runtime authority namespace is active at:
 
 These files are the current runtime authority for this rewrite lane.
 
+## Updated Conclusion (2026-05-01)
+
+Conclusion:
+- Clean kernel part is no longer "implementation pending".
+- Primary risk has moved to integration boundary, production cutover, and old runtime quarantine.
+
+Execution direction:
+- Do not add new kernel features in this lane.
+- Open a dedicated M10 runtime cutover lane to wire ReaderNext into production paths without reintroducing legacy identity fallback.
+
 ## Layered App Breakdown
 
 The new app must be built as separate layers. Each layer has one owner and one direction of dependency.
@@ -522,6 +532,82 @@ Goal: run importer end-to-end in explicit dry-run/apply modes with checkpoint/re
 | M9-T4 | done | Coordinator | M9-T2 | `lib/features/reader_next/importer/legacy_import_execution.dart`, `test/features/reader_next/importer/execution_test.dart` | checkpoint/resume apply flow with rowid cursor persistence | `flutter test test/features/reader_next/importer/execution_test.dart --plain-name \"resume from checkpoint\"` |
 | M9-T5 | done | Coordinator | M9-T2 | `test/features/reader_next/importer/execution_test.dart` | apply failure surfaced as structured non-completed execution report with failure code | `flutter test test/features/reader_next/importer/execution_test.dart --plain-name \"reports apply failure\"` |
 | M9-T6 | done | Coordinator | M9-T2 | `lib/features/reader_next/importer/importer_coordinator.dart`, `test/features/reader_next/importer/coordinator_test.dart` | importer-only coordinator entrypoint that delegates dry-run/apply without runtime coupling | `flutter test test/features/reader_next/importer/coordinator_test.dart` |
+
+### Milestone M10 - ReaderNext Production Cutover Preflight
+
+Goal: prepare ReaderNext for production routing by adding a strict bridge boundary between legacy app entrypoints and the new runtime. This lane does not replace the legacy reader yet.
+
+Detailed implementation plan:
+- `docs/plans/2026-05-01-readernext-production-cutover-preflight.md`
+
+Hard Rules (M10 preflight specific):
+1. ReaderNext runtime remains the only authority for identity/cache/session/page-load rules.
+2. Legacy app models may enter ReaderNext only through `reader_next/bridge`.
+3. Remote ReaderNext open requests require a non-null validated `SourceRef`.
+4. Bridge code must reject canonical IDs in adapter-facing/upstream fields.
+5. Bridge code must never silently normalize `remote:source:id` into `id`.
+6. Legacy reader remains available only through explicit legacy route.
+7. ReaderNext UI receives `ReaderNextOpenRequest`, never raw `Comic`, `History`, or `FavoriteItem`.
+8. Failures produce typed bridge diagnostics, not generic network errors.
+
+Key boundary tests:
+
+```dart
+test('remote ReaderNext open request requires SourceRef', () {
+  final sourceRef = SourceRef.remote(
+    sourceKey: 'nhentai',
+    upstreamComicRefId: '646922',
+    chapterRefId: '0',
+  );
+  final request = ReaderNextOpenRequest.remote(
+    canonicalComicId: CanonicalComicId.remote(
+      sourceKey: 'nhentai',
+      upstreamComicRefId: '646922',
+    ),
+    sourceRef: sourceRef,
+    initialPage: 1,
+  );
+  expect(request.sourceRef, sourceRef);
+});
+```
+
+```dart
+test('bridge rejects canonical id as upstreamComicRefId', () {
+  expect(
+    () => SourceRef.remote(
+      sourceKey: 'nhentai',
+      upstreamComicRefId: 'remote:nhentai:646922',
+      chapterRefId: '0',
+    ),
+    throwsA(isA<ReaderNextBoundaryException>()),
+  );
+});
+```
+
+```dart
+test('ReaderNext bridge does not silently normalize canonical upstream id', () {
+  final result = ReaderNextOpenBridge.fromLegacyRemote(
+    sourceKey: 'nhentai',
+    comicId: 'remote:nhentai:646922',
+    chapterId: '0',
+  );
+  expect(result.isBlocked, isTrue);
+  expect(
+    result.diagnostic?.code,
+    ReaderNextBridgeDiagnosticCode.canonicalIdInUpstreamField,
+  );
+});
+```
+
+### M10 - Bridge Boundary + Route Preflight
+
+| Task ID | Status | Owner | Depends On | Write Scope | Deliverable | Verification |
+| --- | --- | --- | --- | --- | --- | --- |
+| M10-T1 | done | Coordinator | M7-T2,M9-T6 | `lib/features/reader_next/bridge/*` | `ReaderNextOpenRequest` + typed bridge diagnostics | `flutter test test/features/reader_next/bridge/open_request_*` |
+| M10-T2 | done | Coordinator | M10-T1 | `test/features/reader_next/bridge/*` | bridge rejects missing SourceRef, canonical upstream ID, empty sourceKey, empty chapterRefId | `flutter test test/features/reader_next/bridge` |
+| M10-T3 | done | UI Agent | M10-T1 | `lib/features/reader_next/presentation/*` | presentation controller accepts only `ReaderNextOpenRequest` | `flutter test test/features/reader_next/presentation` |
+| M10-T4 | done | Coordinator | M10-T1 | `test/features/reader_next/runtime/authority_*` | guard test blocks old reader/UI/legacy manager imports from ReaderNext runtime/presentation | `flutter test test/features/reader_next/runtime/authority_*` |
+| M10-T5 | done | Coordinator | M10-T2,M10-T3 | `lib/features/reader_next/bridge/*`, `test/features/reader_next/bridge/*` | explicit legacy-route decision object: `readerNext`, `legacyReader`, or `blocked` | `flutter test test/features/reader_next/bridge` |
 
 ## Agent Report Template
 

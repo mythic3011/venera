@@ -16,6 +16,10 @@ import 'package:venera/features/favorites/data/favorites_runtime_repository.dart
 import 'package:venera/foundation/download_queue_legacy_bridge.dart';
 import 'package:venera/foundation/log.dart';
 import 'package:venera/features/reader/data/reader_status_repository.dart';
+import 'package:venera/features/reader_next/bridge/approved_reader_next_navigation_executor.dart';
+import 'package:venera/features/reader_next/bridge/favorites_route_cutover_controller.dart';
+import 'package:venera/features/reader_next/preflight/history_favorites_identity_preflight.dart';
+import 'package:venera/features/reader_next/preflight/history_favorites_route_readiness_gate.dart';
 import 'package:venera/foundation/res.dart';
 import 'package:venera/network/download.dart';
 import 'package:venera/network/cache.dart';
@@ -39,8 +43,56 @@ const _kTwoPanelChangeWidth = 720.0;
 
 const favoritesRepo = FavoritesRuntimeRepository();
 
+bool isFavoritesReaderNextFlagEnabled(Object? rawValue) => rawValue == true;
+
+typedef ReaderNextFavoritesOpenExecutorFactory =
+    ReaderNextFavoritesOpenExecutor Function();
+
+ReaderNextFavoritesOpenExecutor? resolveFavoritesReaderNextExecutor({
+  ReaderNextFavoritesOpenExecutor? injectedExecutor,
+  ReaderNextFavoritesOpenExecutorFactory? injectedFactory,
+  ReaderNextFavoritesOpenExecutorFactory approvedFactory =
+      createApprovedReaderNextNavigationExecutor,
+}) {
+  return resolveApprovedReaderNextExecutor(
+    injectedExecutor: injectedExecutor,
+    injectedFactory: injectedFactory,
+    approvedFactory: approvedFactory,
+  );
+}
+
+FavoritesRouteCutoverResult evaluateFavoritesPreflightForRowContext({
+  required FavoritesRouteCutoverController controller,
+  required FavoriteItem comic,
+  required String folderName,
+  required ReadinessArtifact readinessArtifact,
+  bool isRowStale = false,
+}) {
+  return controller.evaluate(
+    input: IdentityCoverageInput.favorite(
+      recordId: comic.id,
+      sourceKey: comic.sourceKey,
+      folderName: folderName,
+      canonicalComicId: null,
+      sourceRef: null,
+      explicitSnapshotAlreadyPersisted: false,
+    ),
+    artifact: readinessArtifact,
+    isRowStale: isRowStale,
+  );
+}
+
 class FavoritesPage extends StatefulWidget {
-  const FavoritesPage({super.key});
+  const FavoritesPage({
+    super.key,
+    this.readerNextOpenExecutor,
+    this.readerNextOpenExecutorFactory,
+    this.onDiagnostic,
+  });
+
+  final ReaderNextFavoritesOpenExecutor? readerNextOpenExecutor;
+  final ReaderNextFavoritesOpenExecutorFactory? readerNextOpenExecutorFactory;
+  final FavoritesDiagnosticSink? onDiagnostic;
 
   @override
   State<FavoritesPage> createState() => _FavoritesPageState();

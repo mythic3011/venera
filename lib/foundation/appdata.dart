@@ -239,6 +239,9 @@ class Settings with ChangeNotifier {
         false, // show chapter comments at end of chapter
     'reader_use_source_ref_resolver': false,
     'enableDebugDiagnostics': false,
+    'reader_next_enabled': false,
+    'reader_next_history_enabled': false,
+    'reader_next_favorites_enabled': false,
   };
 
   operator [](String key) {

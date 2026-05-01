@@ -1,11 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:venera/components/components.dart';
 import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/appdata.dart';
+import 'package:venera/features/reader_next/bridge/approved_reader_next_navigation_executor.dart';
+import 'package:venera/features/reader/presentation/reader.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/features/reader/data/reader_activity_models.dart';
 import 'package:venera/features/reader/data/reader_activity_repository.dart';
+import 'package:venera/features/reader_next/bridge/history_route_cutover_controller.dart';
 import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/pages/comic_detail_page.dart';
 import 'package:venera/utils/translations.dart';
+
+typedef ReaderNextHistoryOpenExecutorFactory =
+    ReaderNextHistoryOpenExecutor Function();
+
+ReaderNextHistoryOpenExecutor resolveHistoryReaderNextExecutor({
+  ReaderNextHistoryOpenExecutor? injectedExecutor,
+  ReaderNextHistoryOpenExecutorFactory? injectedFactory,
+  ReaderNextHistoryOpenExecutorFactory approvedFactory =
+      createApprovedHistoryReaderNextExecutor,
+}) {
+  return resolveApprovedReaderNextExecutor(
+    injectedExecutor: injectedExecutor,
+    injectedFactory: injectedFactory,
+    approvedFactory: approvedFactory,
+  );
+}
 
 Future<List<ReaderActivityItem>> loadHistoryPageActivity(
   ReaderActivityRepository repository,
@@ -25,7 +46,16 @@ Future<void> clearHistoryPageActivity(ReaderActivityRepository repository) {
 }
 
 class HistoryPage extends StatefulWidget {
-  const HistoryPage({super.key});
+  const HistoryPage({
+    super.key,
+    this.readerNextOpenExecutor,
+    this.readerNextOpenExecutorFactory,
+    this.onDiagnostic,
+  });
+
+  final ReaderNextHistoryOpenExecutor? readerNextOpenExecutor;
+  final ReaderNextHistoryOpenExecutorFactory? readerNextOpenExecutorFactory;
+  final HistoryDiagnosticSink? onDiagnostic;
 
   @override
   State<HistoryPage> createState() => _HistoryPageState();
@@ -33,6 +63,8 @@ class HistoryPage extends StatefulWidget {
 
 class _HistoryPageState extends State<HistoryPage> {
   final controller = FlyoutController();
+  final HistoryRouteCutoverController _historyCutoverController =
+      const HistoryRouteCutoverController();
   late final ReaderActivityRepository _repository;
   List<ReaderActivityItem> comics = const [];
   bool multiSelectMode = false;
@@ -85,6 +117,50 @@ class _HistoryPageState extends State<HistoryPage> {
   Future<void> _removeHistory(ReaderActivityItem comic) async {
     await removeHistoryPageActivity(_repository, comic.id);
     await _refreshActivity();
+  }
+
+  Future<void> _openHistoryComic(ReaderActivityItem comic) async {
+    final readerNextEnabled = isReaderNextEnabledSetting(
+      appdata.settings['reader_next_enabled'],
+    );
+    final readerNextHistoryEnabled = isReaderNextEnabledSetting(
+      appdata.settings['reader_next_history_enabled'],
+    );
+    await routeHistoryReadOpen(
+      controller: _historyCutoverController,
+      row: comic,
+      readerNextEnabled: readerNextEnabled,
+      readerNextHistoryEnabled: readerNextHistoryEnabled,
+      openLegacy: () async {
+        await App.rootContext.to(
+          () => ReaderWithLoading(
+            id: comic.id,
+            sourceRef: comic.sourceRef,
+            sourceKey: comic.sourceKey,
+            initialPage: comic.pageIndex > 0 ? comic.pageIndex : null,
+          ),
+        );
+      },
+      openReaderNext: (request) async {
+        final executor = resolveHistoryReaderNextExecutor(
+          injectedExecutor: widget.readerNextOpenExecutor,
+          injectedFactory: widget.readerNextOpenExecutorFactory,
+        );
+        try {
+          await executor(request);
+          App.rootContext.showMessage(message: 'ReaderNext open dispatched'.tl);
+        } catch (_) {
+          App.rootContext.showMessage(message: 'ReaderNext blocked (error)'.tl);
+        }
+      },
+      onBlocked: (result) async {
+        App.rootContext.showMessage(
+          message:
+              'ReaderNext blocked (${result.diagnostic.bridgeResultCode})'.tl,
+        );
+      },
+      onDiagnostic: widget.onDiagnostic,
+    );
   }
 
   @override
@@ -223,7 +299,9 @@ class _HistoryPageState extends State<HistoryPage> {
                         }
                       });
                     }
-                  : null,
+                  : (c, heroId) {
+                      _openHistoryComic(c as ReaderActivityItem);
+                    },
               badgeBuilder: (c) {
                 if (isLocalSourceKey(c.sourceKey)) {
                   return 'Local'.tl;

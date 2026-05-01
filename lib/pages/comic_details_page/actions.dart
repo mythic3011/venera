@@ -131,20 +131,54 @@ abstract mixin class _ComicPageActions {
       group: group,
       resumeSourceRef: resumeSourceRef,
     );
-    await App.rootContext
-        .to(
-          () => ReaderWithLoading(
-            id: comic.id,
-            sourceRef: sourceRef,
-            sourceKey: sourceRef.sourceKey,
-            initialEp: ep,
-            initialPage: page,
-            initialGroup: group,
-          ),
-        )
-        .then((_) {
-          onReadEnd();
-        });
+    final readerNextEnabled = isReaderNextEnabledSetting(
+      appdata.settings['reader_next_enabled'],
+    );
+    await routeComicDetailReadOpen(
+      readerNextEnabled: readerNextEnabled,
+      sourceKey: sourceRef.sourceKey,
+      comicId: sourceRef.params['comicId']?.toString() ?? comic.id,
+      chapterRefId: sourceRef.params['chapterId']?.toString(),
+      onDiagnostic: (packet) {
+        Log.info(
+          'ReaderNextCutoverDryRun',
+          'routeDecision=${packet.routeDecision.name} '
+              'featureFlagEnabled=${packet.featureFlagEnabled} '
+              'sourceKey=${packet.sourceKey} '
+              'canonicalComicId=${packet.canonicalComicIdRedacted} '
+              'upstreamComicRefId=${packet.upstreamComicRefIdRedacted} '
+              'chapterRefId=${packet.chapterRefIdRedacted} '
+              'bridgeResultCode=${packet.bridgeResultCode}',
+        );
+      },
+      openLegacy: () async {
+        await App.rootContext
+            .to(
+              () => ReaderWithLoading(
+                id: comic.id,
+                sourceRef: sourceRef,
+                sourceKey: sourceRef.sourceKey,
+                initialEp: ep,
+                initialPage: page,
+                initialGroup: group,
+              ),
+            )
+            .then((_) {
+              onReadEnd();
+            });
+      },
+      openReaderNext: (_) async {
+        App.rootContext.showMessage(
+          message: 'ReaderNext route prepared (dry-run)'.tl,
+        );
+      },
+      onBridgeBlocked: (diagnostic) async {
+        App.rootContext.showMessage(
+          message:
+              'ReaderNext blocked: ${diagnostic.code.name} (${diagnostic.message})',
+        );
+      },
+    );
   }
 
   void continueRead() {

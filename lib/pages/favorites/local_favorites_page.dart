@@ -48,6 +48,83 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
   Map<String, ReaderComicStatus> _statuses =
       const <String, ReaderComicStatus>{};
   int _statusRequestId = 0;
+  final FavoritesRouteCutoverController _favoritesCutoverController =
+      const FavoritesRouteCutoverController();
+
+  ReadinessArtifact _currentReadinessArtifact() {
+    return const ReadinessArtifact(
+      readinessArtifactSchemaVersion: m14ReadinessArtifactSchemaVersion,
+      sourceSchemaVersion: 1,
+      postApplyVerified: false,
+      allowHistory: false,
+      allowFavorites: false,
+      allowDownloads: false,
+    );
+  }
+
+  Future<void> _openFavoriteComic(FavoriteItem comic) async {
+    final readerNextEnabled = isFavoritesReaderNextFlagEnabled(
+      appdata.settings['reader_next_enabled'],
+    );
+    final readerNextFavoritesEnabled = isFavoritesReaderNextFlagEnabled(
+      appdata.settings['reader_next_favorites_enabled'],
+    );
+    final input = IdentityCoverageInput.favorite(
+      recordId: comic.id,
+      sourceKey: comic.sourceKey,
+      folderName: widget.folder,
+      canonicalComicId: null,
+      sourceRef: null,
+      explicitSnapshotAlreadyPersisted: false,
+    );
+    await routeFavoritesReadOpen(
+      controller: _favoritesCutoverController,
+      input: input,
+      artifact: _currentReadinessArtifact(),
+      isRowStale: false,
+      readerNextEnabled: readerNextEnabled,
+      readerNextFavoritesEnabled: readerNextFavoritesEnabled,
+      openLegacy: () async {
+        await App.mainNavigatorKey?.currentContext?.to(
+          () => ReaderWithLoading(id: comic.id, sourceKey: comic.sourceKey),
+        );
+      },
+      openReaderNext: (request) async {
+        final executor = resolveFavoritesReaderNextExecutor(
+          injectedExecutor: favPage.widget.readerNextOpenExecutor,
+          injectedFactory: favPage.widget.readerNextOpenExecutorFactory,
+        );
+        if (executor == null) {
+          App.rootContext.showMessage(
+            message: 'ReaderNext blocked (missing executor)'.tl,
+          );
+          return;
+        }
+        await executor(request);
+        App.rootContext.showMessage(message: 'ReaderNext open dispatched'.tl);
+      },
+      onBlocked: (result) async {
+        App.rootContext.showMessage(
+          message:
+              'ReaderNext blocked (${result.diagnostic.blockedReason})'.tl,
+        );
+      },
+      onDiagnostic: (packet) {
+        favPage.widget.onDiagnostic?.call(packet);
+        Log.info(
+          'FavoritesReaderNextPreflight',
+          'routeDecision=${packet.routeDecision.name} '
+              'recordKind=${packet.recordKind} '
+              'folderName=${packet.folderName} '
+              'recordId=${packet.recordIdRedacted} '
+              'sourceKey=${packet.sourceKey} '
+              'validation=${packet.currentSourceRefValidationCode} '
+              'schema=${packet.readinessArtifactSchemaVersion} '
+              'blockedReason=${packet.blockedReason}',
+        );
+      },
+    );
+  }
 
   void updateSearchResult() {
     setState(() {
@@ -627,12 +704,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                       text: "Read".tl,
                       onClick: () {
                         final c = selectedComics.keys.first as FavoriteItem;
-                        App.rootContext.to(
-                          () => ReaderWithLoading(
-                            id: c.id,
-                            sourceKey: c.sourceKey,
-                          ),
-                        );
+                        unawaited(_openFavoriteComic(c));
                       },
                     ),
                   if (selectedComics.length == 1)
@@ -737,10 +809,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                     icon: Icons.menu_book_outlined,
                     text: "Read".tl,
                     onClick: () {
-                      App.mainNavigatorKey?.currentContext?.to(
-                        () =>
-                            ReaderWithLoading(id: c.id, sourceKey: c.sourceKey),
-                      );
+                      unawaited(_openFavoriteComic(c as FavoriteItem));
                     },
                   ),
               ];
@@ -767,9 +836,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                   ),
                 );
               } else {
-                App.mainNavigatorKey?.currentContext?.to(
-                  () => ReaderWithLoading(id: c.id, sourceKey: c.sourceKey),
-                );
+                unawaited(_openFavoriteComic(c as FavoriteItem));
               }
             },
             onLongPressed: (c, heroID) {

@@ -8,6 +8,10 @@ class ReaderRuntimeException implements Exception {
   String toString() => '$code: $message';
 }
 
+class ReaderNextBoundaryException extends ReaderRuntimeException {
+  ReaderNextBoundaryException(super.code, super.message);
+}
+
 enum SourceRefType { remote, local }
 
 class SourceRef {
@@ -24,19 +28,19 @@ class SourceRef {
     String? chapterRefId,
   }) {
     if (sourceKey.isEmpty) {
-      throw ReaderRuntimeException(
+      throw ReaderNextBoundaryException(
         'SOURCE_REF_INVALID',
         'sourceKey is required for remote SourceRef',
       );
     }
     if (upstreamComicRefId.isEmpty) {
-      throw ReaderRuntimeException(
+      throw ReaderNextBoundaryException(
         'SOURCE_REF_INVALID',
         'upstreamComicRefId is required for remote SourceRef',
       );
     }
     if (_looksCanonical(upstreamComicRefId)) {
-      throw ReaderRuntimeException(
+      throw ReaderNextBoundaryException(
         'SOURCE_REF_INVALID',
         'upstreamComicRefId must not be canonical',
       );
@@ -104,6 +108,69 @@ class ComicIdentity {
       );
     }
   }
+}
+
+class CanonicalComicId {
+  const CanonicalComicId._(this.value);
+
+  factory CanonicalComicId.remote({
+    required String sourceKey,
+    required String upstreamComicRefId,
+  }) {
+    if (sourceKey.isEmpty || upstreamComicRefId.isEmpty) {
+      throw ReaderNextBoundaryException(
+        'CANONICAL_ID_INVALID',
+        'remote canonical comic id is malformed',
+      );
+    }
+    if (_looksCanonical(upstreamComicRefId)) {
+      throw ReaderNextBoundaryException(
+        'CANONICAL_ID_INVALID',
+        'upstreamComicRefId must not be canonical when building canonical id',
+      );
+    }
+    return CanonicalComicId._('remote:$sourceKey:$upstreamComicRefId');
+  }
+
+  final String value;
+
+  static bool _looksCanonical(String id) => id.contains(':');
+}
+
+class ReaderNextOpenRequest {
+  ReaderNextOpenRequest._({
+    required this.canonicalComicId,
+    required this.sourceRef,
+    required this.initialPage,
+  });
+
+  factory ReaderNextOpenRequest.remote({
+    required CanonicalComicId canonicalComicId,
+    required SourceRef sourceRef,
+    required int initialPage,
+  }) {
+    if (!sourceRef.isRemote) {
+      throw ReaderNextBoundaryException(
+        'SOURCE_REF_REQUIRED',
+        'Remote ReaderNext open request requires valid SourceRef',
+      );
+    }
+    if (initialPage < 1) {
+      throw ReaderNextBoundaryException(
+        'INITIAL_PAGE_INVALID',
+        'initialPage must be >= 1 for ReaderNext remote open request',
+      );
+    }
+    return ReaderNextOpenRequest._(
+      canonicalComicId: canonicalComicId,
+      sourceRef: sourceRef,
+      initialPage: initialPage,
+    );
+  }
+
+  final CanonicalComicId canonicalComicId;
+  final SourceRef sourceRef;
+  final int initialPage;
 }
 
 class SearchQuery {

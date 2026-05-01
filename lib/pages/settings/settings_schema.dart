@@ -16,6 +16,13 @@ abstract final class CommonSettingKeys {
   static const enableDebugDiagnostics = SettingKey<bool>(
     'enableDebugDiagnostics',
   );
+  static const readerNextEnabled = SettingKey<bool>('reader_next_enabled');
+  static const readerNextHistoryEnabled = SettingKey<bool>(
+    'reader_next_history_enabled',
+  );
+  static const readerNextFavoritesEnabled = SettingKey<bool>(
+    'reader_next_favorites_enabled',
+  );
 }
 
 abstract final class ExploreSettingKeys {
