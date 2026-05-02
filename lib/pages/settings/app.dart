@@ -1,9 +1,16 @@
 part of 'settings_page.dart';
 
+String formatLocalComicsStoragePathForDisplay(String? path) {
+  if (path == null || path.isEmpty) {
+    return 'Not configured';
+  }
+  return path;
+}
+
 class _AppSettingsGateway {
   CacheManager get _cacheManager => CacheManager();
 
-  String get localComicsPath => legacyReadLocalComicsStoragePath();
+  String? get localComicsPath => tryReadLocalComicsStoragePath();
 
   Future<String?> setLocalComicsPath(String path) =>
       legacySetLocalComicsStoragePath(path);
@@ -69,6 +76,9 @@ class _AppSettingsGateway {
   }
 
   void saveAppData() => appdata.saveData();
+
+  bool get readerNextEnabled =>
+      appdata.settings[CommonSettingKeys.readerNextEnabled.name] == true;
 }
 
 class AppSettings extends StatefulWidget {
@@ -81,10 +91,14 @@ class AppSettings extends StatefulWidget {
 class _AppSettingsState extends State<AppSettings> {
   final _gateway = _AppSettingsGateway();
 
-  String get _localComicsStoragePath => _gateway.localComicsPath;
+  String? get _localComicsStoragePath => _gateway.localComicsPath;
+
+  String get _localComicsStoragePathForDisplay {
+    return formatLocalComicsStoragePathForDisplay(_localComicsStoragePath);
+  }
 
   void _copyLocalComicsStoragePath() {
-    Clipboard.setData(ClipboardData(text: _localComicsStoragePath));
+    Clipboard.setData(ClipboardData(text: _localComicsStoragePathForDisplay));
     context.showMessage(message: "Path copied to clipboard".tl);
   }
 
@@ -96,7 +110,7 @@ class _AppSettingsState extends State<AppSettings> {
         _SettingPartTitle(title: "Data".tl, icon: Icons.storage),
         ListTile(
           title: Text("Storage Path for local comics".tl),
-          subtitle: Text(_localComicsStoragePath, softWrap: false),
+          subtitle: Text(_localComicsStoragePathForDisplay, softWrap: false),
           trailing: IconButton(
             icon: const Icon(Icons.copy),
             onPressed: _copyLocalComicsStoragePath,
@@ -219,6 +233,47 @@ class _AppSettingsState extends State<AppSettings> {
             showPopUpWidget(context, const _WebdavSetting());
           },
           actionTitle: 'Set'.tl,
+        ).toSliver(),
+        _SettingPartTitle(title: "ReaderNext Runtime".tl, icon: Icons.auto_stories),
+        _SwitchSetting(
+          title: "Enable ReaderNext".tl,
+          subtitle: "Master route selection switch.".tl,
+          settingKey: CommonSettingKeys.readerNextEnabled.name,
+        ).toSliver(),
+        _SwitchSetting(
+          title: "Enable History ReaderNext".tl,
+          subtitle: "History entrypoint route selection.".tl,
+          settingKey: CommonSettingKeys.readerNextHistoryEnabled.name,
+        ).toSliver(),
+        _SwitchSetting(
+          title: "Enable Favorites ReaderNext".tl,
+          subtitle: "Favorites entrypoint route selection.".tl,
+          settingKey: CommonSettingKeys.readerNextFavoritesEnabled.name,
+        ).toSliver(),
+        _SwitchSetting(
+          title: "Enable Downloads ReaderNext".tl,
+          subtitle: "Downloads entrypoint route selection.".tl,
+          settingKey: CommonSettingKeys.readerNextDownloadsEnabled.name,
+        ).toSliver(),
+        _SwitchSetting(
+          title: "Use SourceRef Resolver".tl,
+          subtitle: "Runtime source-ref snapshot resolver switch.".tl,
+          settingKey: CommonSettingKeys.readerUseSourceRefResolver.name,
+        ).toSliver(),
+        ListTile(
+          title: Text("Current Route Mode".tl),
+          subtitle: Text(
+            _gateway.readerNextEnabled
+                ? "ReaderNext (master flag enabled)".tl
+                : "Legacy (master flag disabled)".tl,
+          ),
+        ).toSliver(),
+        ListTile(
+          title: Text("Runtime Status".tl),
+          subtitle: Text(
+            "Detailed per-open decision status is currently available in diagnostics/debug logs."
+                .tl,
+          ),
         ).toSliver(),
         _SettingPartTitle(title: "User".tl, icon: Icons.person_outline),
         SelectSetting(

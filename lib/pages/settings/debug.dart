@@ -13,6 +13,51 @@ class DebugPageState extends State<DebugPage> {
 
   var result = "";
 
+  Widget _readerNextFlagSection() {
+    return SliverToBoxAdapter(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(color: context.colorScheme.outline),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "ReaderNext Cutover Flags",
+              style: TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              "Debug-only route-selection controls. Blocked ReaderNext decisions do not fall back to legacy. Disable an entrypoint flag to route future opens through legacy."
+                  .tl,
+            ),
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            _SwitchSetting(
+              title: "Master Switch".tl,
+              settingKey: "reader_next_enabled",
+            ),
+            _SwitchSetting(
+              title: "History".tl,
+              settingKey: "reader_next_history_enabled",
+            ),
+            _SwitchSetting(
+              title: "Favorites".tl,
+              settingKey: "reader_next_favorites_enabled",
+            ),
+            _SwitchSetting(
+              title: "Downloads".tl,
+              settingKey: "reader_next_downloads_enabled",
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     controller.dispose();
@@ -157,6 +202,7 @@ class DebugPageState extends State<DebugPage> {
             title: "Ignore Certificate Errors".tl,
             settingKey: CommonSettingKeys.ignoreBadCertificate.name,
           ).toSliver(),
+          _readerNextFlagSection(),
           _SwitchSetting(
             title: "Enable Diagnostics API".tl,
             settingKey: CommonSettingKeys.enableDebugDiagnostics.name,

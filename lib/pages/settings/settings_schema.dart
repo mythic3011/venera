@@ -23,6 +23,12 @@ abstract final class CommonSettingKeys {
   static const readerNextFavoritesEnabled = SettingKey<bool>(
     'reader_next_favorites_enabled',
   );
+  static const readerNextDownloadsEnabled = SettingKey<bool>(
+    'reader_next_downloads_enabled',
+  );
+  static const readerUseSourceRefResolver = SettingKey<bool>(
+    'reader_use_source_ref_resolver',
+  );
 }
 
 abstract final class ExploreSettingKeys {

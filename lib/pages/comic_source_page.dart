@@ -7,6 +7,7 @@ import 'package:venera/components/components.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/source_management_controller.dart';
 import 'package:venera/foundation/consts.dart';
 import 'package:venera/foundation/log.dart';
 import 'package:venera/network/app_dio.dart';
@@ -17,7 +18,9 @@ import 'package:venera/utils/io.dart';
 import 'package:venera/utils/translations.dart';
 
 class ComicSourcePage extends StatelessWidget {
-  const ComicSourcePage({super.key});
+  const ComicSourcePage({super.key, this.controller});
+
+  final SourceManagementController? controller;
 
   static Future<void> update(
     ComicSource source, [
@@ -71,50 +74,33 @@ class ComicSourcePage extends StatelessWidget {
   }
 
   static Future<int> checkComicSourceUpdate() async {
-    if (ComicSource.all().isEmpty) {
-      return 0;
-    }
-    var dio = AppDio();
-    var res = await dio.get<String>(appdata.settings['comicSourceListUrl']);
-    if (res.statusCode != 200) {
+    try {
+      return await SourceManagementController().checkUpdates();
+    } catch (_) {
       return -1;
     }
-    var list = jsonDecode(res.data!) as List;
-    var versions = <String, String>{};
-    for (var source in list) {
-      versions[source['key']] = source['version'];
-    }
-    var shouldUpdate = <String>[];
-    for (var source in ComicSource.all()) {
-      if (versions.containsKey(source.key) &&
-          compareSemVer(versions[source.key]!, source.version)) {
-        shouldUpdate.add(source.key);
-      }
-    }
-    if (shouldUpdate.isNotEmpty) {
-      var updates = <String, String>{};
-      for (var key in shouldUpdate) {
-        updates[key] = versions[key]!;
-      }
-      ComicSourceManager().updateAvailableUpdates(updates);
-    }
-    return shouldUpdate.length;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(body: const _Body());
+    return Scaffold(body: _Body(controller: controller ?? SourceManagementController()));
   }
 }
 
 class _Body extends StatefulWidget {
-  const _Body();
+  const _Body({required this.controller});
+
+  final SourceManagementController controller;
 
   @override
   State<_Body> createState() => _BodyState();
 }
 
 class _BodyState extends State<_Body> {
+  SourceManagementController get _sourceManagementController => widget.controller;
+  List<SourceRepositoryView> _repositories = const <SourceRepositoryView>[];
+  List<SourcePackageView> _availablePackages = const <SourcePackageView>[];
+  bool _loadingRepositories = false;
   var url = "";
 
   void updateUI() {
@@ -125,6 +111,7 @@ class _BodyState extends State<_Body> {
   void initState() {
     super.initState();
     ComicSourceManager().addListener(updateUI);
+    _reloadRepositoryData();
   }
 
   @override
@@ -138,7 +125,10 @@ class _BodyState extends State<_Body> {
     return SmoothCustomScrollView(
       slivers: [
         SliverAppbar(title: Text('Comic Source'.tl), style: AppbarStyle.shadow),
-        buildCard(context),
+        _buildRepositorySection(context),
+        _buildAddImportSection(context),
+        _buildAvailableSourcesSection(context),
+        _buildInstalledSourcesSection(context),
         for (var source in ComicSource.all())
           _SliverComicSource(
             key: ValueKey(source.key),
@@ -149,6 +139,184 @@ class _BodyState extends State<_Body> {
           ),
         SliverPadding(padding: EdgeInsets.only(bottom: context.padding.bottom)),
       ],
+    );
+  }
+
+  Future<void> _reloadRepositoryData() async {
+    setState(() {
+      _loadingRepositories = true;
+    });
+    try {
+      final repos = await _sourceManagementController.listRepositories();
+      final packages = await _sourceManagementController.listAvailablePackages();
+      if (!mounted) return;
+      setState(() {
+        _repositories = repos;
+        _availablePackages = packages;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingRepositories = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildRepositorySection(BuildContext context) {
+    return SliverToBoxAdapter(
+      child: Card(
+        margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Repositories', style: ts.s16),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  FilledButton.tonalIcon(
+                    onPressed: _promptAddRepository,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add Repository'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonalIcon(
+                    onPressed: _loadingRepositories ? null : _reloadRepositoryData,
+                    icon: const Icon(Icons.refresh),
+                    label: Text('Refresh'.tl),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (_repositories.isEmpty && !_loadingRepositories)
+                const Text('No repositories')
+              else
+                ..._repositories.map(
+                  (repo) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(repo.name),
+                    subtitle: Text(
+                      repo.indexUrl,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    leading: Switch(
+                      value: repo.enabled,
+                      onChanged: (value) async {
+                        await _sourceManagementController.setRepositoryEnabled(
+                          repo.id,
+                          value,
+                        );
+                        await _reloadRepositoryData();
+                      },
+                    ),
+                    trailing: Wrap(
+                      spacing: 8,
+                      children: [
+                        IconButton(
+                          key: ValueKey('refresh-repo-${repo.id}'),
+                          tooltip: 'Refresh repository',
+                          onPressed: () async {
+                            await _sourceManagementController.refreshRepository(
+                              repo.id,
+                            );
+                            await _reloadRepositoryData();
+                          },
+                          icon: const Icon(Icons.sync),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove repository',
+                          onPressed: () async {
+                            await _sourceManagementController.removeRepository(
+                              repo.id,
+                            );
+                            await _reloadRepositoryData();
+                          },
+                          icon: const Icon(Icons.delete_outline),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _promptAddRepository() async {
+    final controller = TextEditingController();
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Repository'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(hintText: 'https://.../index.json'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('Cancel'.tl),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final url = controller.text.trim();
+              if (url.isEmpty) return;
+              await _sourceManagementController.addRepository(url);
+              if (ctx.mounted) {
+                Navigator.of(ctx).pop();
+              }
+              await _reloadRepositoryData();
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInstalledSourcesSection(BuildContext context) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        child: Text('Installed Sources', style: ts.s16),
+      ),
+    );
+  }
+
+  Widget _buildAvailableSourcesSection(BuildContext context) {
+    return SliverToBoxAdapter(
+      child: Card(
+        margin: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Available Sources', style: ts.s16),
+              const SizedBox(height: 8),
+              if (_availablePackages.isEmpty)
+                const Text('No available sources')
+              else
+                ..._availablePackages.map(
+                  (pkg) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(pkg.name),
+                    subtitle: Text(pkg.availableVersion ?? ''),
+                    trailing: FilledButton.tonal(
+                      onPressed: null,
+                      child: const Text('Install pending'),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -208,7 +376,7 @@ class _BodyState extends State<_Body> {
     ComicSourcePage.update(source, showLoading);
   }
 
-  Widget buildCard(BuildContext context) {
+  Widget _buildAddImportSection(BuildContext context) {
     return SliverToBoxAdapter(
       child: SizedBox(
         width: double.infinity,
@@ -222,7 +390,7 @@ class _BodyState extends State<_Body> {
                 children: [
                   const Icon(Icons.dashboard_customize),
                   const SizedBox(width: 12),
-                  Text("Add comic source".tl, style: ts.s16),
+                  Text("Add / Import Source".tl, style: ts.s16),
                 ],
               ),
             ),
@@ -241,19 +409,21 @@ class _BodyState extends State<_Body> {
               },
               onSubmitted: handleAddSource,
             ).paddingHorizontal(16).paddingBottom(8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text(
+                'Use repositories for source catalogs. Use direct URL or local file only when you trust the source.'
+                    .tl,
+              ),
+            ),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
                 FilledButton.tonalIcon(
-                  icon: Icon(Icons.article_outlined),
-                  label: Text("Comic Source list".tl),
-                  onPressed: () {
-                    showPopUpWidget(
-                      App.rootContext,
-                      _ComicSourceList(handleAddSource),
-                    );
-                  },
+                  icon: const Icon(Icons.folder_copy_outlined),
+                  label: const Text("Manage Repositories"),
+                  onPressed: _promptAddRepository,
                 ),
                 FilledButton.tonalIcon(
                   icon: Icon(Icons.file_open_outlined),
@@ -276,13 +446,9 @@ class _BodyState extends State<_Body> {
   }
 
   void _selectFile() async {
-    final file = await selectFile(ext: ["js"]);
-    if (file == null) return;
     try {
-      var fileName = file.name;
-      var bytes = await file.readAsBytes();
-      var content = utf8.decode(bytes);
-      await addSource(content, fileName);
+      await _sourceManagementController.addSourceFromConfigFile();
+      _validatePages();
     } catch (e, s) {
       App.rootContext.showMessage(message: e.toString());
       Log.error("Add comic source", "$e\n$s");
@@ -294,12 +460,6 @@ class _BodyState extends State<_Body> {
   }
 
   Future<void> handleAddSource(String url) async {
-    if (url.isEmpty) {
-      return;
-    }
-    var splits = url.split("/");
-    splits.removeWhere((element) => element == "");
-    var fileName = splits.last;
     bool cancel = false;
     var controller = showLoadingDialog(
       App.rootContext,
@@ -307,29 +467,16 @@ class _BodyState extends State<_Body> {
       barrierDismissible: false,
     );
     try {
-      var res = await AppDio().get<String>(
-        url,
-        options: Options(
-          responseType: ResponseType.plain,
-          headers: {"cache-time": "no"},
-        ),
-      );
       if (cancel) return;
-      controller.close();
-      await addSource(res.data!, fileName);
+      await _sourceManagementController.addSourceFromUrl(url);
+      _validatePages();
     } catch (e, s) {
       if (cancel) return;
       context.showMessage(message: e.toString());
       Log.error("Add comic source", "$e\n$s");
+    } finally {
+      controller.close();
     }
-  }
-
-  Future<void> addSource(String js, String fileName) async {
-    var comicSource = await ComicSourceParser().createAndParse(js, fileName);
-    ComicSourceManager().add(comicSource);
-    _addAllPagesWithComicSource(comicSource);
-    appdata.saveData();
-    App.forceRebuild();
   }
 }
 
@@ -561,39 +708,6 @@ void _validatePages() {
   appdata.settings['explore_pages'] = explorePages.toSet().toList();
   appdata.settings['categories'] = categoryPages.toSet().toList();
   appdata.settings['favorites'] = networkFavorites.toSet().toList();
-
-  appdata.saveData();
-}
-
-void _addAllPagesWithComicSource(ComicSource source) {
-  var explorePages = appdata.settings['explore_pages'];
-  var categoryPages = appdata.settings['categories'];
-  var networkFavorites = appdata.settings['favorites'];
-  var searchPages = appdata.settings['searchSources'];
-
-  if (source.explorePages.isNotEmpty) {
-    for (var page in source.explorePages) {
-      if (!explorePages.contains(page.title)) {
-        explorePages.add(page.title);
-      }
-    }
-  }
-  if (source.categoryData != null &&
-      !categoryPages.contains(source.categoryData!.key)) {
-    categoryPages.add(source.categoryData!.key);
-  }
-  if (source.favoriteData != null &&
-      !networkFavorites.contains(source.favoriteData!.key)) {
-    networkFavorites.add(source.favoriteData!.key);
-  }
-  if (source.searchPageData != null && !searchPages.contains(source.key)) {
-    searchPages.add(source.key);
-  }
-
-  appdata.settings['explore_pages'] = explorePages.toSet().toList();
-  appdata.settings['categories'] = categoryPages.toSet().toList();
-  appdata.settings['favorites'] = networkFavorites.toSet().toList();
-  appdata.settings['searchSources'] = searchPages.toSet().toList();
 
   appdata.saveData();
 }
