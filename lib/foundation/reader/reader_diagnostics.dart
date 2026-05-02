@@ -275,6 +275,8 @@ class ReaderDiagnostics {
     String? chapterId,
     String? sourceKey,
     String? loadMode,
+    String? resultSummary,
+    Map<String, Object?> data = const {},
   }) {
     final resolvedLoadMode =
         loadMode ?? (type == ComicType.local ? 'local' : 'remote');
@@ -289,6 +291,7 @@ class ReaderDiagnostics {
         chapterId: chapterId,
         chapterIndex: chapterIndex,
         page: page,
+        resultSummary: resultSummary,
         phase: ReaderTracePhase.sourceResolution,
       ),
     );
@@ -302,6 +305,7 @@ class ReaderDiagnostics {
         'chapterId': chapterId,
         'chapterIndex': chapterIndex,
         'page': page,
+        ...data,
       },
     );
   }

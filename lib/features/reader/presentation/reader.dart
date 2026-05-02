@@ -39,6 +39,7 @@ import 'package:venera/foundation/reader/reader_page_loader.dart';
 import 'package:venera/features/reader/data/reader_resume_service.dart';
 import 'package:venera/features/reader/data/reader_runtime_context.dart';
 import 'package:venera/features/reader/data/reader_session_persistence.dart';
+import 'package:venera/features/reader/data/reader_session_repository.dart';
 import 'package:venera/foundation/source_ref.dart';
 import 'package:venera/foundation/source_identity/source_identity.dart';
 import 'package:venera/network/images.dart';
@@ -281,6 +282,8 @@ class _ReaderState extends State<Reader>
 
   bool _isInitialized = false;
   bool _traceOpened = false;
+  DateTime? _traceOpenedAt;
+  String? _routeNameSnapshot;
   ReaderPaginationDiagnostics? _lastLoadedPaginationDiagnostics;
 
   SourceRef _currentSessionSourceRef() {
@@ -345,7 +348,9 @@ class _ReaderState extends State<Reader>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _routeNameSnapshot = ModalRoute.of(context)?.settings.name;
     if (!_traceOpened) {
+      _traceOpenedAt = DateTime.now();
       recordReaderOpenDiagnostics();
       persistReaderSessionState();
       _traceOpened = true;
@@ -386,7 +391,7 @@ class _ReaderState extends State<Reader>
       recordImageControllerLifecycle('clear', owner: 'reader.dispose');
     }
     clearImageViewController();
-    recordReaderDisposeDiagnostics();
+    recordReaderDisposeDiagnostics(openedAt: _traceOpenedAt);
     if (isFullscreen) {
       unawaited(restoreReaderWindowFrame());
     }

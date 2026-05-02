@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:venera/features/reader_next/presentation/shell_controller.dart';
 import 'package:venera/features/reader_next/runtime/runtime.dart';
+import 'package:venera/foundation/diagnostics/diagnostics.dart';
 
 class ReaderNextShellPage extends StatefulWidget {
   const ReaderNextShellPage({
@@ -19,6 +20,7 @@ class ReaderNextShellPage extends StatefulWidget {
 class _ReaderNextShellPageState extends State<ReaderNextShellPage> {
   late final ReaderNextShellController _controller;
   final TextEditingController _keywordController = TextEditingController();
+  String? _routeNameSnapshot;
 
   @override
   void initState() {
@@ -27,10 +29,18 @@ class _ReaderNextShellPageState extends State<ReaderNextShellPage> {
       runtime: widget.runtime,
       sourceKey: widget.sourceKey,
     )..addListener(_onStateChanged);
+    _recordShellPageLifecycle('reader.shell.page.init');
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _routeNameSnapshot = ModalRoute.of(context)?.settings.name;
   }
 
   @override
   void dispose() {
+    _recordShellPageLifecycle('reader.shell.page.dispose');
     _controller.removeListener(_onStateChanged);
     _controller.dispose();
     _keywordController.dispose();
@@ -38,9 +48,26 @@ class _ReaderNextShellPageState extends State<ReaderNextShellPage> {
   }
 
   void _onStateChanged() {
+    _recordShellPageLifecycle('reader.shell.page.stateChanged');
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void _recordShellPageLifecycle(String event) {
+    AppDiagnostics.trace(
+      'reader.lifecycle',
+      event,
+      data: {
+        'owner': 'ReaderNextShellPage',
+        'sourceKey': widget.sourceKey,
+        'routeName': _routeNameSnapshot,
+        'mounted': mounted,
+        'widgetHashCode': widget.hashCode,
+        'stateHashCode': hashCode,
+        'phase': _controller.state.phase.name,
+      },
+    );
   }
 
   @override
@@ -80,7 +107,8 @@ class _ReaderNextShellPageState extends State<ReaderNextShellPage> {
                 ),
               ),
             )
-          else if (state.phase == ReaderNextShellPhase.error && state.error != null)
+          else if (state.phase == ReaderNextShellPhase.error &&
+              state.error != null)
             Expanded(
               child: Center(
                 child: Text(
@@ -121,7 +149,9 @@ class _ReaderNextShellPageState extends State<ReaderNextShellPage> {
                           const SizedBox(height: 4),
                           Text(
                             'First page images: ${state.pageImages.length}',
-                            key: const Key('reader-next-first-page-image-count'),
+                            key: const Key(
+                              'reader-next-first-page-image-count',
+                            ),
                           ),
                         ],
                       ),

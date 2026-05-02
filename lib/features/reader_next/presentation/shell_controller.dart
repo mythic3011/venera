@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:venera/features/reader_next/diagnostics/errors.dart';
 import 'package:venera/features/reader_next/diagnostics/mapper.dart';
 import 'package:venera/features/reader_next/runtime/runtime.dart';
+import 'package:venera/foundation/diagnostics/diagnostics.dart';
 
 enum ReaderNextShellPhase { idle, loading, ready, error }
 
@@ -56,12 +57,32 @@ class ReaderNextShellController extends ChangeNotifier {
   );
   ReaderNextShellState get state => _state;
 
+  void _recordShellControllerState(String event, {String? reason}) {
+    AppDiagnostics.trace(
+      'reader.lifecycle',
+      event,
+      data: {
+        'owner': 'ReaderNextShellController',
+        'sourceKey': _sourceKey,
+        'phase': _state.phase.name,
+        'searchResultCount': _state.searchResults.length,
+        'hasSelectedDetail': _state.selectedDetail != null,
+        'pageImageCount': _state.pageImages.length,
+        if (reason != null) 'reason': reason,
+      },
+    );
+  }
+
   Future<void> search(String keyword) async {
     _state = _state.copyWith(
       phase: ReaderNextShellPhase.loading,
       clearError: true,
       clearSelectedDetail: true,
       pageImages: const <ReaderImageRefWithCacheKey>[],
+    );
+    _recordShellControllerState(
+      'reader.shell.controller.phase',
+      reason: 'search.start',
     );
     notifyListeners();
     try {
@@ -73,11 +94,19 @@ class ReaderNextShellController extends ChangeNotifier {
         phase: ReaderNextShellPhase.ready,
         searchResults: results,
       );
+      _recordShellControllerState(
+        'reader.shell.controller.phase',
+        reason: 'search.ready',
+      );
       notifyListeners();
     } catch (e) {
       _state = _state.copyWith(
         phase: ReaderNextShellPhase.error,
         error: mapReaderNextRuntimeError(e),
+      );
+      _recordShellControllerState(
+        'reader.shell.controller.phase',
+        reason: 'search.error',
       );
       notifyListeners();
     }
@@ -88,6 +117,10 @@ class ReaderNextShellController extends ChangeNotifier {
       phase: ReaderNextShellPhase.loading,
       clearError: true,
       pageImages: const <ReaderImageRefWithCacheKey>[],
+    );
+    _recordShellControllerState(
+      'reader.shell.controller.phase',
+      reason: 'selectComic.start',
     );
     notifyListeners();
     try {
@@ -113,13 +146,30 @@ class ReaderNextShellController extends ChangeNotifier {
         selectedDetail: detail,
         pageImages: firstPageImages,
       );
+      _recordShellControllerState(
+        'reader.shell.controller.phase',
+        reason: 'selectComic.ready',
+      );
       notifyListeners();
     } catch (e) {
       _state = _state.copyWith(
         phase: ReaderNextShellPhase.error,
         error: mapReaderNextRuntimeError(e),
       );
+      _recordShellControllerState(
+        'reader.shell.controller.phase',
+        reason: 'selectComic.error',
+      );
       notifyListeners();
     }
+  }
+
+  @override
+  void dispose() {
+    _recordShellControllerState(
+      'reader.shell.controller.dispose',
+      reason: 'controller.dispose',
+    );
+    super.dispose();
   }
 }

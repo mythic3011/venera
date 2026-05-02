@@ -100,6 +100,41 @@ void main() {
     expect(event.data['page'], 9);
   });
 
+  test('reader dispose lifecycle carries cause tab and duration metadata', () {
+    readerTraceRecorder.clear();
+    ReaderDiagnostics.recordReaderLifecycle(
+      event: 'reader.dispose',
+      type: ComicType.local,
+      comicId: 'comic-7',
+      chapterId: 'ch-3',
+      chapterIndex: 3,
+      page: 9,
+      resultSummary:
+          'cause=State.dispose owner=Reader.dispose expectedReaderTabId=tab-7 openDurationMs=2700',
+      data: const {
+        'disposeCause': 'State.dispose',
+        'disposeOwner': 'Reader.dispose',
+        'expectedReaderTabId': 'tab-7',
+        'openDurationMs': 2700,
+      },
+    );
+
+    final json = ReaderDiagnostics.toDiagnosticsJson();
+    final recordedEvent =
+        (json['readerTrace'] as Map<String, dynamic>)['events'][0]
+            as Map<String, dynamic>;
+    final diagnosticEvent = DevDiagnosticsApi.recent(
+      channel: 'reader.lifecycle',
+    ).single;
+
+    expect(recordedEvent['event'], 'reader.dispose');
+    expect(recordedEvent['resultSummary'], contains('openDurationMs=2700'));
+    expect(diagnosticEvent.data['disposeCause'], 'State.dispose');
+    expect(diagnosticEvent.data['disposeOwner'], 'Reader.dispose');
+    expect(diagnosticEvent.data['expectedReaderTabId'], 'tab-7');
+    expect(diagnosticEvent.data['openDurationMs'], 2700);
+  });
+
   test('dispose diagnostics can skip layout dependent pagination reads', () {
     final snapshot = buildReaderPaginationDiagnosticsForTesting(
       includePagination: false,
@@ -123,34 +158,37 @@ void main() {
     expect(snapshot.imageCount, 3);
     expect(snapshot.maxPage, isNull);
     expect(snapshot.imagesPerPage, isNull);
-    final diagnosticEvent =
-        DevDiagnosticsApi.recent(channel: 'reader.lifecycle').single;
+    final diagnosticEvent = DevDiagnosticsApi.recent(
+      channel: 'reader.lifecycle',
+    ).single;
     expect(diagnosticEvent.message, 'pagination.diagnostics.unavailable');
-    expect(
-      diagnosticEvent.data['reason'],
-      'pagination_snapshot_unavailable',
-    );
+    expect(diagnosticEvent.data['reason'], 'pagination_snapshot_unavailable');
     expect(diagnosticEvent.data.containsKey('stackTrace'), isFalse);
   });
 
-  test('dispose diagnostics use context unavailable reason without stack spam', () {
-    buildReaderPaginationDiagnosticsForTesting(
-      includePagination: true,
-      imageCount: 3,
-      maxPage: () => throw StateError('layout unavailable during dispose'),
-      imagesPerPage: () => throw StateError('layout unavailable during dispose'),
-      unavailableReason: 'context_unavailable_during_dispose',
-    );
+  test(
+    'dispose diagnostics use context unavailable reason without stack spam',
+    () {
+      buildReaderPaginationDiagnosticsForTesting(
+        includePagination: true,
+        imageCount: 3,
+        maxPage: () => throw StateError('layout unavailable during dispose'),
+        imagesPerPage: () =>
+            throw StateError('layout unavailable during dispose'),
+        unavailableReason: 'context_unavailable_during_dispose',
+      );
 
-    final diagnosticEvent =
-        DevDiagnosticsApi.recent(channel: 'reader.lifecycle').single;
-    expect(diagnosticEvent.message, 'pagination.diagnostics.unavailable');
-    expect(
-      diagnosticEvent.data['reason'],
-      'context_unavailable_during_dispose',
-    );
-    expect(diagnosticEvent.data.containsKey('stackTrace'), isFalse);
-  });
+      final diagnosticEvent = DevDiagnosticsApi.recent(
+        channel: 'reader.lifecycle',
+      ).single;
+      expect(diagnosticEvent.message, 'pagination.diagnostics.unavailable');
+      expect(
+        diagnosticEvent.data['reason'],
+        'context_unavailable_during_dispose',
+      );
+      expect(diagnosticEvent.data.containsKey('stackTrace'), isFalse);
+    },
+  );
 
   test(
     'reader image load calls keep source comic chapter and page context',

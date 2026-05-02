@@ -255,6 +255,8 @@ extension _ReaderDiagnosticsState on _ReaderState {
 
   void recordReaderOpenDiagnostics() {
     final context = currentReaderContext();
+    final expectedReaderTabId =
+        ReaderSessionRepository.defaultTabIdForSourceRef(context.sourceRef);
     ReaderDiagnostics.recordReaderLifecycle(
       event: 'reader.open',
       type: type,
@@ -264,12 +266,33 @@ extension _ReaderDiagnosticsState on _ReaderState {
       page: context.page,
       sourceKey: context.sourceKey,
       loadMode: context.loadMode,
+      resultSummary: 'expectedReaderTabId=$expectedReaderTabId',
+      data: {
+        'expectedReaderTabId': expectedReaderTabId,
+        'sourceRefId': context.sourceRef.id,
+        'sourceRefType': context.sourceRef.type.key,
+        'sourceRefRouteKey': context.sourceRef.routeKey,
+      },
     );
     updateReaderDiagnostics('open');
   }
 
-  void recordReaderDisposeDiagnostics() {
+  void recordReaderDisposeDiagnostics({DateTime? openedAt}) {
     final context = currentReaderContext();
+    final expectedReaderTabId =
+        ReaderSessionRepository.defaultTabIdForSourceRef(context.sourceRef);
+    final routeName = _routeNameSnapshot;
+    final openDurationMs = openedAt == null
+        ? null
+        : DateTime.now().difference(openedAt).inMilliseconds;
+    final disposeCause = 'State.dispose';
+    final disposeOwner = 'Reader.dispose';
+    final resultSummary = [
+      'cause=$disposeCause',
+      'owner=$disposeOwner',
+      'expectedReaderTabId=$expectedReaderTabId',
+      if (openDurationMs != null) 'openDurationMs=$openDurationMs',
+    ].join(' ');
     ReaderDiagnostics.recordReaderLifecycle(
       event: 'reader.dispose',
       type: type,
@@ -279,7 +302,46 @@ extension _ReaderDiagnosticsState on _ReaderState {
       page: context.page,
       sourceKey: context.sourceKey,
       loadMode: context.loadMode,
+      resultSummary: resultSummary,
+      data: {
+        'disposeCause': disposeCause,
+        'disposeOwner': disposeOwner,
+        'routeName': routeName,
+        'openDurationMs': openDurationMs,
+        'expectedReaderTabId': expectedReaderTabId,
+        'sourceRefId': context.sourceRef.id,
+        'sourceRefType': context.sourceRef.type.key,
+        'sourceRefRouteKey': context.sourceRef.routeKey,
+        'widgetHashCode': widget.hashCode,
+        'stateHashCode': hashCode,
+      },
     );
+    if (openDurationMs != null && openDurationMs < 5000) {
+      AppDiagnostics.warn(
+        'reader.lifecycle',
+        'reader.dispose.short_lived',
+        data: {
+          'disposeCause': disposeCause,
+          'disposeOwner': disposeOwner,
+          'routeName': routeName,
+          'openDurationMs': openDurationMs,
+          'loadMode': context.loadMode,
+          'sourceKey': context.sourceKey,
+          'comicId': context.comicId,
+          'chapterId': context.chapterId,
+          'chapterIndex': context.chapterIndex,
+          'page': context.page,
+          'mode': mode.key,
+          'imageCount': images?.length,
+          'expectedReaderTabId': expectedReaderTabId,
+          'sourceRefId': context.sourceRef.id,
+          'sourceRefType': context.sourceRef.type.key,
+          'sourceRefRouteKey': context.sourceRef.routeKey,
+          'widgetHashCode': widget.hashCode,
+          'stateHashCode': hashCode,
+        },
+      );
+    }
     updateReaderDiagnostics('dispose', includePagination: false);
   }
 

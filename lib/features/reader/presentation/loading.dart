@@ -222,6 +222,30 @@ class _ReaderWithLoadingState
     final canonicalActiveTab = await readerSessions.loadActiveReaderTab(
       canonicalComicId,
     );
+    AppDiagnostics.trace(
+      'reader.lifecycle',
+      'reader.open.boundary.resolved',
+      data: {
+        'comicId': canonicalComicId,
+        'requestedComicId': widget.id,
+        'loadMode': resolvedSourceRef.type == SourceRefType.local
+            ? 'local'
+            : 'remote',
+        'sourceKey': resolvedSourceRef.sourceKey,
+        'sourceRefId': resolvedSourceRef.id,
+        'sourceRefType': resolvedSourceRef.type.key,
+        'sourceRefRouteKey': resolvedSourceRef.routeKey,
+        'expectedReaderTabId': ReaderSessionRepository.defaultTabIdForSourceRef(
+          resolvedSourceRef,
+        ),
+        'activeReaderTabId': canonicalActiveTab?.tabId,
+        'activeTabChapterId': canonicalActiveTab?.currentChapterId,
+        'activeTabPageIndex': canonicalActiveTab?.currentPageIndex,
+        'activeTabLoadMode': canonicalActiveTab?.loadMode.name,
+        'activeTabPageOrderId': canonicalActiveTab?.pageOrderId,
+        'activeTabIsActive': canonicalActiveTab?.isActive,
+      },
+    );
 
     if (resolvedSourceRef.type == SourceRefType.local) {
       final localDetail = await UnifiedLocalComicDetailRepository(
