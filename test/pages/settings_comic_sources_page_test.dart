@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:venera/features/sources/comic_source/direct_js_source_validator.dart';
 import 'package:venera/features/sources/comic_source/source_management_controller.dart';
 import 'package:venera/pages/comic_source_page.dart';
 import 'package:venera/utils/translations.dart';
@@ -14,6 +15,7 @@ class _FakeSourceManagementController extends SourceManagementController {
   final List<SourcePackageView> packages;
   int addRepositoryCalls = 0;
   int refreshRepositoryCalls = 0;
+  int addSourceFromUrlCalls = 0;
 
   @override
   Future<List<SourceRepositoryView>> listRepositories() async => repositories;
@@ -49,6 +51,11 @@ class _FakeSourceManagementController extends SourceManagementController {
     refreshRepositoryCalls++;
     return 1;
   }
+
+  @override
+  Future<void> addSourceFromUrl(String url) async {
+    addSourceFromUrlCalls++;
+  }
 }
 
 void main() {
@@ -61,10 +68,16 @@ void main() {
 
   Future<void> pumpPage(
     WidgetTester tester,
-    _FakeSourceManagementController controller,
-  ) async {
+    _FakeSourceManagementController controller, {
+    Future<SourceCommandResult> Function(String url)? validateDirectSourceUrl,
+  }) async {
     await tester.pumpWidget(
-      MaterialApp(home: ComicSourcePage(controller: controller)),
+      MaterialApp(
+        home: ComicSourcePage(
+          controller: controller,
+          validateDirectSourceUrl: validateDirectSourceUrl,
+        ),
+      ),
     );
     await tester.pumpAndSettle();
   }
@@ -144,4 +157,81 @@ void main() {
       expect(controller.refreshRepositoryCalls, 1);
     },
   );
+
+  testWidgets('settings direct url validation action uses validator callback', (
+    tester,
+  ) async {
+    final controller = _FakeSourceManagementController();
+    var validateCalls = 0;
+    await pumpPage(
+      tester,
+      controller,
+      validateDirectSourceUrl: (url) async {
+        validateCalls++;
+        return const SourceCommandSuccess(
+          metadata: DirectJsValidationMetadata(sourceKey: 'demo-source'),
+        );
+      },
+    );
+
+    await tester.enterText(find.byType(TextField).first, 'https://example.com/source.js');
+    await tester.tap(find.text('Validate Direct URL'));
+    await tester.pump();
+
+    expect(validateCalls, 1);
+    expect(find.text('Validation Result'), findsOneWidget);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('direct url validation success shows disabled install state', (
+    tester,
+  ) async {
+    final controller = _FakeSourceManagementController();
+    await pumpPage(
+      tester,
+      controller,
+      validateDirectSourceUrl: (url) async {
+        return const SourceCommandSuccess(
+          metadata: DirectJsValidationMetadata(
+            sourceKey: 'demo-source',
+            name: 'Demo Source',
+            version: '1.0.0',
+          ),
+        );
+      },
+    );
+
+    await tester.enterText(find.byType(TextField).first, 'https://example.com/source.js');
+    await tester.tap(find.text('Validate Direct URL'));
+    await tester.pump();
+
+    expect(find.text('Validation Result'), findsOneWidget);
+    expect(find.textContaining('Install/write path is disabled in D2.'), findsOneWidget);
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('direct url validation does not mutate installed sources', (
+    tester,
+  ) async {
+    final controller = _FakeSourceManagementController();
+    await pumpPage(
+      tester,
+      controller,
+      validateDirectSourceUrl: (url) async {
+        return const SourceCommandSuccess(
+          metadata: DirectJsValidationMetadata(sourceKey: 'demo-source'),
+        );
+      },
+    );
+
+    await tester.enterText(find.byType(TextField).first, 'https://example.com/source.js');
+    await tester.tap(find.text('Validate Direct URL'));
+    await tester.pump();
+    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+
+    expect(controller.addSourceFromUrlCalls, 0);
+  });
 }

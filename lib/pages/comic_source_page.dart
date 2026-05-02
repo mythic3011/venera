@@ -7,6 +7,8 @@ import 'package:venera/components/components.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/direct_js_source_validator.dart'
+    as djs;
 import 'package:venera/features/sources/comic_source/source_management_controller.dart';
 import 'package:venera/foundation/consts.dart';
 import 'package:venera/foundation/log.dart';
@@ -18,9 +20,15 @@ import 'package:venera/utils/io.dart';
 import 'package:venera/utils/translations.dart';
 
 class ComicSourcePage extends StatelessWidget {
-  const ComicSourcePage({super.key, this.controller});
+  const ComicSourcePage({
+    super.key,
+    this.controller,
+    this.validateDirectSourceUrl,
+  });
 
   final SourceManagementController? controller;
+  final Future<djs.SourceCommandResult> Function(String url)?
+  validateDirectSourceUrl;
 
   static Future<void> update(
     ComicSource source, [
@@ -83,14 +91,58 @@ class ComicSourcePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(body: _Body(controller: controller ?? SourceManagementController()));
+    return Scaffold(
+      body: _Body(
+        controller: controller ?? SourceManagementController(),
+        validateDirectSourceUrl: validateDirectSourceUrl ?? _defaultValidateDirectSourceUrl,
+      ),
+    );
+  }
+
+  static Future<djs.SourceCommandResult> _defaultValidateDirectSourceUrl(
+    String url,
+  ) {
+    final validator = djs.DirectJsSourceValidator(
+      fetcher: (targetUrl) async {
+        final res = await AppDio().get<String>(
+          targetUrl,
+          options: Options(responseType: ResponseType.plain),
+        );
+        return djs.DirectJsFetchResponse(
+          statusCode: res.statusCode ?? 0,
+          body: res.data ?? '',
+          contentType: res.headers.value('content-type'),
+        );
+      },
+      isolatedValidationPort: (script) async {
+        return Future<djs.DirectJsValidationMetadata>(() {
+          final keyMatch = RegExp(
+            r'''['"]?key['"]?\s*:\s*['"]([^'"]+)['"]''',
+          ).firstMatch(script);
+          final nameMatch = RegExp(
+            r'''['"]?name['"]?\s*:\s*['"]([^'"]+)['"]''',
+          ).firstMatch(script);
+          final versionMatch = RegExp(
+            r'''['"]?version['"]?\s*:\s*['"]([^'"]+)['"]''',
+          ).firstMatch(script);
+          return djs.DirectJsValidationMetadata(
+            sourceKey: keyMatch?.group(1)?.trim() ?? '',
+            name: nameMatch?.group(1)?.trim(),
+            version: versionMatch?.group(1)?.trim(),
+          );
+        });
+      },
+    );
+    return validator.validate(url);
   }
 }
 
 class _Body extends StatefulWidget {
-  const _Body({required this.controller});
+  const _Body({required this.controller, required this.validateDirectSourceUrl});
 
   final SourceManagementController controller;
+  final Future<djs.SourceCommandResult> Function(String url)
+  validateDirectSourceUrl;
 
   @override
   State<_Body> createState() => _BodyState();
@@ -102,6 +154,8 @@ class _BodyState extends State<_Body> {
   List<SourcePackageView> _availablePackages = const <SourcePackageView>[];
   bool _loadingRepositories = false;
   String? _repositoryCommandError;
+  String? _directSourceValidationMessage;
+  bool _validatingDirectSource = false;
   var url = "";
 
   void updateUI() {
@@ -463,14 +517,16 @@ class _BodyState extends State<_Body> {
                 border: const UnderlineInputBorder(),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                 suffix: IconButton(
-                  onPressed: () => handleAddSource(url),
-                  icon: const Icon(Icons.check),
+                  onPressed: _validatingDirectSource
+                      ? null
+                      : () => _validateDirectSourceUrl(url),
+                  icon: const Icon(Icons.fact_check_outlined),
                 ),
               ),
               onChanged: (value) {
                 url = value;
               },
-              onSubmitted: handleAddSource,
+              onSubmitted: _validateDirectSourceUrl,
             ).paddingHorizontal(16).paddingBottom(8),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -479,6 +535,11 @@ class _BodyState extends State<_Body> {
                     .tl,
               ),
             ),
+            if (_directSourceValidationMessage != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(_directSourceValidationMessage!),
+              ),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -499,6 +560,19 @@ class _BodyState extends State<_Body> {
                   onPressed: help,
                 ),
                 _CheckUpdatesButton(),
+                FilledButton.tonalIcon(
+                  icon: _validatingDirectSource
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.verified_outlined),
+                  label: const Text("Validate Direct URL"),
+                  onPressed: _validatingDirectSource
+                      ? null
+                      : () => _validateDirectSourceUrl(url),
+                ),
               ],
             ).paddingHorizontal(12).paddingVertical(8),
             const SizedBox(height: 8),
@@ -522,23 +596,54 @@ class _BodyState extends State<_Body> {
     launchUrlString(comicSourceDocUrl);
   }
 
-  Future<void> handleAddSource(String url) async {
-    bool cancel = false;
-    var controller = showLoadingDialog(
-      App.rootContext,
-      onCancel: () => cancel = true,
-      barrierDismissible: false,
-    );
-    try {
-      if (cancel) return;
-      await _sourceManagementController.addSourceFromUrl(url);
-      _validatePages();
-    } catch (e, s) {
-      if (cancel) return;
-      context.showMessage(message: e.toString());
-      Log.error("Add comic source", "$e\n$s");
-    } finally {
-      controller.close();
+  Future<void> _validateDirectSourceUrl(String rawUrl) async {
+    final normalized = rawUrl.trim();
+    if (normalized.isEmpty) {
+      setState(() {
+        _directSourceValidationMessage = 'Please enter a source URL'.tl;
+      });
+      return;
+    }
+    setState(() {
+      _validatingDirectSource = true;
+      _directSourceValidationMessage = null;
+    });
+    final result = await widget.validateDirectSourceUrl(normalized);
+    if (!mounted) return;
+    switch (result) {
+      case djs.SourceCommandSuccess(:final metadata):
+        setState(() {
+          _directSourceValidationMessage =
+              'Validation passed. Install remains disabled in this lane.'.tl;
+        });
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Validation Result'),
+            content: Text(
+              'Source Key: ${metadata.sourceKey}\n'
+              'Name: ${metadata.name ?? '-'}\n'
+              'Version: ${metadata.version ?? '-'}\n\n'
+              'Install/write path is disabled in D2.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text('Close'.tl),
+              ),
+            ],
+          ),
+        );
+      case djs.SourceCommandFailed(:final code, :final message):
+        setState(() {
+          _directSourceValidationMessage = '$code: $message';
+        });
+        context.showMessage(message: '$code: $message');
+    }
+    if (mounted) {
+      setState(() {
+        _validatingDirectSource = false;
+      });
     }
   }
 }
