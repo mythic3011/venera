@@ -236,58 +236,17 @@ class _ReaderImagesState extends State<_ReaderImages> {
       chapterIndex: reader.chapter,
       chapters: reader.widget.chapters,
     );
-    final loadMode =
-        _shouldLoadReaderPagesLocally(
-          type: reader.type,
-          canonicalComicRefId: reader.cid,
-          isDownloaded: (_, __) => isDownloaded,
-          hasLocalComic: (_) => hasLocalComic,
-        )
-        ? 'local'
-        : 'remote';
+    final request = ReaderPageLoadRequest(
+      type: reader.type,
+      canonicalComicRefId: reader.cid,
+      chapterIndex: reader.chapter,
+      chapters: reader.widget.chapters,
+      sourceRef: reader.widget.sourceRef,
+      hasLocalComic: hasLocalComic,
+      isDownloaded: isDownloaded,
+    );
+    final loadMode = decideReaderPageLoadMode(request);
     final callId = reader.beginPageListDiagnostics(loadMode);
-    SourceRef sourceRef;
-    try {
-      sourceRef = _buildSourceRef(loadMode, hasLocalComic: hasLocalComic);
-    } catch (e) {
-      setState(() {
-        error = e.toString();
-        reader.isLoading = false;
-        inProgress = false;
-      });
-      return;
-    }
-    Future<Res<List<String>>> legacyLoadPages() async {
-      if (loadMode == 'local') {
-        final targetChapterId =
-            sourceRef.params['chapterId']?.toString() ??
-            reader.widget.chapters?.ids.elementAtOrNull(reader.chapter - 1);
-        return Res(
-          await CanonicalReaderPages(
-            store: App.repositories.comicDetailStore,
-          ).loadLocalPages(
-            localComicId: reader.cid,
-            chapterId: targetChapterId,
-          ),
-        );
-      }
-      final source = ComicSource.find(reader.type.sourceKey);
-      final loadComicPages = source?.loadComicPages;
-      if (loadComicPages == null) {
-        return const Res.error('SOURCE_NOT_AVAILABLE');
-      }
-      final chapterId =
-          sourceRef.params['chapterId']?.toString() ??
-          reader.widget.chapters?.ids.elementAtOrNull(reader.chapter - 1) ??
-          reader.chapter.toString();
-      try {
-        final upstreamRefId = requireRemoteUpstreamComicRefId(sourceRef);
-        return loadComicPages(upstreamRefId, chapterId);
-      } catch (e) {
-        return Res.error(e.toString());
-      }
-    }
-
     final loader = ReaderPageLoader(
       loadLocalPages:
           ({
@@ -325,17 +284,22 @@ class _ReaderImagesState extends State<_ReaderImages> {
       ),
       sourceExists: (sourceKey) => ComicSource.find(sourceKey) != null,
     );
-    final result = await dispatchReaderPageLoad(
-      useSourceRefResolver: true,
-      loadMode: loadMode,
-      legacyLoadPages: legacyLoadPages,
+    final result = await ReaderPageLoadController(
       loader: loader,
-      sourceRef: sourceRef,
-    );
+    ).loadReaderPageList(request: request, loadMode: loadMode);
     if (!mounted ||
         loadSessionId != _loadSessionId ||
         loadChapter != reader.chapter) {
       inProgress = false;
+      return;
+    }
+    final sourceRef = result.sourceRef;
+    if (sourceRef == null) {
+      setState(() {
+        error = result.res.errorMessage;
+        reader.isLoading = false;
+        inProgress = false;
+      });
       return;
     }
     final res = result.res;
@@ -364,6 +328,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
           loadMode: loadMode,
           sourceRef: sourceRef,
           errorMessage: res.errorMessage ?? 'Unknown page list error',
+          errorCode: result.errorCode,
         );
       }
     } else {
@@ -422,46 +387,6 @@ class _ReaderImagesState extends State<_ReaderImages> {
     }
     if (!mounted) return;
     context.readerScaffold.update();
-  }
-
-  SourceRef _buildSourceRef(String loadMode, {required bool hasLocalComic}) {
-    final chapterId =
-        reader.widget.chapters?.ids.elementAtOrNull(reader.chapter - 1) ??
-        (loadMode == 'local' ? null : reader.chapter.toString());
-    final existingRef = reader.widget.sourceRef;
-    if (existingRef != null) {
-      final existingChapterId = existingRef.params['chapterId']?.toString();
-      if (existingChapterId == chapterId) {
-        return existingRef;
-      }
-      return switch (existingRef.type) {
-        SourceRefType.local => SourceRef.fromLegacyLocal(
-          localType:
-              existingRef.params['localType']?.toString() ?? localSourceKey,
-          localComicId:
-              existingRef.params['localComicId']?.toString() ?? reader.cid,
-          chapterId: chapterId,
-        ),
-        SourceRefType.remote => SourceRef.fromLegacyRemote(
-          sourceKey: existingRef.sourceKey,
-          comicId: requireRemoteUpstreamComicRefId(existingRef),
-          chapterId: chapterId,
-          routeKey: existingRef.routeKey,
-        ),
-      };
-    }
-    if (loadMode == 'local') {
-      return SourceRef.fromLegacyLocal(
-        localType: _readerLocalTypeKey(
-          type: reader.type,
-          canonicalComicRefId: reader.cid,
-          hasLocalComic: (_) => hasLocalComic,
-        ),
-        localComicId: reader.cid,
-        chapterId: chapterId,
-      );
-    }
-    throw StateError('REMOTE_READER_REQUIRES_SOURCE_REF');
   }
 
   @override
