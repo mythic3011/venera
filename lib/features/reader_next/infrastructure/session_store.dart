@@ -37,6 +37,7 @@ class DriftReaderSessionStore implements ReaderSessionStore {
       sourceRef: sourceRef,
       chapterRefId: tab.chapterId,
       page: tab.pageIndex,
+      pageOrderId: tab.pageOrderId,
     );
   }
 
@@ -68,9 +69,13 @@ class DriftReaderSessionStore implements ReaderSessionStore {
         chapterId: session.chapterRefId,
         pageIndex: session.page,
         sourceRefJson: _encodeSourceRef(session.sourceRef),
+        pageOrderId: session.pageOrderId,
       ),
     );
-    await _store.setReaderSessionActiveTab(sessionId: sessionId, activeTabId: tabId);
+    await _store.setReaderSessionActiveTab(
+      sessionId: sessionId,
+      activeTabId: tabId,
+    );
   }
 
   String _encodeSourceRef(SourceRef sourceRef) {

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:venera/features/reader_next/runtime/runtime.dart';
+import 'package:venera/foundation/diagnostics/diagnostics.dart';
 
 class _FakeExternalSourceAdapter implements ExternalSourceAdapter {
   _FakeExternalSourceAdapter({required this.sourceKey});
@@ -81,6 +82,14 @@ class _RecordingLocalResolver implements LocalReaderPageResolver {
 }
 
 void main() {
+  setUp(() {
+    AppDiagnostics.configureSinksForTesting(const []);
+  });
+
+  tearDown(() {
+    AppDiagnostics.resetForTesting();
+  });
+
   group('ReaderNextRuntime integration harness', () {
     late _FakeExternalSourceAdapter adapter;
     late ReaderNextRuntime runtime;
@@ -218,6 +227,45 @@ void main() {
       expect(localResolver.lastIdentity?.sourceRef.upstreamComicRefId, 'local-comic-1');
       expect(localResolver.lastChapterRefId, '1:chapter-key');
       expect(adapter.lastPageUpstreamComicRefId, isNull);
+    });
+
+    test('local imported reader falls back to page index when pageOrderId is null', () async {
+      localResolver.images = const <ReaderImageRef>[
+        ReaderImageRef(
+          imageKey: 'local:1:__imported__:0',
+          imageUrl: '/tmp/imported-page-1.jpg',
+        ),
+        ReaderImageRef(
+          imageKey: 'local:1:__imported__:1',
+          imageUrl: '/tmp/imported-page-2.jpg',
+        ),
+      ];
+      final identity = ComicIdentity(
+        canonicalComicId: 'local:1',
+        sourceRef: SourceRef.local(
+          sourceKey: 'local',
+          comicRefId: '1',
+          chapterRefId: '1:__imported__',
+        ),
+      );
+
+      final refs = await runtime.loadReaderPage(
+        identity: identity,
+        chapterRefId: '1:__imported__',
+        page: 1,
+      );
+
+      expect(refs, hasLength(2));
+      expect(refs.first.image.imageUrl, '/tmp/imported-page-1.jpg');
+      expect(localResolver.lastPage, 1);
+      final fallbackEvents = DevDiagnosticsApi.recent(
+        channel: 'reader.local',
+      ).where(
+        (event) => event.message == 'reader.local.resume.pageOrderFallback',
+      );
+      expect(fallbackEvents, hasLength(1));
+      expect(fallbackEvents.single.data['pageOrderId'], isNull);
+      expect(fallbackEvents.single.data['fallback'], 'currentPageIndex:fileOrder');
     });
 
     test('ReaderNext local resolver blocks missing local comic without fallback', () async {

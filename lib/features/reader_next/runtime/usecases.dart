@@ -1,3 +1,5 @@
+import 'package:venera/foundation/diagnostics/diagnostics.dart';
+
 import 'cache_keys.dart';
 import 'gateway.dart';
 import 'local_resolver.dart';
@@ -10,7 +12,8 @@ class ReaderNextRuntime {
     required RemoteAdapterGateway gateway,
     required ReaderSessionStore sessionStore,
     ImageCacheStore imageCacheStore = const NoopImageCacheStore(),
-    LocalReaderPageResolver localPageResolver = const LegacyLocalReaderPageResolver(),
+    LocalReaderPageResolver localPageResolver =
+        const LegacyLocalReaderPageResolver(),
   }) : _gateway = gateway,
        _sessionStore = sessionStore,
        _imageCacheStore = imageCacheStore,
@@ -27,7 +30,10 @@ class ReaderNextRuntime {
     int page = 1,
   }) {
     if (sourceKey.isEmpty || keyword.trim().isEmpty) {
-      throw ReaderRuntimeException('SEARCH_INVALID', 'sourceKey and keyword are required');
+      throw ReaderRuntimeException(
+        'SEARCH_INVALID',
+        'sourceKey and keyword are required',
+      );
     }
     return _gateway.search(
       sourceKey: sourceKey,
@@ -35,9 +41,7 @@ class ReaderNextRuntime {
     );
   }
 
-  Future<ComicDetailResult> loadComicDetail({
-    required ComicIdentity identity,
-  }) {
+  Future<ComicDetailResult> loadComicDetail({required ComicIdentity identity}) {
     return _gateway.loadComicDetail(identity: identity);
   }
 
@@ -45,8 +49,24 @@ class ReaderNextRuntime {
     required ComicIdentity identity,
     required String chapterRefId,
     required int page,
+    String? pageOrderId,
   }) async {
     final isRemote = identity.sourceRef.isRemote;
+    if (!isRemote && (pageOrderId == null || pageOrderId.trim().isEmpty)) {
+      AppDiagnostics.info(
+        'reader.local',
+        'reader.local.resume.pageOrderFallback',
+        data: {
+          'loadMode': 'local',
+          'sourceKey': identity.sourceRef.sourceKey,
+          'comicId': identity.canonicalComicId,
+          'chapterId': chapterRefId,
+          'page': page,
+          'pageOrderId': pageOrderId,
+          'fallback': 'currentPageIndex:fileOrder',
+        },
+      );
+    }
     final images = isRemote
         ? await _gateway.loadReaderPageImages(
             identity: identity,
@@ -105,12 +125,14 @@ class ReaderNextRuntime {
     required ComicIdentity identity,
     required String chapterRefId,
     required int page,
+    String? pageOrderId,
   }) {
     final session = ReaderResumeSession(
       canonicalComicId: identity.canonicalComicId,
       sourceRef: identity.sourceRef,
       chapterRefId: chapterRefId,
       page: page,
+      pageOrderId: pageOrderId,
     );
     return _sessionStore.save(session);
   }
