@@ -89,6 +89,60 @@ void main() {
     expect(providerCreated.data['imageKey'], 'https://example.com/page-3.jpg');
   });
 
+  test(
+    'reader emits render terminal diagnostic after page provider is created',
+    () {
+      buildReaderImageProvider(
+        imageKey: 'https://example.com/page-terminal.jpg',
+        sourceRef: SourceRef.fromLegacyRemote(
+          sourceKey: 'copymanga',
+          comicId: 'comic-9',
+          chapterId: 'ep-5',
+        ),
+        canonicalComicId: 'remote:copymanga:comic-9',
+        upstreamComicRefId: 'comic-9',
+        chapterRefId: 'ep-5',
+        page: 4,
+        enableResize: true,
+      );
+
+      final messages = DevDiagnosticsApi.recent(
+        channel: 'reader.render',
+      ).map((event) => event.message).toList(growable: false);
+      expect(messages, contains('reader.render.page.provider.created'));
+      expect(messages, contains('reader.render.provider.created'));
+    },
+  );
+
+  test(
+    'reader local load success is followed by provider-created diagnostic',
+    () {
+      buildReaderImageProvider(
+        imageKey: 'file:///tmp/local-success-page.jpg',
+        sourceRef: SourceRef.fromLegacyLocal(
+          localType: 'local',
+          localComicId: 'comic-local',
+          chapterId: 'comic-local:__imported__',
+        ),
+        canonicalComicId: 'comic-local',
+        upstreamComicRefId: 'comic-local',
+        chapterRefId: 'comic-local:__imported__',
+        page: 1,
+        enableResize: false,
+      );
+
+      final providerCreated = DevDiagnosticsApi.recent(channel: 'reader.render')
+          .singleWhere(
+            (event) => event.message == 'reader.render.provider.created',
+          );
+      expect(providerCreated.data['loadMode'], 'local');
+      expect(
+        providerCreated.data['imageKey'],
+        'file:///tmp/local-success-page.jpg',
+      );
+    },
+  );
+
   test('reader image diagnostics include comic chapter and source context', () {
     final context = readerImageLoadContextForTesting(
       imageKey: 'https://example.com/page-3.jpg',

@@ -172,6 +172,12 @@ void main() {
       ).singleWhere((event) => event.message == 'reader.render.blocked');
       expect(event.data['code'], 'LOCAL_IMAGE_READ_FAILED');
       expect(event.data['fileName'], 'missing page.bin');
+      final failed = DevDiagnosticsApi.recent(channel: 'reader.render')
+          .singleWhere(
+            (event) => event.message == 'reader.render.provider.failed',
+          );
+      expect(failed.data['code'], 'LOCAL_IMAGE_READ_FAILED');
+      expect(failed.data['fileName'], 'missing page.bin');
     },
   );
 

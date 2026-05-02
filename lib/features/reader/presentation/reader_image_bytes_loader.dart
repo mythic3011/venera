@@ -28,6 +28,15 @@ Future<Uint8List> _readReaderImageBytes({
     try {
       return await file.readAsBytes();
     } catch (_) {
+      recordReaderProviderFailedDiagnostic(
+        code: 'LOCAL_IMAGE_READ_FAILED',
+        loadMode: 'local',
+        sourceKey: resolvedSourceKey,
+        canonicalComicId: resolvedCanonicalComicRefId,
+        chapterRefId: resolvedChapterRefId,
+        imageKey: imageKey,
+        fileName: file.name,
+      );
       recordReaderRenderBlockedDiagnostic(
         code: 'LOCAL_IMAGE_READ_FAILED',
         loadMode: 'local',
@@ -44,6 +53,15 @@ Future<Uint8List> _readReaderImageBytes({
       '$imageKey@$resolvedSourceKey@$resolvedCanonicalComicRefId@$resolvedUpstreamComicRefId@$resolvedChapterRefId';
   final cache = await (findCache ?? CacheManager().findCache).call(cacheKey);
   if (cache == null) {
+    recordReaderProviderFailedDiagnostic(
+      code: 'IMAGE_CACHE_MISS',
+      loadMode: 'remote',
+      sourceKey: resolvedSourceKey,
+      canonicalComicId: resolvedCanonicalComicRefId,
+      upstreamComicRefId: resolvedUpstreamComicRefId,
+      chapterRefId: resolvedChapterRefId,
+      imageKey: imageKey,
+    );
     recordReaderRenderBlockedDiagnostic(
       code: 'IMAGE_CACHE_MISS',
       loadMode: 'remote',
