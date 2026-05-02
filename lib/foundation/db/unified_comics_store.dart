@@ -2410,7 +2410,10 @@ class UnifiedComicsStore extends GeneratedDatabase
       VALUES (?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
       ON CONFLICT(id) DO UPDATE SET
         comic_id = excluded.comic_id,
-        active_tab_id = excluded.active_tab_id,
+        active_tab_id = COALESCE(
+          excluded.active_tab_id,
+          reader_sessions.active_tab_id
+        ),
         updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP);
       ''',
       [

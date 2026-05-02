@@ -407,6 +407,60 @@ void main() {
   );
 
   test(
+    'local reader session upsert does not clear active tab when page order differs',
+    () async {
+      final tempDir = await Directory.systemTemp.createTemp(
+        'venera-reader-session-retention-',
+      );
+      final store = UnifiedComicsStore(p.join(tempDir.path, 'venera.db'));
+      await store.init();
+      try {
+        await store.upsertComic(
+          const ComicRecord(
+            id: 'comic-local',
+            title: 'Local Comic',
+            normalizedTitle: 'local comic',
+          ),
+        );
+        final repository = ReaderSessionRepository(store: store);
+        final localRef = SourceRef.fromLegacyLocal(
+          localType: 'local',
+          localComicId: 'comic-local',
+          chapterId: '1:__imported__',
+        );
+        await repository.upsertCurrentLocation(
+          comicId: 'comic-local',
+          chapterId: '1:__imported__',
+          pageIndex: 1,
+          sourceRef: localRef,
+          pageOrderId: '1:__imported__:source_default',
+        );
+
+        final session = await store.loadReaderSessionByComic('comic-local');
+        expect(session!.activeTabId, localRef.id);
+
+        await store.upsertReaderSession(
+          ReaderSessionRecord(id: session.id, comicId: 'comic-local'),
+        );
+
+        final retainedSession = await store.loadReaderSessionByComic(
+          'comic-local',
+        );
+        final retainedTab = await repository.loadActiveReaderTab('comic-local');
+        expect(retainedSession!.activeTabId, localRef.id);
+        expect(retainedTab!.tabId, localRef.id);
+        expect(retainedTab.pageOrderId, '1:__imported__:source_default');
+        expect(retainedTab.pageOrderId, isNot(retainedTab.tabId));
+      } finally {
+        await store.close();
+        if (tempDir.existsSync()) {
+          tempDir.deleteSync(recursive: true);
+        }
+      }
+    },
+  );
+
+  test(
     'persisted remote reader context uses canonical remote comic id',
     () async {
       final tempDir = await Directory.systemTemp.createTemp(
