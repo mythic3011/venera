@@ -36,6 +36,36 @@ Add-source page can install sources but is not the canonical management surface.
 
 This is a broken information architecture. Source lifecycle should be owned by one surface.
 
+## Lane Status
+
+This table tracks lane closeout only. It must not be used to claim that the full M26.2 target is complete.
+
+| Lane                                                 | Status      | Closeout scope                                                                                                                                                           | Not completed by this lane                                                                                  |
+| ---------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| M26.2-A Inventory                                    | Closed      | Callsite inventory, installed-source authority, command mapping, persistence mapping, official index shape                                                               | No runtime or UI behavior change                                                                            |
+| M26.2-B Controller Extraction                        | Closed      | Shared source management controller extraction and command routing tests                                                                                                 | Repository registry, Direct JS hardening, Settings UI consolidation                                         |
+| M26.2-C Repository Registry                          | Closed      | Canonical DB repository/package registry, dual default repository seed, legacy `comicSourceListUrl` seed, parser/refresh hardening, per-repository refresh serialization | Repository package install and Direct JS install/write path                                                 |
+| M26.2-E Settings UI Consolidation                    | Closed      | Single Settings source-management surface, repository/add-import/available/installed sections, legacy source-list popup entrypoint removed, available install disabled   | Direct JS install enablement and repository package install enablement                                      |
+| M26.2-F Diagnostics and Command Error State          | Closed      | Typed visible repository command errors, repository row status/error code, diagnostics redaction, code-based invalid URL handling                                        | Direct JS validation or install execution                                                                   |
+| M26.2-D1 Direct JS Validation Service                | Closed      | Validation-only service, typed `SOURCE_SCRIPT_*`/`SOURCE_KEY_MISSING` failures, fetch/content/size/timeout/schema/key boundaries                                         | UI confirmation and install/write path                                                                      |
+| M26.2-D2 Direct JS Confirmation UI                   | Closed      | Direct URL UI routes to validator, metadata/risk dialog, `Close` only, no legacy install call, no installed-source mutation                                              | Direct JS install/write path                                                                                |
+| M26.2-D3a Install Command Design/Test Skeleton       | Closed      | Install command contract design, collision/provenance/rollback requirements, skipped guard tests, no production command                                                  | Direct JS install/write adapter, origin recording, content-hash recording                                   |
+| M26.2-D3b Write Adapter Design                       | Closed      | Write adapter contract, staging/atomic write design, rollback matrix, source authority integration rules, collision/provenance requirements, no implementation           | Direct JS install/write adapter implementation and UI enablement                                            |
+| M26.2-D3c0 Installed Source Authority Inventory      | Closed      | Installed source filesystem path, parser/register/remove/update/reload authority, settings/provenance boundaries, no implementation                                      | Direct JS install/write adapter implementation and UI enablement                                            |
+| M26.2-D3c1 Minimal Write Adapter Implementation Plan | Closed      | Plan-only bridge from D3c0 authority inventory to D3c write adapter implementation, no production code                                                                   | Actual Direct JS install/write adapter implementation and UI enablement                                     |
+| M26.2-D3c2 Guard Command + In-memory Adapter Tests   | Closed      | Added `DirectJsInstallRequest`, `DirectJsSourceWriteAdapter`, executable guard tests for confirm/collision/key-mismatch/no-write blocking; no production write path      | Filesystem write, provenance/hash recording, source install UI enablement                                   |
+| M26.2-D3c3 Staged Filesystem Write Adapter Tests     | Closed      | Tests-only staged filesystem guard coverage: staged path outside active scan path, validation-fail cleanup, final path invisible before commit                           | Controller wiring, UI enablement, production write adapter, provenance/hash recording                       |
+| M26.2-D3c4 Staged Source Writer Hardening            | Closed      | Production staging utility hardened with root containment, path traversal/canonical escape rejection, no-overwrite guard, and validation-failure cleanup semantics        | Parser/register handoff, controller wiring, UI enablement, provenance/hash recording                        |
+| M26.2-D3c Direct JS Install Write Path               | Not started | Pending                                                                                                                                                                  | Actual direct JS install, provenance recording, content-hash recording, source-key collision overwrite flow |
+| Repository Package Install                           | Not started | Pending                                                                                                                                                                  | Install from available repository package remains disabled                                                  |
+
+Current safe claim:
+
+- Source management registry, Settings surface, diagnostics, Direct JS validation/confirmation, Direct JS write-adapter design, installed-source authority inventory, D3c2 guard command/tests, D3c3 staged filesystem tests, and D3c4 staging utility hardening are closed.
+- Full Direct JS install/write support is not complete.
+- Repository package install is not complete.
+- M26.2 as a whole is not complete until D3c write implementation and repository package install are explicitly closed.
+
 ## Scope
 
 - source repository registry
@@ -1273,6 +1303,621 @@ git diff --check
 - D3a closeout must not claim that Direct JS install, origin recording, or content-hash recording is complete.
 - D3a must not enable repository package install.
 - D3a must not change ReaderNext, cache, appdata, cookie, or deep source runtime semantics.
+
+#### M26.2-D3a Closeout Evidence
+
+Implemented:
+
+- Added skeleton-only D3a contract guard tests.
+- Tests are intentionally skipped/pending until D3b/D3c write adapter exists.
+- No production install command was introduced.
+- No direct JavaScript install UI action was enabled.
+- No installed source file write path was added.
+- No `ComicSourceManager` mutation path was added.
+- D3a closeout does not claim that Direct JS install, origin recording, or content-hash recording is complete.
+
+Files:
+
+- `test/features/source_management/direct_js_install_command_test.dart`
+
+Verification:
+
+```bash
+dart analyze test/features/source_management/direct_js_install_command_test.dart
+flutter test test/features/source_management/direct_js_install_command_test.dart
+```
+
+D3a skeleton tests added:
+
+```dart
+test('direct js install command blocks when confirmInstall is false', () async {}, skip: true);
+test('direct js install command blocks source key collision without overwrite confirmation', () async {}, skip: true);
+test('direct js install command keeps collision blocked even with overwrite until write adapter exists', () async {}, skip: true);
+test('direct js install command blocks source key mismatch between validation and parsed payload', () async {}, skip: true);
+test('direct js install command dry run does not write installed source files', () async {}, skip: true);
+test('direct js install command dry run does not mutate ComicSourceManager state', () async {}, skip: true);
+```
+
+#### M26.2-D3b: Direct JS Write Adapter Design (No Implementation)
+
+Scope:
+
+- define the future Direct JS write adapter contract
+- define staged file write behavior
+- define atomic commit behavior where platform support exists
+- define rollback behavior for all failure points
+- define source authority integration points
+- define provenance metadata write requirements
+- define content-hash recording requirements
+- define source-key collision overwrite policy
+- define tests that D3c must unskip or implement
+- no production write adapter implementation
+- no direct JavaScript install UI enablement
+- no repository package install enablement
+- no `ComicSourceManager` mutation in this lane
+
+Non-goals:
+
+- do not write source script files
+- do not register installed sources
+- do not enable overwrite flow
+- do not enable install button in D2 confirmation UI
+- do not implement repository package install
+- do not change source JavaScript runtime behavior
+- do not change ReaderNext, cache, appdata, or cookie semantics
+
+Proposed write adapter contract:
+
+```dart
+abstract interface class DirectJsSourceWriteAdapter {
+  Future<SourceCommandResult> installValidatedDirectJsSource(
+    DirectJsInstallRequest request,
+  );
+}
+```
+
+Required adapter inputs:
+
+- normalized direct JS source URL
+- validated source key
+- validated source name
+- validated source version
+- fetched script bytes
+- SHA-256 content hash from fetched script bytes
+- explicit install confirmation
+- explicit overwrite confirmation when source key already exists
+
+Staged write design:
+
+```text
+D3c install command
+  -> validate request came from D1/D2 metadata
+  -> re-fetch or use validated script bytes from trusted validation context
+  -> re-validate parsed source key before write
+  -> write script to temp/staging path
+  -> fsync where platform support exists
+  -> atomic rename into source runtime directory where platform support exists
+  -> register/update installed source through existing source authority
+  -> record provenance metadata where existing authority supports it
+  -> refresh/reload source list
+```
+
+Required staging policy:
+
+- staged file path must not be inside the final active source path if partial files can be discovered by runtime scanning
+- staged file name should include source key and content hash prefix
+- final file path must be deterministic for the installed source authority
+- final commit should use atomic rename where platform support exists
+- final commit must not expose a partially written script to the runtime
+- source file content must be written as bytes, not re-encoded text, after content hash calculation
+
+Rollback matrix:
+
+| Failure point                            | Required rollback behavior                                                           |
+| ---------------------------------------- | ------------------------------------------------------------------------------------ |
+| fetch fails                              | no staged file, no installed source mutation                                         |
+| validation fails                         | delete staged file if created, no installed source mutation                          |
+| source key mismatch                      | delete staged file if created, no installed source mutation                          |
+| collision without overwrite confirmation | no staged file, no installed source mutation                                         |
+| staged file write fails                  | delete staged file if possible, no installed source mutation                         |
+| final rename fails                       | delete staged file if possible, preserve existing installed source                   |
+| metadata/provenance write fails          | remove newly staged final file if new install; preserve previous source if overwrite |
+| reload fails after write                 | keep installed source state consistent and surface typed warning/error               |
+
+Source authority integration rules:
+
+- write path must use the existing installed source authority or its adapter
+- write path must not create a new authoritative installed source table
+- write path must not bypass existing installed source order/settings/enabled semantics
+- overwrite must preserve previous source until the new source is fully staged and validated
+- overwrite must be explicit and tied to the same source key
+- remove/reorder/update commands must remain serialized per source key
+
+Collision policy:
+
+- existing source key with no overwrite confirmation returns `SOURCE_KEY_COLLISION`
+- overwrite confirmation for same source key is required before replacing an installed direct JS source
+- overwrite confirmation must not allow source key change
+- source key mismatch returns `SOURCE_KEY_MISMATCH`
+- repository-backed source overwrite by direct JS must require explicit warning that origin type changes
+- direct JS overwrite of official source must be blocked or require a stronger confirmation in D3c design review
+
+Provenance requirements:
+
+- origin type: `direct_js`
+- origin ref: normalized direct JS URL
+- content hash: SHA-256 of fetched script bytes
+- trust level must not be `official`
+- installed timestamp should be recorded where existing authority supports it
+- updated timestamp should be recorded where existing authority supports it
+- previous origin should be preserved until overwrite commit succeeds
+
+Typed result codes for D3c write adapter:
+
+- `SOURCE_INSTALL_BLOCKED`
+- `SOURCE_KEY_COLLISION`
+- `SOURCE_KEY_MISMATCH`
+- `SOURCE_SCRIPT_FETCH_FAILED`
+- `SOURCE_SCRIPT_SCHEMA_INVALID`
+- `SOURCE_WRITE_FAILED`
+- `SOURCE_PROVENANCE_WRITE_FAILED`
+- `SOURCE_RELOAD_FAILED`
+- `SOURCE_COMMAND_CONFLICT`
+
+Acceptance tests planned for D3c:
+
+```dart
+test('direct js write adapter writes staged file before final source registration', () async {});
+test('direct js write adapter does not expose partial staged file to runtime scan', () async {});
+test('direct js write adapter removes staged file when validation fails', () async {});
+test('direct js write adapter preserves existing source when overwrite final rename fails', () async {});
+test('direct js write adapter removes newly staged final file when provenance write fails', () async {});
+test('direct js write adapter records direct js origin and content hash after successful install', () async {});
+test('direct js write adapter blocks direct js overwrite of repository source without explicit origin-change confirmation', () async {});
+test('direct js write adapter blocks official source overwrite by default', () async {});
+```
+
+Verification for D3b docs/design:
+
+```bash
+grep -nE "D3b|DirectJsSourceWriteAdapter|SOURCE_WRITE_FAILED|SOURCE_PROVENANCE_WRITE_FAILED|Rollback matrix" \
+  docs/plans/2026-05-02-m26-2-source-repository-registry-and-direct-source-install.md
+
+git diff --check
+```
+
+#### M26.2-D3b Acceptance Boundary
+
+- D3b is design-only.
+- D3b must not implement the Direct JS write adapter.
+- D3b must not enable direct JavaScript install UI actions.
+- D3b must not write installed source files.
+- D3b must not mutate `ComicSourceManager`.
+- D3b must not enable repository package install.
+- D3b closeout must not claim that Direct JS install/write support is complete.
+- D3b must not change ReaderNext, cache, appdata, cookie, or deep source runtime semantics.
+
+#### M26.2-D3b Closeout Evidence
+
+Implemented:
+
+- Added Direct JS write adapter contract design.
+- Defined staged write and atomic commit expectations.
+- Defined rollback matrix for fetch, validation, source-key mismatch, collision, staged write, final rename, provenance write, and reload failure.
+- Defined source authority integration rules.
+- Defined source-key collision and overwrite policy.
+- Defined provenance requirements for direct JS installs.
+- Defined D3c typed result codes for write adapter failures.
+- Defined D3c acceptance tests for staged write, rollback, provenance, origin-change warning, and official-source overwrite blocking.
+- No production write adapter was introduced.
+- No direct JavaScript install UI action was enabled.
+- No installed source file write path was added.
+- No `ComicSourceManager` mutation path was added.
+- D3b closeout does not claim that Direct JS install/write support is complete.
+
+Files:
+
+- `docs/plans/2026-05-02-m26-2-source-repository-registry-and-direct-source-install.md`
+
+Verification:
+
+```bash
+grep -nE "D3b|DirectJsSourceWriteAdapter|SOURCE_WRITE_FAILED|SOURCE_PROVENANCE_WRITE_FAILED|Rollback matrix" \
+  docs/plans/2026-05-02-m26-2-source-repository-registry-and-direct-source-install.md
+
+git diff --check
+```
+
+#### M26.2-D3c0: Installed Source Authority Inventory
+
+Purpose:
+
+- identify the existing installed source authority before implementing any D3c write adapter
+- prevent split-brain installed source storage
+- confirm which existing parser, filesystem, registry, remove, update, reload, and settings paths D3c must wrap
+- confirm where provenance/hash can and cannot be recorded today
+- no production write adapter implementation
+- no install UI enablement
+- no table migration
+
+Inventory conclusion:
+
+- Installed source final JavaScript path is `App.dataPath/comic_source/*.js`.
+- Runtime source loading scans the same `comic_source/` folder.
+- Existing install pipeline is `ComicSourceParser.createAndParse(...)` followed by `ComicSourceManager().add(source)`.
+- Runtime in-memory authority is `ComicSourceManager._sources`.
+- Remove path deletes the JavaScript file and removes the source from `ComicSourceManager`.
+- Update path fetches a replacement script, overwrites `source.filePath`, and reloads source runtime state.
+- Per-source runtime settings persist in `<sourceKey>.data` beside the source storage authority.
+- Explore/category/favorites/search visibility lives in app settings lists and is not installed-source authority.
+- Installed source enabled/order state does not currently have a separate canonical persistent table.
+- Repository/package metadata exists in the Unified DB, but it is not installed source authority.
+- Repository/package metadata may provide install provenance input, but it must not become installed source truth.
+- D3c write adapter must wrap the existing filesystem + `ComicSourceManager` authority.
+- D3c must not introduce a new authoritative `installed_sources` table.
+
+Confirmed authority paths:
+
+- Final source script path:
+  - `lib/features/sources/comic_source/parser.dart`
+  - `lib/features/sources/comic_source/comic_source.dart`
+- Add/register path:
+  - `SourceManagementController.addSourceFromUrl(...)`
+  - `SourceManagementController.addSourceFromConfigFile(...)`
+  - `_defaultInstallSourceFromJs(...)`
+  - `ComicSourceParser.createAndParse(...)`
+  - `ComicSourceManager().add(source)`
+- Runtime registry:
+  - `ComicSourceManager._sources`
+  - `ComicSourceManager.reload()`
+- Remove/update path:
+  - `ComicSourcePage.delete(...)`
+  - `ComicSourcePage.update(...)`
+- Per-source settings path:
+  - `ComicSource.loadData()` / `ComicSource.saveData()`
+  - `${App.dataPath}/comic_source/<sourceKey>.data`
+- Repository/provenance input metadata:
+  - `source_repositories`
+  - `source_packages.content_hash`
+  - `source_packages.script_url`
+  - `source_packages.repository_id`
+
+D3c implementation implication:
+
+```text
+D3c write adapter must wrap:
+  SourceManagementController
+    -> ComicSourceParser.createAndParse(...)
+    -> App.dataPath/comic_source/*.js
+    -> ComicSourceManager().add(source) or reload()
+
+D3c write adapter must not create:
+  installed_sources table
+  second installed-source JSON registry
+  second source runtime registry
+```
+
+Acceptance boundary:
+
+- D3c0 is inventory-only.
+- D3c0 does not implement a production write adapter.
+- D3c0 does not enable direct JavaScript install UI actions.
+- D3c0 does not write installed source files.
+- D3c0 does not mutate `ComicSourceManager`.
+- D3c0 does not add installed-source tables or migrations.
+- D3c0 does not change ReaderNext, cache, appdata, cookie, or deep source runtime semantics.
+
+Closeout evidence:
+
+- Final source script path was identified.
+- Existing parser/register path was identified.
+- Runtime in-memory authority was identified.
+- Remove/update/reload authority was identified.
+- Per-source settings persistence was identified.
+- Existing provenance/hash input metadata was identified.
+- D3c write adapter authority decision was recorded.
+- Split-brain installed-source table introduction was explicitly rejected for D3c.
+
+Verification:
+
+```bash
+grep -RInE "class ComicSourceManager|createAndParse|ComicSourceManager\(\)\.add|ComicSourceManager\(\)\.remove|reload\(|comic_source|source_packages|writeAsString|writeAsBytes" \
+  lib/features/sources lib/foundation lib/pages/comic_source_page.dart test/features test/pages
+
+git diff --check
+```
+
+#### M26.2-D3c1: Minimal Write Adapter Implementation Plan (No Production Code)
+
+Purpose:
+
+- define the smallest safe D3c write adapter implementation slice before writing production code
+- ensure D3c implementation wraps the existing installed source authority identified in D3c0
+- avoid introducing a second installed source registry
+- stage implementation behind tests before UI install enablement
+- keep repository package install disabled
+
+Scope:
+
+- plan the minimal production files for the later D3c write adapter
+- plan the first unskipped tests that convert D3a/D3b contract into executable guards
+- plan how D3c will call existing parser/register paths
+- plan how D3c will preserve existing installed source behavior
+- no production write adapter implementation in D3c1
+- no direct JavaScript install UI enablement in D3c1
+- no repository package install enablement in D3c1
+- no `installed_sources` table or migration in D3c1
+
+Proposed production files for D3c implementation:
+
+- `lib/features/sources/comic_source/direct_js_source_write_adapter.dart`
+- `lib/features/sources/comic_source/direct_js_source_install_request.dart`
+- existing `lib/features/sources/comic_source/source_management_controller.dart` for command wiring only after adapter tests pass
+
+Proposed test files for D3c implementation:
+
+- `test/features/source_management/direct_js_source_write_adapter_test.dart`
+- update `test/features/source_management/direct_js_install_command_test.dart` by unskipping only the tests covered by the implemented slice
+
+Minimal D3c write adapter dependency model:
+
+```dart
+class DirectJsSourceWriteAdapterDependencies {
+  const DirectJsSourceWriteAdapterDependencies({
+    required this.sourceRootDirectory,
+    required this.parseAndInstallSource,
+    required this.reloadSources,
+    required this.sourceExists,
+    required this.writeBytesAtomically,
+    required this.deleteFileIfExists,
+    required this.recordProvenanceIfSupported,
+  });
+}
+```
+
+Required design decision:
+
+- D3c must not call `ComicSourceManager().add(...)` directly with hand-built source objects.
+- D3c must go through `ComicSourceParser.createAndParse(...)` or the existing `SourceManagementController` install adapter.
+- D3c may introduce a small write adapter only to stage/write bytes safely and then hand off to the existing parser/register path.
+- D3c must not add a new installed-source database table.
+
+Minimal happy-path implementation sequence for D3c:
+
+```text
+installValidatedDirectJsSource(request)
+  -> verify confirmInstall == true
+  -> verify request.validatedSourceKey is non-empty
+  -> verify script bytes/content hash match validation context
+  -> check source key collision through existing installed source view/manager
+  -> block collision unless explicit overwrite design is implemented
+  -> write script bytes to staging file outside active runtime scan path
+  -> validate staged script via existing parser path
+  -> move staged script into App.dataPath/comic_source using atomic rename where available
+  -> register via existing parser/register path or reload existing manager
+  -> record provenance/hash only where existing source authority supports it
+  -> return typed SourceCommandSuccess
+```
+
+First D3c implementation slice:
+
+- support new install only
+- block source-key collision
+- do not support overwrite yet
+- do not support repository package install yet
+- do not enable UI install button yet
+- provenance recording may be no-op if existing authority has no supported field, but typed success must not claim provenance was stored unless it was
+
+First D3c typed result behavior:
+
+- `confirmInstall == false` -> `SOURCE_INSTALL_BLOCKED`
+- existing source key -> `SOURCE_KEY_COLLISION`
+- parsed source key differs from validated source key -> `SOURCE_KEY_MISMATCH`
+- staged write failure -> `SOURCE_WRITE_FAILED`
+- parser/schema failure -> `SOURCE_SCRIPT_SCHEMA_INVALID`
+- reload failure -> `SOURCE_RELOAD_FAILED`
+- provenance unsupported -> success with provenance warning metadata, not false success claim
+
+First D3c tests to unskip/implement:
+
+```dart
+test('direct js install command blocks when confirmInstall is false', () async {});
+test('direct js install command blocks source key collision without overwrite confirmation', () async {});
+test('direct js install command blocks source key mismatch between validation and parsed payload', () async {});
+test('direct js install command dry run does not mutate ComicSourceManager state', () async {});
+test('direct js write adapter writes staged file before final source registration', () async {});
+test('direct js write adapter does not expose partial staged file to runtime scan', () async {});
+test('direct js write adapter removes staged file when validation fails', () async {});
+```
+
+D3c tests that remain later-phase:
+
+```dart
+test('direct js write adapter preserves existing source when overwrite final rename fails', () async {});
+test('direct js write adapter removes newly staged final file when provenance write fails', () async {});
+test('direct js write adapter records direct js origin and content hash after successful install', () async {});
+test('direct js write adapter blocks direct js overwrite of repository source without explicit origin-change confirmation', () async {});
+test('direct js write adapter blocks official source overwrite by default', () async {});
+```
+
+Implementation order for later D3c code:
+
+1. Add `DirectJsInstallRequest` value object.
+2. Add `DirectJsSourceWriteAdapter` interface and fake/in-memory test adapter.
+3. Implement collision/blocking behavior with no file writes.
+4. Add staging-path tests.
+5. Implement staged write and cleanup on failure.
+6. Wire parser/register handoff through existing authority.
+7. Add reload handling.
+8. Only after tests pass, wire controller command path.
+9. Keep UI install action disabled until controller path and rollback tests pass.
+
+D3c1 acceptance boundary:
+
+- D3c1 is plan-only.
+- D3c1 must not introduce production write adapter code.
+- D3c1 must not unskip D3a skeleton tests.
+- D3c1 must not enable direct JavaScript install UI actions.
+- D3c1 must not write installed source files.
+- D3c1 must not mutate `ComicSourceManager`.
+- D3c1 must not add installed-source tables or migrations.
+- D3c1 must not enable repository package install.
+- D3c1 must not change ReaderNext, cache, appdata, cookie, or deep source runtime semantics.
+
+Verification for D3c1 docs/plan:
+
+```bash
+grep -nE "D3c1|DirectJsSourceWriteAdapterDependencies|First D3c implementation slice|D3c1 acceptance boundary" \
+  docs/plans/2026-05-02-m26-2-source-repository-registry-and-direct-source-install.md
+
+git diff --check
+```
+
+#### M26.2-D3c1 Closeout Evidence
+
+Implemented:
+
+- D3c1 remained plan-only and did not introduce production write-adapter code.
+- The installed-source authority mapping from D3c0 was preserved as the hard boundary for D3c implementation:
+  - filesystem authority: `App.dataPath/comic_source/*.js`
+  - parser/register path: `ComicSourceParser.createAndParse(...)` + `ComicSourceManager`
+  - per-source settings authority: `${App.dataPath}/comic_source/<sourceKey>.data`
+- The plan explicitly keeps D3c implementation out of UI enablement and repository package install enablement.
+- The plan explicitly rejects adding a new authoritative `installed_sources` table in D3c.
+- Remaining scope after D3c1 stays in D3c implementation lanes only:
+  - direct JS install write-path implementation
+  - provenance/content-hash recording on install
+  - source-key collision overwrite confirmation flow
+
+#### M26.2-D3c2 Closeout Evidence
+
+Implemented (guard-only, no write path):
+
+- Added `DirectJsInstallRequest` value object.
+- Added `DirectJsSourceWriteAdapter` interface.
+- Added executable in-memory adapter tests for D3a guard contract.
+- Implemented blocking-only command behavior:
+  - `confirmInstall == false` -> `SOURCE_INSTALL_BLOCKED`
+  - validation key != parsed key -> `SOURCE_KEY_MISMATCH`
+  - installed key collision without overwrite -> `SOURCE_KEY_COLLISION`
+  - all other flows remain blocked in D3c2 (`SOURCE_INSTALL_BLOCKED`)
+- Aligned D3c2 install error vocabulary to plan codes:
+  - `SOURCE_INSTALL_BLOCKED`
+  - `SOURCE_KEY_MISMATCH`
+  - `SOURCE_KEY_COLLISION`
+
+Not implemented in D3c2:
+
+- no filesystem write
+- no origin/hash recording
+- no direct JS install UI enablement
+- no repository package install enablement
+
+#### M26.2-D3c3 Closeout Evidence
+
+Implemented (tests-only, no production write path):
+
+- Added `direct_js_source_write_adapter_test.dart`.
+- Added temp-directory staged filesystem guard tests for:
+  - staged file path is outside active scan path
+  - validation failure cleans staged file
+  - active final path remains invisible before commit
+- Kept boundary strict:
+  - no controller wiring
+  - no direct JS install UI enablement
+  - no production write adapter implementation
+  - no provenance/hash recording
+
+#### M26.2-D3c4: Staged Source Writer Hardening
+
+Purpose:
+
+- harden the production staging utility before any parser/register handoff
+- prevent path traversal or accidental writes outside the active source root
+- prevent accidental overwrite of existing installed source files
+- keep this lane limited to filesystem staging utility behavior
+- avoid controller/UI/source-manager integration in this lane
+
+Scope:
+
+- harden `DirectJsStagedSourceWriter`
+- validate final target path is contained under the active source root
+- reject final target path escape before staging or commit
+- reject commit if the final target file already exists
+- preserve validation-failure cleanup behavior
+- preserve staged-path-outside-active-scan-path behavior
+- preserve final-path-invisible-before-commit behavior
+- no parser/register handoff
+- no controller wiring
+- no direct JavaScript install UI enablement
+- no `ComicSourceManager` mutation
+- no provenance/hash recording
+
+Required behavior:
+
+- final target path outside active source root returns a typed failure or throws a controlled validation error before writing final file
+- final target path traversal using `..` is rejected
+- symlink or canonical path escape is rejected where platform APIs allow canonical resolution
+- existing final source file is not overwritten by D3c4 staging utility
+- existing final source file remains unchanged when commit is rejected
+- staged file is deleted on validation failure
+- staged file is outside the runtime scan path
+- final active source path is not visible before commit
+
+Acceptance tests:
+
+```dart
+test('production staged writer rejects final path outside active source root', () async {});
+test('production staged writer rejects final path traversal under active source root', () async {});
+test('production staged writer does not overwrite existing final source file', () async {});
+test('production staged writer preserves existing final file content when overwrite is rejected', () async {});
+```
+
+Verification:
+
+```bash
+dart analyze lib/features/sources/comic_source/direct_js_staged_source_writer.dart \
+  test/features/source_management/direct_js_source_write_adapter_test.dart
+
+flutter test test/features/source_management/direct_js_source_write_adapter_test.dart
+
+git diff --check
+```
+
+D3c4 acceptance boundary:
+
+- D3c4 only hardens the staged filesystem writer utility.
+- D3c4 must not introduce parser/register handoff.
+- D3c4 must not wire source install into `SourceManagementController`.
+- D3c4 must not enable direct JavaScript install UI actions.
+- D3c4 must not mutate `ComicSourceManager`.
+- D3c4 must not record provenance/hash metadata.
+- D3c4 must not enable repository package install.
+- D3c4 must not change ReaderNext, cache, appdata, cookie, or deep source runtime semantics.
+
+#### M26.2-D3c4 Closeout Evidence
+
+Implemented (staging utility hardening only):
+
+- Hardened `DirectJsStagedSourceWriter` with filesystem safety checks:
+  - root containment checks for staged and active paths
+  - reject `..` and path separator escapes in file names
+  - reject commit when final target already exists
+- Preserved D3c3 safety behavior:
+  - staged file cleanup on validation failure
+  - final file remains invisible before commit
+- Added executable tests for D3c4 hardening:
+  - reject path traversal file names
+  - reject commit overwrite when final target exists
+  - preserve existing final file content when overwrite is rejected
+
+Not implemented in D3c4:
+
+- no parser/register handoff
+- no controller wiring
+- no direct JavaScript install UI enablement
+- no `ComicSourceManager` mutation
+- no provenance/hash recording
 
 ### M26.2-E: Settings UI Consolidation
 
