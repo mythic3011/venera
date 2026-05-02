@@ -236,6 +236,25 @@ void main() {
       );
     });
 
+    test('invalid repository url returns typed SourceCommandFailed', () async {
+      repositoryStore = UnifiedComicsStore('${tempDir.path}/source_registry.db');
+      await repositoryStore!.init();
+      final controller = SourceManagementController(
+        repositoryStoreProvider: () => repositoryStore,
+      );
+
+      await expectLater(
+        () => controller.addRepository('http://repo.example.com/index.json'),
+        throwsA(
+          isA<SourceCommandFailed>().having(
+            (e) => e.code,
+            'code',
+            repositoryUrlInvalidCode,
+          ),
+        ),
+      );
+    });
+
     test('refreshRepository success updates last refresh status', () async {
       repositoryStore = UnifiedComicsStore('${tempDir.path}/source_registry.db');
       await repositoryStore!.init();
