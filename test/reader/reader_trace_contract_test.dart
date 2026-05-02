@@ -154,6 +154,66 @@ void main() {
     expect(data['pageOrderId'], '1:__imported__:source_default');
   });
 
+  test('reader emits tab retention diagnostic after local page list success', () {
+    final data = buildReaderTabRetentionDiagnosticForTesting(
+      expectedReaderTabId: 'local:local:1:1:__imported__',
+      activeReaderTabId: 'local:local:1:1:__imported__',
+      pageOrderId: '1:__imported__:source_default',
+      comicId: '1',
+      loadMode: 'local',
+      sourceKey: 'local',
+      chapterId: '1:__imported__',
+      chapterIndex: 1,
+      page: 1,
+    );
+
+    emitReaderTabRetentionDiagnosticForTesting(data);
+
+    final diagnosticEvent = DevDiagnosticsApi.recent(
+      channel: 'reader.lifecycle',
+    ).single;
+    expect(diagnosticEvent.message, 'reader.tab.retention.afterPageList');
+    expect(
+      diagnosticEvent.data['activeReaderTabId'],
+      'local:local:1:1:__imported__',
+    );
+    expect(
+      diagnosticEvent.data['expectedReaderTabId'],
+      'local:local:1:1:__imported__',
+    );
+    expect(
+      diagnosticEvent.data['pageOrderId'],
+      '1:__imported__:source_default',
+    );
+  });
+
+  test(
+    'reader tab retention warning fires when active tab is missing after page list success',
+    () {
+      final data = buildReaderTabRetentionDiagnosticForTesting(
+        expectedReaderTabId: 'local:local:1:1:__imported__',
+        activeReaderTabId: null,
+        pageOrderId: null,
+        comicId: '1',
+        loadMode: 'local',
+        sourceKey: 'local',
+        chapterId: '1:__imported__',
+        chapterIndex: 1,
+        page: 1,
+      );
+
+      emitReaderTabRetentionDiagnosticForTesting(data);
+
+      final diagnosticEvent = DevDiagnosticsApi.recent(
+        channel: 'reader.lifecycle',
+      ).single;
+      expect(diagnosticEvent.message, 'reader.tab.retention.missing');
+      expect(diagnosticEvent.data['status'], 'missingActiveTab');
+      expect(diagnosticEvent.data['expectedReaderTabId'], isNotNull);
+      expect(diagnosticEvent.data['activeReaderTabId'], isNull);
+    },
+  );
+
   test('dispose diagnostics can skip layout dependent pagination reads', () {
     final snapshot = buildReaderPaginationDiagnosticsForTesting(
       includePagination: false,

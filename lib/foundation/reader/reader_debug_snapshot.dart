@@ -1,3 +1,4 @@
+import 'package:venera/features/reader/data/reader_session_repository.dart';
 import 'package:venera/foundation/ports/comic_detail_store_port.dart';
 import 'package:venera/foundation/ports/local_library_browse_store_port.dart';
 import 'package:venera/foundation/ports/reader_session_store_port.dart';
@@ -101,22 +102,9 @@ class ReaderDebugSnapshotService {
   }
 
   Future<String?> _loadActiveReaderTabId(String comicId) async {
-    final session = await readerSessionStore.loadReaderSessionByComic(comicId);
-    if (session == null) {
-      return null;
-    }
-    final tabs = await readerSessionStore.loadReaderTabsForSession(session.id);
-    if (tabs.isEmpty) {
-      return null;
-    }
-    final activeTabId = session.activeTabId;
-    if (activeTabId != null) {
-      for (final tab in tabs) {
-        if (tab.id == activeTabId) {
-          return tab.id;
-        }
-      }
-    }
-    return tabs.first.id;
+    final activeTab = await ReaderSessionRepository(
+      store: readerSessionStore,
+    ).loadActiveReaderTab(comicId);
+    return activeTab?.tabId;
   }
 }

@@ -114,6 +114,27 @@ Map<String, Object?> buildReaderTabRetentionDiagnosticForTesting({
   };
 }
 
+@visibleForTesting
+String readerTabRetentionEventNameForTesting(Map<String, Object?> data) {
+  return data['status'] == 'missingActiveTab'
+      ? 'reader.tab.retention.missing'
+      : 'reader.tab.retention.afterPageList';
+}
+
+@visibleForTesting
+void emitReaderTabRetentionDiagnosticForTesting(Map<String, Object?> data) {
+  final event = readerTabRetentionEventNameForTesting(data);
+  if (data['status'] == 'missingActiveTab') {
+    AppDiagnostics.warn('reader.lifecycle', event, data: data);
+    return;
+  }
+  if (data['retained'] == true) {
+    AppDiagnostics.trace('reader.lifecycle', event, data: data);
+    return;
+  }
+  AppDiagnostics.warn('reader.lifecycle', event, data: data);
+}
+
 extension _ReaderDiagnosticsState on _ReaderState {
   Map<String, Object?> _readerBuildDiagnosticData({
     required BuildContext buildContext,
@@ -449,19 +470,7 @@ extension _ReaderDiagnosticsState on _ReaderState {
           chapterIndex: context.chapterIndex,
           page: context.page,
         );
-        if (data['retained'] == true) {
-          AppDiagnostics.trace(
-            'reader.lifecycle',
-            'reader.tab.retention.afterPageList',
-            data: data,
-          );
-        } else {
-          AppDiagnostics.warn(
-            'reader.lifecycle',
-            'reader.tab.retention.afterPageList',
-            data: data,
-          );
-        }
+        emitReaderTabRetentionDiagnosticForTesting(data);
       } catch (error) {
         AppDiagnostics.warn(
           'reader.lifecycle',

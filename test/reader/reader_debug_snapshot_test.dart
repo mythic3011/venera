@@ -98,6 +98,25 @@ void main() {
     );
   });
 
+  test('reader debug snapshot returns active tab id for local imported session', () async {
+    await _insertCanonicalImportedReaderFixture(store);
+
+    final snapshot =
+        await ReaderDebugSnapshotService(
+          localLibraryStore: store,
+          comicDetailStore: store,
+          readerSessionStore: store,
+        ).build(
+          comicId: '1',
+          chapterId: '1:__imported__',
+          loadMode: 'local',
+          controllerLifecycle: 'open',
+        );
+
+    expect(snapshot.readerTabId, 'local:local:1:1:__imported__');
+    expect(snapshot.pageOrderId, '1:__imported__:source_default');
+  });
+
   test(
     'reader diagnostics emits stable correlation id across call timeline',
     () {
@@ -236,6 +255,81 @@ Future<void> _insertCanonicalReaderFixture(
       pageIndex: 0,
       sourceRefJson: jsonEncode(sourceRef.toJson()),
       pageOrderId: 'order-1',
+    ),
+  );
+  await store.setReaderSessionActiveTab(
+    sessionId: sessionId,
+    activeTabId: tabId,
+  );
+}
+
+Future<void> _insertCanonicalImportedReaderFixture(
+  UnifiedComicsStore store,
+) async {
+  await store.upsertComic(
+    const ComicRecord(id: '1', title: 'Imported', normalizedTitle: 'imported'),
+  );
+  await store.upsertLocalLibraryItem(
+    const LocalLibraryItemRecord(
+      id: 'local_item:1',
+      comicId: '1',
+      storageType: 'user_imported',
+      localRootPath: '/library/1',
+    ),
+  );
+  await store.upsertChapter(
+    const ChapterRecord(
+      id: '1:__imported__',
+      comicId: '1',
+      chapterNo: 1,
+      title: 'Imported Chapter',
+      normalizedTitle: 'imported chapter',
+    ),
+  );
+  await store.upsertPage(
+    const PageRecord(
+      id: 'page-imported-1',
+      chapterId: '1:__imported__',
+      pageIndex: 0,
+      localPath: '/library/1/1.png',
+    ),
+  );
+  await store.upsertPageOrder(
+    const PageOrderRecord(
+      id: '1:__imported__:source_default',
+      chapterId: '1:__imported__',
+      orderName: 'Source Default',
+      normalizedOrderName: 'source default',
+      orderType: 'source_default',
+      isActive: true,
+    ),
+  );
+  await store.replacePageOrderItems('1:__imported__:source_default', const [
+    PageOrderItemRecord(
+      pageOrderId: '1:__imported__:source_default',
+      pageId: 'page-imported-1',
+      sortOrder: 0,
+    ),
+  ]);
+  final sourceRef = SourceRef.fromLegacyLocal(
+    localType: 'local',
+    localComicId: '1',
+    chapterId: '1:__imported__',
+  );
+  final sessionId = ReaderSessionRepository.sessionIdForComic('1');
+  final tabId = ReaderSessionRepository.defaultTabIdForSourceRef(sourceRef);
+  await store.upsertReaderSession(
+    ReaderSessionRecord(id: sessionId, comicId: '1'),
+  );
+  await store.upsertReaderTab(
+    ReaderTabRecord(
+      id: tabId,
+      sessionId: sessionId,
+      comicId: '1',
+      chapterId: '1:__imported__',
+      pageIndex: 1,
+      sourceRefJson: jsonEncode(sourceRef.toJson()),
+      pageOrderId: '1:__imported__:source_default',
     ),
   );
   await store.setReaderSessionActiveTab(
