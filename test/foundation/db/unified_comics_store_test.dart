@@ -31,6 +31,8 @@ void main() {
       containsAll(<String>[
         'chapters',
         'chapter_source_links',
+        'cache_entries',
+        'app_settings',
         'comic_source_links',
         'comic_source_link_tags',
         'comic_titles',
@@ -39,6 +41,7 @@ void main() {
         'eh_tag_taxonomy',
         'favorites',
         'history_events',
+        'implicit_data',
         'local_library_items',
         'page_order_items',
         'page_orders',
@@ -48,6 +51,9 @@ void main() {
         'reader_tabs',
         'remote_match_candidates',
         'source_tags',
+        'source_repositories',
+        'source_packages',
+        'search_history',
         'source_platform_aliases',
         'source_platforms',
         'user_tags',
@@ -487,7 +493,7 @@ void main() {
   });
 
   test(
-    'legacy v2 database upgrades to v3 reader and remote match schema',
+    'legacy v2 database upgrades to v6 reader, remote match, cache, appdata, and repository schema',
     () async {
       final legacyPath = '${tempDir.path}/legacy_v2.db';
       final legacyDb = sqlite3.open(legacyPath);
@@ -553,11 +559,120 @@ void main() {
           'reader_sessions',
           'reader_tabs',
           'remote_match_candidates',
+          'cache_entries',
+          'app_settings',
+          'search_history',
+          'implicit_data',
+          'source_repositories',
+          'source_packages',
         ]),
       );
       expect(await store.currentUserVersion(), store.schemaVersion);
     },
   );
+
+  test('source repositories CRUD round-trip', () async {
+    const record = SourceRepositoryRecord(
+      id: 'repo_official',
+      name: 'Official',
+      indexUrl: 'https://example.com/index.json',
+      enabled: true,
+      userAdded: false,
+      trustLevel: 'official',
+      lastRefreshAtMs: 123,
+      lastRefreshStatus: 'success',
+      lastErrorCode: null,
+      createdAtMs: 100,
+      updatedAtMs: 200,
+    );
+    await store.upsertSourceRepository(record);
+
+    final loaded = await store.loadSourceRepositoryById(record.id);
+    expect(loaded, isNotNull);
+    expect(loaded?.indexUrl, record.indexUrl);
+    expect(loaded?.enabled, isTrue);
+    expect(loaded?.trustLevel, 'official');
+
+    await store.upsertSourceRepository(
+      const SourceRepositoryRecord(
+        id: 'repo_official',
+        name: 'Official Updated',
+        indexUrl: 'https://example.com/v2/index.json',
+        enabled: false,
+        userAdded: false,
+        trustLevel: 'official',
+        lastRefreshAtMs: 456,
+        lastRefreshStatus: 'failed',
+        lastErrorCode: 'network_failed',
+        createdAtMs: 100,
+        updatedAtMs: 500,
+      ),
+    );
+
+    final all = await store.loadSourceRepositories();
+    expect(all.length, 1);
+    expect(all.single.name, 'Official Updated');
+    expect(all.single.enabled, isFalse);
+    expect(all.single.lastRefreshStatus, 'failed');
+    expect(all.single.lastErrorCode, 'network_failed');
+
+    await store.deleteSourceRepository('repo_official');
+    expect(await store.loadSourceRepositoryById('repo_official'), isNull);
+  });
+
+  test('source packages replace and load are rebuildable', () async {
+    await store.upsertSourceRepository(
+      const SourceRepositoryRecord(
+        id: 'repo_a',
+        name: 'Repo A',
+        indexUrl: 'https://example.com/index.json',
+        enabled: true,
+        userAdded: false,
+        trustLevel: 'official',
+        createdAtMs: 1,
+        updatedAtMs: 1,
+      ),
+    );
+
+    await store.replaceSourcePackagesForRepository(
+      repositoryId: 'repo_a',
+      records: const <SourcePackageRecord>[
+        SourcePackageRecord(
+          sourceKey: 'copy_manga',
+          repositoryId: 'repo_a',
+          name: 'Copy Manga',
+          fileName: 'copy_manga.js',
+          scriptUrl: 'https://example.com/copy_manga.js',
+          availableVersion: '1.0.0',
+          description: 'desc',
+          lastSeenAtMs: 100,
+        ),
+      ],
+    );
+
+    final first = await store.loadSourcePackages(repositoryId: 'repo_a');
+    expect(first.length, 1);
+    expect(first.single.sourceKey, 'copy_manga');
+
+    await store.replaceSourcePackagesForRepository(
+      repositoryId: 'repo_a',
+      records: const <SourcePackageRecord>[
+        SourcePackageRecord(
+          sourceKey: 'ehentai',
+          repositoryId: 'repo_a',
+          name: 'Eh',
+          fileName: 'eh.js',
+          availableVersion: '1.1.0',
+          lastSeenAtMs: 200,
+        ),
+      ],
+    );
+
+    final second = await store.loadSourcePackages(repositoryId: 'repo_a');
+    expect(second.length, 1);
+    expect(second.single.sourceKey, 'ehentai');
+    expect(second.single.availableVersion, '1.1.0');
+  });
 
   test(
     'source tags stay scoped to comic source link and user tags stay separate',

@@ -339,6 +339,87 @@ extension _UnifiedComicsStoreSchema on UnifiedComicsStore {
     await _createIndexesForV3();
   }
 
+  Future<void> _ensureV4Schema() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS cache_entries (
+        cache_key TEXT PRIMARY KEY NOT NULL,
+        namespace TEXT NOT NULL,
+        source_platform_id TEXT,
+        owner_ref TEXT,
+        remote_url_hash TEXT,
+        storage_dir TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        expires_at_ms INTEGER NOT NULL,
+        content_type TEXT,
+        size_bytes INTEGER,
+        created_at_ms INTEGER NOT NULL,
+        last_accessed_at_ms INTEGER
+      );
+    ''');
+    await _createIndexesForV4();
+  }
+
+  Future<void> _ensureV5Schema() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value_json TEXT NOT NULL,
+        value_type TEXT NOT NULL,
+        sync_policy TEXT NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+      );
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS search_history (
+        keyword TEXT PRIMARY KEY,
+        position INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+      );
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS implicit_data (
+        key TEXT PRIMARY KEY,
+        value_json TEXT NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+      );
+    ''');
+    await _createIndexesForV5();
+  }
+
+  Future<void> _ensureV6Schema() async {
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS source_repositories (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL,
+        index_url TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+        user_added INTEGER NOT NULL DEFAULT 1 CHECK (user_added IN (0, 1)),
+        trust_level TEXT NOT NULL DEFAULT 'user' CHECK (trust_level IN ('official', 'user', 'unknown')),
+        last_refresh_at_ms INTEGER,
+        last_refresh_status TEXT CHECK (last_refresh_status IS NULL OR last_refresh_status IN ('success', 'failed', 'never')),
+        last_error_code TEXT,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+      );
+    ''');
+    await customStatement('''
+      CREATE TABLE IF NOT EXISTS source_packages (
+        source_key TEXT NOT NULL,
+        repository_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        file_name TEXT,
+        script_url TEXT,
+        available_version TEXT,
+        description TEXT,
+        content_hash TEXT,
+        last_seen_at_ms INTEGER NOT NULL,
+        PRIMARY KEY (source_key, repository_id),
+        FOREIGN KEY (repository_id) REFERENCES source_repositories(id) ON DELETE CASCADE
+      );
+    ''');
+    await _createIndexesForV6();
+  }
+
   Future<void> _createIndexesForV1() async {
     await customStatement('''
       CREATE INDEX IF NOT EXISTS idx_comics_normalized_title
@@ -395,6 +476,35 @@ extension _UnifiedComicsStoreSchema on UnifiedComicsStore {
     await customStatement('''
       CREATE INDEX IF NOT EXISTS idx_remote_match_candidates_comic_updated
       ON remote_match_candidates(comic_id, updated_at DESC, created_at DESC, id ASC);
+    ''');
+  }
+
+  Future<void> _createIndexesForV4() async {
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_cache_entries_expiry
+      ON cache_entries(expires_at_ms ASC, cache_key ASC);
+    ''');
+  }
+
+  Future<void> _createIndexesForV5() async {
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_search_history_position
+      ON search_history(position ASC, updated_at_ms DESC);
+    ''');
+  }
+
+  Future<void> _createIndexesForV6() async {
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_source_repositories_enabled_updated
+      ON source_repositories(enabled ASC, updated_at_ms DESC, id ASC);
+    ''');
+    await customStatement('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_source_repositories_index_url
+      ON source_repositories(index_url);
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_source_packages_repository_key
+      ON source_packages(repository_id, source_key);
     ''');
   }
 }

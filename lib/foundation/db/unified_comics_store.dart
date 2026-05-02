@@ -249,6 +249,128 @@ class ComicUserTagRecord {
   final String? addedAt;
 }
 
+class CacheEntryRecord {
+  const CacheEntryRecord({
+    required this.cacheKey,
+    required this.namespace,
+    this.sourcePlatformId,
+    this.ownerRef,
+    this.remoteUrlHash,
+    required this.storageDir,
+    required this.fileName,
+    required this.expiresAtMs,
+    this.contentType,
+    this.sizeBytes,
+    required this.createdAtMs,
+    this.lastAccessedAtMs,
+  });
+
+  final String cacheKey;
+  final String namespace;
+  final String? sourcePlatformId;
+  final String? ownerRef;
+  final String? remoteUrlHash;
+  final String storageDir;
+  final String fileName;
+  final int expiresAtMs;
+  final String? contentType;
+  final int? sizeBytes;
+  final int createdAtMs;
+  final int? lastAccessedAtMs;
+}
+
+class AppSettingRecord {
+  const AppSettingRecord({
+    required this.key,
+    required this.valueJson,
+    required this.valueType,
+    required this.syncPolicy,
+    required this.updatedAtMs,
+  });
+
+  final String key;
+  final String valueJson;
+  final String valueType;
+  final String syncPolicy;
+  final int updatedAtMs;
+}
+
+class SearchHistoryRecord {
+  const SearchHistoryRecord({
+    required this.keyword,
+    required this.position,
+    required this.updatedAtMs,
+  });
+
+  final String keyword;
+  final int position;
+  final int updatedAtMs;
+}
+
+class ImplicitDataRecord {
+  const ImplicitDataRecord({
+    required this.key,
+    required this.valueJson,
+    required this.updatedAtMs,
+  });
+
+  final String key;
+  final String valueJson;
+  final int updatedAtMs;
+}
+
+class SourceRepositoryRecord {
+  const SourceRepositoryRecord({
+    required this.id,
+    required this.name,
+    required this.indexUrl,
+    required this.enabled,
+    required this.userAdded,
+    required this.trustLevel,
+    this.lastRefreshAtMs,
+    this.lastRefreshStatus,
+    this.lastErrorCode,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+
+  final String id;
+  final String name;
+  final String indexUrl;
+  final bool enabled;
+  final bool userAdded;
+  final String trustLevel;
+  final int? lastRefreshAtMs;
+  final String? lastRefreshStatus;
+  final String? lastErrorCode;
+  final int createdAtMs;
+  final int updatedAtMs;
+}
+
+class SourcePackageRecord {
+  const SourcePackageRecord({
+    required this.sourceKey,
+    required this.repositoryId,
+    required this.name,
+    this.fileName,
+    this.scriptUrl,
+    this.availableVersion,
+    this.description,
+    this.contentHash,
+    required this.lastSeenAtMs,
+  });
+
+  final String sourceKey;
+  final String repositoryId;
+  final String name;
+  final String? fileName;
+  final String? scriptUrl;
+  final String? availableVersion;
+  final String? description;
+  final String? contentHash;
+  final int lastSeenAtMs;
+}
+
 class EhTagTaxonomyRecord {
   const EhTagTaxonomyRecord({
     required this.providerKey,
@@ -677,7 +799,7 @@ class UnifiedComicsStore extends GeneratedDatabase
   Iterable<TableInfo<Table, Object?>> get allTables => const [];
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -691,6 +813,15 @@ class UnifiedComicsStore extends GeneratedDatabase
       if (from < 3) {
         await _upgradeToV3();
       }
+      if (from < 4) {
+        await _upgradeToV4();
+      }
+      if (from < 5) {
+        await _upgradeToV5();
+      }
+      if (from < 6) {
+        await _upgradeToV6();
+      }
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON;');
@@ -702,6 +833,452 @@ class UnifiedComicsStore extends GeneratedDatabase
     // All ensure methods are idempotent via CREATE TABLE/INDEX IF NOT EXISTS.
     await _createLatestSchema();
     await customSelect('SELECT 1;').getSingle();
+  }
+
+  Future<void> upsertCacheEntry(CacheEntryRecord record) {
+    return customStatement(
+      '''
+      INSERT INTO cache_entries (
+        cache_key,
+        namespace,
+        source_platform_id,
+        owner_ref,
+        remote_url_hash,
+        storage_dir,
+        file_name,
+        expires_at_ms,
+        content_type,
+        size_bytes,
+        created_at_ms,
+        last_accessed_at_ms
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(cache_key) DO UPDATE SET
+        namespace = excluded.namespace,
+        source_platform_id = excluded.source_platform_id,
+        owner_ref = excluded.owner_ref,
+        remote_url_hash = excluded.remote_url_hash,
+        storage_dir = excluded.storage_dir,
+        file_name = excluded.file_name,
+        expires_at_ms = excluded.expires_at_ms,
+        content_type = excluded.content_type,
+        size_bytes = excluded.size_bytes,
+        last_accessed_at_ms = excluded.last_accessed_at_ms;
+      ''',
+      [
+        record.cacheKey,
+        record.namespace,
+        record.sourcePlatformId,
+        record.ownerRef,
+        record.remoteUrlHash,
+        record.storageDir,
+        record.fileName,
+        record.expiresAtMs,
+        record.contentType,
+        record.sizeBytes,
+        record.createdAtMs,
+        record.lastAccessedAtMs,
+      ],
+    );
+  }
+
+  Future<CacheEntryRecord?> loadCacheEntry(String cacheKey) async {
+    final row = await customSelect(
+      '''
+      SELECT * FROM cache_entries
+      WHERE cache_key = ?
+      LIMIT 1;
+      ''',
+      variables: [Variable<String>(cacheKey)],
+    ).getSingleOrNull();
+    if (row == null) {
+      return null;
+    }
+    return CacheEntryRecord(
+      cacheKey: row.read<String>('cache_key'),
+      namespace: row.read<String>('namespace'),
+      sourcePlatformId: row.read<String?>('source_platform_id'),
+      ownerRef: row.read<String?>('owner_ref'),
+      remoteUrlHash: row.read<String?>('remote_url_hash'),
+      storageDir: row.read<String>('storage_dir'),
+      fileName: row.read<String>('file_name'),
+      expiresAtMs: row.read<int>('expires_at_ms'),
+      contentType: row.read<String?>('content_type'),
+      sizeBytes: row.read<int?>('size_bytes'),
+      createdAtMs: row.read<int>('created_at_ms'),
+      lastAccessedAtMs: row.read<int?>('last_accessed_at_ms'),
+    );
+  }
+
+  Future<List<CacheEntryRecord>> loadExpiredCacheEntries({
+    required int nowMs,
+    int? limit,
+  }) async {
+    final limitClause = limit == null ? '' : 'LIMIT $limit';
+    final rows = await customSelect(
+      '''
+      SELECT * FROM cache_entries
+      WHERE expires_at_ms < ?
+      ORDER BY expires_at_ms ASC
+      $limitClause;
+      ''',
+      variables: [Variable<int>(nowMs)],
+    ).get();
+    return rows
+        .map(
+          (row) => CacheEntryRecord(
+            cacheKey: row.read<String>('cache_key'),
+            namespace: row.read<String>('namespace'),
+            sourcePlatformId: row.read<String?>('source_platform_id'),
+            ownerRef: row.read<String?>('owner_ref'),
+            remoteUrlHash: row.read<String?>('remote_url_hash'),
+            storageDir: row.read<String>('storage_dir'),
+            fileName: row.read<String>('file_name'),
+            expiresAtMs: row.read<int>('expires_at_ms'),
+            contentType: row.read<String?>('content_type'),
+            sizeBytes: row.read<int?>('size_bytes'),
+            createdAtMs: row.read<int>('created_at_ms'),
+            lastAccessedAtMs: row.read<int?>('last_accessed_at_ms'),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<List<CacheEntryRecord>> loadCacheEntriesOrderedByExpiry({
+    required int limit,
+  }) async {
+    final rows = await customSelect(
+      '''
+      SELECT * FROM cache_entries
+      ORDER BY expires_at_ms ASC
+      LIMIT ?;
+      ''',
+      variables: [Variable<int>(limit)],
+    ).get();
+    return rows
+        .map(
+          (row) => CacheEntryRecord(
+            cacheKey: row.read<String>('cache_key'),
+            namespace: row.read<String>('namespace'),
+            sourcePlatformId: row.read<String?>('source_platform_id'),
+            ownerRef: row.read<String?>('owner_ref'),
+            remoteUrlHash: row.read<String?>('remote_url_hash'),
+            storageDir: row.read<String>('storage_dir'),
+            fileName: row.read<String>('file_name'),
+            expiresAtMs: row.read<int>('expires_at_ms'),
+            contentType: row.read<String?>('content_type'),
+            sizeBytes: row.read<int?>('size_bytes'),
+            createdAtMs: row.read<int>('created_at_ms'),
+            lastAccessedAtMs: row.read<int?>('last_accessed_at_ms'),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> deleteCacheEntry(String cacheKey) {
+    return customStatement(
+      'DELETE FROM cache_entries WHERE cache_key = ?;',
+      [cacheKey],
+    );
+  }
+
+  Future<void> deleteAllCacheEntries() {
+    return customStatement('DELETE FROM cache_entries;');
+  }
+
+  Future<void> touchCacheEntryAccess({
+    required String cacheKey,
+    required int expiresAtMs,
+    required int lastAccessedAtMs,
+  }) {
+    return customStatement(
+      '''
+      UPDATE cache_entries
+      SET expires_at_ms = ?,
+          last_accessed_at_ms = ?
+      WHERE cache_key = ?;
+      ''',
+      [expiresAtMs, lastAccessedAtMs, cacheKey],
+    );
+  }
+
+  Future<void> upsertAppSetting(AppSettingRecord record) {
+    return customStatement(
+      '''
+      INSERT INTO app_settings (key, value_json, value_type, sync_policy, updated_at_ms)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        value_json = excluded.value_json,
+        value_type = excluded.value_type,
+        sync_policy = excluded.sync_policy,
+        updated_at_ms = excluded.updated_at_ms;
+      ''',
+      [
+        record.key,
+        record.valueJson,
+        record.valueType,
+        record.syncPolicy,
+        record.updatedAtMs,
+      ],
+    );
+  }
+
+  Future<List<AppSettingRecord>> loadAppSettings() async {
+    final rows = await customSelect(
+      'SELECT * FROM app_settings ORDER BY key ASC;',
+    ).get();
+    return rows
+        .map(
+          (row) => AppSettingRecord(
+            key: row.read<String>('key'),
+            valueJson: row.read<String>('value_json'),
+            valueType: row.read<String>('value_type'),
+            syncPolicy: row.read<String>('sync_policy'),
+            updatedAtMs: row.read<int>('updated_at_ms'),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> clearAppSettings() {
+    return customStatement('DELETE FROM app_settings;');
+  }
+
+  Future<void> upsertSearchHistory(SearchHistoryRecord record) {
+    return customStatement(
+      '''
+      INSERT INTO search_history (keyword, position, updated_at_ms)
+      VALUES (?, ?, ?)
+      ON CONFLICT(keyword) DO UPDATE SET
+        position = excluded.position,
+        updated_at_ms = excluded.updated_at_ms;
+      ''',
+      [record.keyword, record.position, record.updatedAtMs],
+    );
+  }
+
+  Future<List<SearchHistoryRecord>> loadSearchHistory() async {
+    final rows = await customSelect(
+      'SELECT * FROM search_history ORDER BY position ASC, updated_at_ms DESC;',
+    ).get();
+    return rows
+        .map(
+          (row) => SearchHistoryRecord(
+            keyword: row.read<String>('keyword'),
+            position: row.read<int>('position'),
+            updatedAtMs: row.read<int>('updated_at_ms'),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> clearSearchHistory() {
+    return customStatement('DELETE FROM search_history;');
+  }
+
+  Future<void> upsertImplicitData(ImplicitDataRecord record) {
+    return customStatement(
+      '''
+      INSERT INTO implicit_data (key, value_json, updated_at_ms)
+      VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        value_json = excluded.value_json,
+        updated_at_ms = excluded.updated_at_ms;
+      ''',
+      [record.key, record.valueJson, record.updatedAtMs],
+    );
+  }
+
+  Future<List<ImplicitDataRecord>> loadImplicitData() async {
+    final rows = await customSelect(
+      'SELECT * FROM implicit_data ORDER BY key ASC;',
+    ).get();
+    return rows
+        .map(
+          (row) => ImplicitDataRecord(
+            key: row.read<String>('key'),
+            valueJson: row.read<String>('value_json'),
+            updatedAtMs: row.read<int>('updated_at_ms'),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> clearImplicitData() {
+    return customStatement('DELETE FROM implicit_data;');
+  }
+
+  Future<void> upsertSourceRepository(SourceRepositoryRecord record) {
+    return customStatement(
+      '''
+      INSERT INTO source_repositories (
+        id,
+        name,
+        index_url,
+        enabled,
+        user_added,
+        trust_level,
+        last_refresh_at_ms,
+        last_refresh_status,
+        last_error_code,
+        created_at_ms,
+        updated_at_ms
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        index_url = excluded.index_url,
+        enabled = excluded.enabled,
+        user_added = excluded.user_added,
+        trust_level = excluded.trust_level,
+        last_refresh_at_ms = excluded.last_refresh_at_ms,
+        last_refresh_status = excluded.last_refresh_status,
+        last_error_code = excluded.last_error_code,
+        updated_at_ms = excluded.updated_at_ms;
+      ''',
+      [
+        record.id,
+        record.name,
+        record.indexUrl,
+        record.enabled ? 1 : 0,
+        record.userAdded ? 1 : 0,
+        record.trustLevel,
+        record.lastRefreshAtMs,
+        record.lastRefreshStatus,
+        record.lastErrorCode,
+        record.createdAtMs,
+        record.updatedAtMs,
+      ],
+    );
+  }
+
+  Future<List<SourceRepositoryRecord>> loadSourceRepositories() async {
+    final rows = await customSelect(
+      'SELECT * FROM source_repositories ORDER BY created_at_ms ASC, id ASC;',
+    ).get();
+    return rows
+        .map(
+          (row) => SourceRepositoryRecord(
+            id: row.read<String>('id'),
+            name: row.read<String>('name'),
+            indexUrl: row.read<String>('index_url'),
+            enabled: row.read<int>('enabled') == 1,
+            userAdded: row.read<int>('user_added') == 1,
+            trustLevel: row.read<String>('trust_level'),
+            lastRefreshAtMs: row.read<int?>('last_refresh_at_ms'),
+            lastRefreshStatus: row.read<String?>('last_refresh_status'),
+            lastErrorCode: row.read<String?>('last_error_code'),
+            createdAtMs: row.read<int>('created_at_ms'),
+            updatedAtMs: row.read<int>('updated_at_ms'),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<SourceRepositoryRecord?> loadSourceRepositoryById(String id) async {
+    final row = await customSelect(
+      'SELECT * FROM source_repositories WHERE id = ? LIMIT 1;',
+      variables: [Variable<String>(id)],
+    ).getSingleOrNull();
+    if (row == null) {
+      return null;
+    }
+    return SourceRepositoryRecord(
+      id: row.read<String>('id'),
+      name: row.read<String>('name'),
+      indexUrl: row.read<String>('index_url'),
+      enabled: row.read<int>('enabled') == 1,
+      userAdded: row.read<int>('user_added') == 1,
+      trustLevel: row.read<String>('trust_level'),
+      lastRefreshAtMs: row.read<int?>('last_refresh_at_ms'),
+      lastRefreshStatus: row.read<String?>('last_refresh_status'),
+      lastErrorCode: row.read<String?>('last_error_code'),
+      createdAtMs: row.read<int>('created_at_ms'),
+      updatedAtMs: row.read<int>('updated_at_ms'),
+    );
+  }
+
+  Future<void> deleteSourceRepository(String id) {
+    return customStatement(
+      'DELETE FROM source_repositories WHERE id = ?;',
+      [id],
+    );
+  }
+
+  Future<void> replaceSourcePackagesForRepository({
+    required String repositoryId,
+    required List<SourcePackageRecord> records,
+  }) {
+    return transaction(() async {
+      await customStatement(
+        'DELETE FROM source_packages WHERE repository_id = ?;',
+        [repositoryId],
+      );
+      for (final record in records) {
+        await customStatement(
+          '''
+          INSERT INTO source_packages (
+            source_key,
+            repository_id,
+            name,
+            file_name,
+            script_url,
+            available_version,
+            description,
+            content_hash,
+            last_seen_at_ms
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+          ''',
+          [
+            record.sourceKey,
+            record.repositoryId,
+            record.name,
+            record.fileName,
+            record.scriptUrl,
+            record.availableVersion,
+            record.description,
+            record.contentHash,
+            record.lastSeenAtMs,
+          ],
+        );
+      }
+    });
+  }
+
+  Future<List<SourcePackageRecord>> loadSourcePackages({
+    String? repositoryId,
+  }) async {
+    final rows = repositoryId == null
+        ? await customSelect(
+            '''
+            SELECT * FROM source_packages
+            ORDER BY repository_id ASC, source_key ASC;
+            ''',
+          ).get()
+        : await customSelect(
+            '''
+            SELECT * FROM source_packages
+            WHERE repository_id = ?
+            ORDER BY source_key ASC;
+            ''',
+            variables: [Variable<String>(repositoryId)],
+          ).get();
+    return rows
+        .map(
+          (row) => SourcePackageRecord(
+            sourceKey: row.read<String>('source_key'),
+            repositoryId: row.read<String>('repository_id'),
+            name: row.read<String>('name'),
+            fileName: row.read<String?>('file_name'),
+            scriptUrl: row.read<String?>('script_url'),
+            availableVersion: row.read<String?>('available_version'),
+            description: row.read<String?>('description'),
+            contentHash: row.read<String?>('content_hash'),
+            lastSeenAtMs: row.read<int>('last_seen_at_ms'),
+          ),
+        )
+        .toList(growable: false);
   }
 
   Future<List<String>> listTables() async {

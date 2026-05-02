@@ -1,4 +1,5 @@
 import 'package:venera/features/sources/comic_source/comic_source.dart';
+import 'package:drift/drift.dart' as drift;
 
 import 'unified_comics_store.dart';
 
@@ -17,9 +18,14 @@ class RemoteComicCanonicalSyncService {
   final UnifiedComicsStore store;
 
   Future<String> syncComic(ComicDetails comic) async {
+    final sourcePlatformId = _normalizeSourcePlatformId(comic.sourceKey);
+    final sourceComicId = comic.comicId.trim();
+    if (sourceComicId.isEmpty) {
+      throw StateError('comicId is required for remote comic sync');
+    }
     final canonicalComicId = canonicalRemoteComicId(
-      sourceKey: comic.sourceKey,
-      comicId: comic.comicId,
+      sourceKey: sourcePlatformId,
+      comicId: sourceComicId,
     );
     final now = DateTime.now().toUtc().toIso8601String();
     final sourceLinkId = 'source_link:$canonicalComicId';
@@ -27,6 +33,8 @@ class RemoteComicCanonicalSyncService {
         comic.chapters?.allChapters.entries.toList(growable: false) ?? const [];
 
     await store.transaction(() async {
+      await _upsertSourcePlatformIfMissing(sourcePlatformId);
+      await _assertSourcePlatformExists(sourcePlatformId);
       await store.upsertComic(
         ComicRecord(
           id: canonicalComicId,
@@ -36,13 +44,14 @@ class RemoteComicCanonicalSyncService {
           updatedAt: _normalizeTimestamp(comic.updateTime) ?? now,
         ),
       );
+      await _assertComicParentExists(canonicalComicId);
       await store.insertComicTitle(
         ComicTitleRecord(
           comicId: canonicalComicId,
           title: comic.title,
           normalizedTitle: _normalizeText(comic.title),
           titleType: 'primary',
-          sourcePlatformId: comic.sourceKey,
+          sourcePlatformId: sourcePlatformId,
           createdAt: now,
         ),
       );
@@ -50,8 +59,8 @@ class RemoteComicCanonicalSyncService {
         ComicSourceLinkRecord(
           id: sourceLinkId,
           comicId: canonicalComicId,
-          sourcePlatformId: comic.sourceKey,
-          sourceComicId: comic.comicId,
+          sourcePlatformId: sourcePlatformId,
+          sourceComicId: sourceComicId,
           isPrimary: true,
           sourceUrl: comic.url,
           sourceTitle: comic.title,
@@ -101,11 +110,11 @@ class RemoteComicCanonicalSyncService {
             continue;
           }
           final tagId =
-              'source_tag:${comic.sourceKey}:${namespace.toLowerCase()}:${normalizedTag.toLowerCase()}';
+              'source_tag:$sourcePlatformId:${namespace.toLowerCase()}:${normalizedTag.toLowerCase()}';
           await store.upsertSourceTag(
             SourceTagRecord(
               id: tagId,
-              sourcePlatformId: comic.sourceKey,
+              sourcePlatformId: sourcePlatformId,
               namespace: namespace,
               tagKey: normalizedTag.toLowerCase(),
               displayName: normalizedTag,
@@ -132,32 +141,41 @@ class RemoteComicCanonicalSyncService {
     required String chapterId,
     required List<String> pageKeys,
   }) async {
+    final sourcePlatformId = _normalizeSourcePlatformId(sourceKey);
+    final normalizedComicId = comicId.trim();
+    final normalizedChapterId = chapterId.trim();
+    if (normalizedComicId.isEmpty || normalizedChapterId.isEmpty) {
+      throw StateError('comicId and chapterId are required for chapter page sync');
+    }
     final canonicalComicId = canonicalRemoteComicId(
-      sourceKey: sourceKey,
-      comicId: comicId,
+      sourceKey: sourcePlatformId,
+      comicId: normalizedComicId,
     );
     final now = DateTime.now().toUtc().toIso8601String();
     final sourceLinkId = 'source_link:$canonicalComicId';
-    final canonicalChapterId = '$canonicalComicId:$chapterId';
-    final chapterSourceLinkId = '$sourceLinkId:chapter:$chapterId';
-    final normalizedChapterTitle = _normalizeText(chapterId);
+    final canonicalChapterId = '$canonicalComicId:$normalizedChapterId';
+    final chapterSourceLinkId = '$sourceLinkId:chapter:$normalizedChapterId';
+    final normalizedChapterTitle = _normalizeText(normalizedChapterId);
 
     await store.transaction(() async {
+      await _upsertSourcePlatformIfMissing(sourcePlatformId);
+      await _assertSourcePlatformExists(sourcePlatformId);
       await store.upsertComic(
         ComicRecord(
           id: canonicalComicId,
-          title: comicId,
-          normalizedTitle: _normalizeText(comicId),
+          title: normalizedComicId,
+          normalizedTitle: _normalizeText(normalizedComicId),
           createdAt: now,
           updatedAt: now,
         ),
       );
+      await _assertComicParentExists(canonicalComicId);
       await store.upsertComicSourceLink(
         ComicSourceLinkRecord(
           id: sourceLinkId,
           comicId: canonicalComicId,
-          sourcePlatformId: sourceKey,
-          sourceComicId: comicId,
+          sourcePlatformId: sourcePlatformId,
+          sourceComicId: normalizedComicId,
           isPrimary: true,
           linkedAt: now,
           updatedAt: now,
@@ -168,7 +186,7 @@ class RemoteComicCanonicalSyncService {
         ChapterRecord(
           id: canonicalChapterId,
           comicId: canonicalComicId,
-          title: chapterId,
+          title: normalizedChapterId,
           normalizedTitle: normalizedChapterTitle,
           createdAt: now,
           updatedAt: now,
@@ -179,7 +197,7 @@ class RemoteComicCanonicalSyncService {
           id: chapterSourceLinkId,
           chapterId: canonicalChapterId,
           comicSourceLinkId: sourceLinkId,
-          sourceChapterId: chapterId,
+          sourceChapterId: normalizedChapterId,
           linkedAt: now,
           updatedAt: now,
         ),
@@ -234,6 +252,46 @@ class RemoteComicCanonicalSyncService {
           ),
       ]);
     });
+  }
+
+  Future<void> _upsertSourcePlatformIfMissing(String sourceKey) async {
+    await store.upsertSourcePlatform(
+      SourcePlatformRecord(
+        id: sourceKey,
+        canonicalKey: sourceKey,
+        displayName: sourceKey,
+        kind: 'remote',
+      ),
+    );
+  }
+
+  Future<void> _assertSourcePlatformExists(String sourcePlatformId) async {
+    final row = await store.loadSourcePlatformById(sourcePlatformId);
+    if (row == null) {
+      throw StateError(
+        'Source platform row missing before child sync: $sourcePlatformId',
+      );
+    }
+  }
+
+  String _normalizeSourcePlatformId(String raw) {
+    final normalized = raw.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError('sourceKey must not be empty');
+    }
+    return normalized;
+  }
+
+  Future<void> _assertComicParentExists(String canonicalComicId) async {
+    final rows = await store.customSelect(
+      'SELECT 1 AS ok FROM comics WHERE id = ? LIMIT 1;',
+      variables: [drift.Variable<String>(canonicalComicId)],
+    ).get();
+    if (rows.isEmpty) {
+      throw StateError(
+        'Canonical comic parent row missing before child sync: $canonicalComicId',
+      );
+    }
   }
 }
 
