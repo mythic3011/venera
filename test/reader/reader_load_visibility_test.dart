@@ -1,7 +1,9 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/image_provider/reader_image.dart';
+import 'package:venera/foundation/reader/reader_diagnostics.dart';
 import 'package:venera/features/reader/presentation/reader.dart';
 import 'package:venera/foundation/source_ref.dart';
 
@@ -11,6 +13,7 @@ void main() {
   });
 
   tearDown(() {
+    ReaderDiagnostics.clearPendingProviderSubscriptionsForTesting();
     AppDiagnostics.resetForTesting();
   });
 
@@ -111,6 +114,44 @@ void main() {
       ).map((event) => event.message).toList(growable: false);
       expect(messages, contains('reader.render.page.provider.created'));
       expect(messages, contains('reader.render.provider.created'));
+    },
+  );
+
+  testWidgets(
+    'reader emits provider not subscribed when provider is created but image stream never starts',
+    (tester) async {
+      await tester.pumpWidget(
+        Builder(
+          builder: (_) {
+            buildReaderImageProvider(
+              imageKey: 'file:///tmp/local-unsubscribed-page.jpg',
+              sourceRef: SourceRef.fromLegacyLocal(
+                localType: 'local',
+                localComicId: 'comic-local',
+                chapterId: 'comic-local:__imported__',
+              ),
+              canonicalComicId: 'comic-local',
+              upstreamComicRefId: 'comic-local',
+              chapterRefId: 'comic-local:__imported__',
+              page: 1,
+              enableResize: false,
+            );
+            return const SizedBox.shrink();
+          },
+        ),
+      );
+      await tester.pump();
+
+      final event = DevDiagnosticsApi.recent(channel: 'reader.render')
+          .singleWhere(
+            (event) => event.message == 'reader.render.provider.notSubscribed',
+          );
+      expect(event.data['code'], 'PROVIDER_NOT_SUBSCRIBED');
+      expect(event.data['loadMode'], 'local');
+      expect(event.data['sourceKey'], 'local');
+      expect(event.data['comicId'], 'comic-local');
+      expect(event.data['chapterId'], 'comic-local:__imported__');
+      expect(event.data['page'], 1);
     },
   );
 

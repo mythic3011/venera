@@ -384,6 +384,7 @@ class _ReaderImagesState extends State<_ReaderImages> {
         sourceRef: sourceRef,
         pageCount: res.data.length,
       );
+      reader.recordReaderTabRetentionAfterPageListSuccess();
     }
     if (!mounted) return;
     context.readerScaffold.update();

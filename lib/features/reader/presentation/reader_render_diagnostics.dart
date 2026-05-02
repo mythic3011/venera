@@ -30,6 +30,14 @@ void recordReaderProviderCreatedDiagnostic({
   required int page,
 }) {
   final loadMode = imageKey.startsWith('file://') ? 'local' : 'remote';
+  ReaderDiagnostics.markImageProviderAwaitingSubscription(
+    loadMode: loadMode,
+    sourceKey: sourceRef.sourceKey,
+    comicId: canonicalComicId,
+    chapterId: chapterRefId,
+    page: page,
+    imageKey: imageKey,
+  );
   AppDiagnostics.trace(
     'reader.render',
     'reader.render.page.provider.created',
@@ -54,6 +62,17 @@ void recordReaderProviderCreatedDiagnostic({
       'imageKey': imageKey,
     },
   );
+  SchedulerBinding.instance.addPostFrameCallback((_) {
+    ReaderDiagnostics.recordProviderNotSubscribedIfPending(
+      loadMode: loadMode,
+      sourceKey: sourceRef.sourceKey,
+      comicId: canonicalComicId,
+      chapterId: chapterRefId,
+      page: page,
+      imageKey: imageKey,
+      owner: 'reader.render.postFrame',
+    );
+  });
 }
 
 void recordReaderRenderBlockedDiagnostic({

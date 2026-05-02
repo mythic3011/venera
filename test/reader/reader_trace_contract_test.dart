@@ -135,6 +135,23 @@ void main() {
     expect(diagnosticEvent.data['openDurationMs'], 2700);
   });
 
+  test('local reader tab remains active after page list load success', () {
+    final data = buildReaderTabRetentionDiagnosticForTesting(
+      expectedReaderTabId: 'local:local:1:1:__imported__',
+      activeReaderTabId: 'local:local:1:1:__imported__',
+      comicId: '1',
+      loadMode: 'local',
+      sourceKey: 'local',
+      chapterId: '1:__imported__',
+      chapterIndex: 1,
+      page: 1,
+    );
+
+    expect(data['retained'], isTrue);
+    expect(data['status'], 'active');
+    expect(data['activeReaderTabId'], data['expectedReaderTabId']);
+  });
+
   test('dispose diagnostics can skip layout dependent pagination reads', () {
     final snapshot = buildReaderPaginationDiagnosticsForTesting(
       includePagination: false,

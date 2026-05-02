@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/reader/reader_trace_recorder.dart';
@@ -9,6 +10,7 @@ class ReaderDiagnostics {
   static int _nextCallId = 0;
   static final Map<String, DateTime> _callStarts = {};
   static final Map<String, String> _callCorrelationIds = {};
+  static final Map<String, DateTime> _pendingProviderSubscriptions = {};
 
   static Map<String, dynamic> toDiagnosticsJson() {
     return readerTraceRecorder.toDiagnosticsJson();
@@ -546,6 +548,105 @@ class ReaderDiagnostics {
     );
   }
 
+  static void markImageProviderAwaitingSubscription({
+    required String loadMode,
+    required String? sourceKey,
+    required String comicId,
+    required String chapterId,
+    required int page,
+    required String imageKey,
+  }) {
+    _pendingProviderSubscriptions[_imageProviderSubscriptionKey(
+          loadMode: loadMode,
+          sourceKey: sourceKey,
+          comicId: comicId,
+          chapterId: chapterId,
+          page: page,
+          imageKey: imageKey,
+        )] =
+        DateTime.now();
+  }
+
+  static void markImageProviderLoadStarted({
+    required String loadMode,
+    required String? sourceKey,
+    required String comicId,
+    required String chapterId,
+    required int page,
+    required String imageKey,
+  }) {
+    _pendingProviderSubscriptions.remove(
+      _imageProviderSubscriptionKey(
+        loadMode: loadMode,
+        sourceKey: sourceKey,
+        comicId: comicId,
+        chapterId: chapterId,
+        page: page,
+        imageKey: imageKey,
+      ),
+    );
+  }
+
+  static bool recordProviderNotSubscribedIfPending({
+    required String loadMode,
+    required String? sourceKey,
+    required String comicId,
+    required String chapterId,
+    required int page,
+    required String imageKey,
+    required String owner,
+  }) {
+    final key = _imageProviderSubscriptionKey(
+      loadMode: loadMode,
+      sourceKey: sourceKey,
+      comicId: comicId,
+      chapterId: chapterId,
+      page: page,
+      imageKey: imageKey,
+    );
+    final createdAt = _pendingProviderSubscriptions.remove(key);
+    if (createdAt == null) {
+      return false;
+    }
+    final elapsedMs = DateTime.now().difference(createdAt).inMilliseconds;
+    readerTraceRecorder.record(
+      ReaderTraceEvent(
+        event: 'image.provider.notSubscribed',
+        timestamp: DateTime.now(),
+        loadMode: loadMode,
+        sourceKey: sourceKey,
+        comicId: comicId,
+        chapterId: chapterId,
+        page: page,
+        imageKey: imageKey,
+        errorCode: 'PROVIDER_NOT_SUBSCRIBED',
+        resultSummary: 'owner=$owner elapsedMs=$elapsedMs',
+        phase: ReaderTracePhase.imageProvider,
+      ),
+    );
+    AppDiagnostics.warn(
+      'reader.render',
+      'reader.render.provider.notSubscribed',
+      data: {
+        'code': 'PROVIDER_NOT_SUBSCRIBED',
+        'owner': owner,
+        'elapsedMs': elapsedMs,
+        'loadMode': loadMode,
+        'sourceKey': sourceKey,
+        'comicId': comicId,
+        'chapterId': chapterId,
+        'page': page,
+        'imageKey': imageKey,
+      },
+    );
+    return true;
+  }
+
+  @visibleForTesting
+  static void clearPendingProviderSubscriptionsForTesting() {
+    _pendingProviderSubscriptions.clear();
+  }
+
   static String beginImageLoad({
     required String loadMode,
     required String? sourceKey,
@@ -554,6 +655,14 @@ class ReaderDiagnostics {
     required int page,
     required String imageKey,
   }) {
+    markImageProviderLoadStarted(
+      loadMode: loadMode,
+      sourceKey: sourceKey,
+      comicId: comicId,
+      chapterId: chapterId,
+      page: page,
+      imageKey: imageKey,
+    );
     return beginCall(
       functionName: 'ReaderImageProvider.load',
       phase: ReaderTracePhase.imageProvider,
@@ -564,6 +673,17 @@ class ReaderDiagnostics {
       page: page,
       imageKey: imageKey,
     );
+  }
+
+  static String _imageProviderSubscriptionKey({
+    required String loadMode,
+    required String? sourceKey,
+    required String comicId,
+    required String chapterId,
+    required int page,
+    required String imageKey,
+  }) {
+    return '$loadMode|${sourceKey ?? ''}|$comicId|$chapterId|$page|$imageKey';
   }
 
   static void endImageLoad({

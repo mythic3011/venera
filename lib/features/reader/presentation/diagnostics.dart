@@ -84,6 +84,34 @@ ReaderPaginationDiagnostics buildReaderPaginationDiagnosticsForTesting({
   );
 }
 
+@visibleForTesting
+Map<String, Object?> buildReaderTabRetentionDiagnosticForTesting({
+  required String expectedReaderTabId,
+  required String? activeReaderTabId,
+  required String comicId,
+  required String loadMode,
+  required String sourceKey,
+  required String chapterId,
+  required int chapterIndex,
+  required int page,
+}) {
+  final retained = activeReaderTabId == expectedReaderTabId;
+  return {
+    'comicId': comicId,
+    'loadMode': loadMode,
+    'sourceKey': sourceKey,
+    'chapterId': chapterId,
+    'chapterIndex': chapterIndex,
+    'page': page,
+    'expectedReaderTabId': expectedReaderTabId,
+    'activeReaderTabId': activeReaderTabId,
+    'retained': retained,
+    'status': retained
+        ? 'active'
+        : (activeReaderTabId == null ? 'missingActiveTab' : 'mismatch'),
+  };
+}
+
 extension _ReaderDiagnosticsState on _ReaderState {
   Map<String, Object?> _readerBuildDiagnosticData({
     required BuildContext buildContext,
@@ -398,6 +426,57 @@ extension _ReaderDiagnosticsState on _ReaderState {
       chapterId: context.chapterId,
     );
     updateReaderDiagnostics('pageList.loaded');
+  }
+
+  void recordReaderTabRetentionAfterPageListSuccess() {
+    final context = currentReaderContext();
+    final expectedReaderTabId =
+        ReaderSessionRepository.defaultTabIdForSourceRef(context.sourceRef);
+    unawaited(() async {
+      try {
+        final activeTab = await App.repositories.readerSession
+            .loadActiveReaderTab(context.canonicalComicId);
+        final data = buildReaderTabRetentionDiagnosticForTesting(
+          expectedReaderTabId: expectedReaderTabId,
+          activeReaderTabId: activeTab?.tabId,
+          comicId: context.canonicalComicId,
+          loadMode: context.loadMode,
+          sourceKey: context.sourceKey,
+          chapterId: context.chapterId,
+          chapterIndex: context.chapterIndex,
+          page: context.page,
+        );
+        if (data['retained'] == true) {
+          AppDiagnostics.trace(
+            'reader.lifecycle',
+            'reader.tab.retention.afterPageList',
+            data: data,
+          );
+        } else {
+          AppDiagnostics.warn(
+            'reader.lifecycle',
+            'reader.tab.retention.afterPageList',
+            data: data,
+          );
+        }
+      } catch (error) {
+        AppDiagnostics.warn(
+          'reader.lifecycle',
+          'reader.tab.retention.afterPageList',
+          data: {
+            'comicId': context.canonicalComicId,
+            'loadMode': context.loadMode,
+            'sourceKey': context.sourceKey,
+            'chapterId': context.chapterId,
+            'chapterIndex': context.chapterIndex,
+            'page': context.page,
+            'expectedReaderTabId': expectedReaderTabId,
+            'status': 'checkFailed',
+            'error': error.toString(),
+          },
+        );
+      }
+    }());
   }
 
   void recordImageProviderDiagnostics({
