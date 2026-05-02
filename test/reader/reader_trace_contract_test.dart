@@ -249,6 +249,12 @@ void main() {
   test(
     'reader short dispose with retained tab emits parent unmount diagnostic',
     () {
+      // Regression note:
+      // A duplicate Hero tag in the route subtree can throw from HeroController
+      // during route transition and then cascade into a reader short-dispose /
+      // black-screen symptom. When retained-tab diagnostics look correct, do not
+      // assume the root cause is in the reader pipeline before ruling out Hero
+      // collisions on the parent route tree.
       final data = buildReaderParentShellDiagnosticForTesting(
         owner: 'ReaderWithLoading.parentUnmount',
         branch: 'loading',
@@ -275,7 +281,9 @@ void main() {
 
       final diagnosticEvent = DevDiagnosticsApi.recent(
         channel: 'reader.lifecycle',
-      ).single;
+      ).lastWhere(
+        (event) => event.message == 'reader.parent.unmount.retainedTab',
+      );
       expect(diagnosticEvent.message, 'reader.parent.unmount.retainedTab');
       expect(
         diagnosticEvent.data['activeReaderTabId'],
@@ -316,7 +324,7 @@ void main() {
 
       final diagnosticEvent = DevDiagnosticsApi.recent(
         channel: 'reader.lifecycle',
-      ).single;
+      ).lastWhere((event) => event.message == 'reader.parent.shell.build');
       expect(diagnosticEvent.message, 'reader.parent.shell.build');
       expect(
         diagnosticEvent.data['activeReaderTabId'],
@@ -332,6 +340,66 @@ void main() {
       );
     },
   );
+
+  test('parent diagnostics are included in reader trace snapshot', () {
+    readerTraceRecorder.clear();
+
+    emitReaderParentShellBuildDiagnosticForTesting(
+      buildReaderParentShellDiagnosticForTesting(
+        owner: 'ReaderWithLoading.buildFrame',
+        branch: 'content',
+        readerChildMounted: true,
+        comicId: '1',
+        loadMode: 'local',
+        sourceKey: 'local',
+        chapterId: '1:__imported__',
+        chapterIndex: 1,
+        page: 1,
+        selectedIndex: 1,
+        currentPage: 1,
+        routeName: null,
+        expectedReaderTabId: 'local:local:1:1:__imported__',
+        activeReaderTabId: 'local:local:1:1:__imported__',
+        pageOrderId: '1:__imported__:source_default',
+        parentKey: 'parent-key',
+        readerChildKey: 'reader:1:local:local:1:1:__imported__',
+      ),
+    );
+    emitReaderParentUnmountDiagnosticForTesting(
+      buildReaderParentShellDiagnosticForTesting(
+        owner: 'ReaderWithLoading.parentUnmount',
+        branch: 'loading',
+        readerChildMounted: false,
+        comicId: '1',
+        loadMode: 'local',
+        sourceKey: 'local',
+        chapterId: '1:__imported__',
+        chapterIndex: 1,
+        page: 1,
+        selectedIndex: 1,
+        currentPage: 1,
+        routeName: null,
+        expectedReaderTabId: 'local:local:1:1:__imported__',
+        activeReaderTabId: 'local:local:1:1:__imported__',
+        pageOrderId: '1:__imported__:source_default',
+        parentKey: 'parent-key',
+        readerChildKey: 'reader:1:local:local:1:1:__imported__',
+        reason: 'branch_switched_loading',
+        openDurationMs: 1885,
+      ),
+    );
+
+    final events =
+        (ReaderDiagnostics.toDiagnosticsJson()['readerTrace']
+                as Map<String, dynamic>)['events']
+            as List<dynamic>;
+    final messages = events
+        .map((event) => (event as Map<String, dynamic>)['event'])
+        .toList();
+
+    expect(messages, contains('reader.parent.shell.build'));
+    expect(messages, contains('reader.parent.unmount.retainedTab'));
+  });
 
   test('dispose diagnostics can skip layout dependent pagination reads', () {
     final snapshot = buildReaderPaginationDiagnosticsForTesting(

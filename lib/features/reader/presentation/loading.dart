@@ -133,6 +133,28 @@ Res<SourceRef> resolveReaderLoadSourceRef({
   return Res(resolved);
 }
 
+SourceRef? resolveReaderDiagnosticSourceRef({
+  SourceRef? readerPropsSourceRef,
+  SourceRef? resolvedSourceRefForDiagnostics,
+  SourceRef? widgetSourceRef,
+  required String comicId,
+  String? sourceKey,
+}) {
+  return readerPropsSourceRef ??
+      resolvedSourceRefForDiagnostics ??
+      widgetSourceRef ??
+      (sourceKey == null
+          ? null
+          : SourceRef.fromLegacy(comicId: comicId, sourceKey: sourceKey));
+}
+
+String buildReaderWithLoadingChildKey({
+  required String comicId,
+  required SourceRef sourceRef,
+}) {
+  return 'reader:$comicId:${sourceRef.id}';
+}
+
 class ReaderWithLoading extends StatefulWidget {
   const ReaderWithLoading({
     super.key,
@@ -165,16 +187,16 @@ class _ReaderWithLoadingState
   DateTime? _readerChildMountedAt;
   bool _readerChildMounted = false;
   String? _routeNameSnapshot;
+  SourceRef? _resolvedSourceRefForDiagnostics;
 
   SourceRef? _diagnosticSourceRef({ReaderProps? data}) {
-    return data?.sourceRef ??
-        widget.sourceRef ??
-        (widget.sourceKey == null
-            ? null
-            : SourceRef.fromLegacy(
-                comicId: widget.id,
-                sourceKey: widget.sourceKey!,
-              ));
+    return resolveReaderDiagnosticSourceRef(
+      readerPropsSourceRef: data?.sourceRef,
+      resolvedSourceRefForDiagnostics: _resolvedSourceRefForDiagnostics,
+      widgetSourceRef: widget.sourceRef,
+      comicId: widget.id,
+      sourceKey: widget.sourceKey,
+    );
   }
 
   Future<void> _recordParentShellBuild({
@@ -219,7 +241,10 @@ class _ReaderWithLoadingState
       activeReaderTabId: activeTab?.tabId,
       pageOrderId: activeTab?.pageOrderId,
       parentKey: widget.key?.toString(),
-      readerChildKey: 'reader:${widget.id}:${sourceRef.id}',
+      readerChildKey: buildReaderWithLoadingChildKey(
+        comicId: widget.id,
+        sourceRef: sourceRef,
+      ),
     );
     emitReaderParentShellBuildDiagnosticForTesting(diagnosticData);
   }
@@ -277,7 +302,10 @@ class _ReaderWithLoadingState
         activeReaderTabId: activeTab?.tabId,
         pageOrderId: activeTab?.pageOrderId,
         parentKey: widget.key?.toString(),
-        readerChildKey: 'reader:${widget.id}:${sourceRef.id}',
+        readerChildKey: buildReaderWithLoadingChildKey(
+          comicId: widget.id,
+          sourceRef: sourceRef,
+        ),
         reason: reason,
         openDurationMs: openDurationMs,
       ),
@@ -313,6 +341,12 @@ class _ReaderWithLoadingState
       historyGroup: data.history.group,
     );
     return Reader(
+      key: ValueKey(
+        buildReaderWithLoadingChildKey(
+          comicId: widget.id,
+          sourceRef: data.sourceRef,
+        ),
+      ),
       type: data.type,
       cid: data.cid,
       name: data.name,
@@ -378,6 +412,7 @@ class _ReaderWithLoadingState
       return Res.error(resolvedRefResult.errorMessage!);
     }
     final resolvedSourceRef = resolvedRefResult.data;
+    _resolvedSourceRefForDiagnostics = resolvedSourceRef;
     final type = ComicType.fromKey(resolvedSourceRef.sourceKey);
     final readerSessions = App.repositories.readerSession;
     final canonicalComicId = buildReaderRuntimeContext(

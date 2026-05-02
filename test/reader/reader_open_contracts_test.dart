@@ -149,6 +149,73 @@ void main() {
     expect(result.errorMessage, 'SOURCE_NOT_AVAILABLE:unknown-remote');
   });
 
+  test(
+    'ReaderWithLoading build diagnostics use resolved local imported sourceRef after loadData',
+    () {
+      final resolvedLocalImportedRef = SourceRef.fromLegacyLocal(
+        localType: 'local',
+        localComicId: '1',
+        chapterId: '1:__imported__',
+      );
+
+      final diagnosticRef = resolveReaderDiagnosticSourceRef(
+        readerPropsSourceRef: null,
+        resolvedSourceRefForDiagnostics: resolvedLocalImportedRef,
+        widgetSourceRef: null,
+        comicId: '1',
+        sourceKey: 'local',
+      );
+
+      expect(diagnosticRef, isNotNull);
+      expect(diagnosticRef!.id, 'local:local:1:1:__imported__');
+    },
+  );
+
+  test(
+    'ReaderWithLoading content readerChildKey matches Reader open sourceRef id',
+    () {
+      final resolvedLocalImportedRef = SourceRef.fromLegacyLocal(
+        localType: 'local',
+        localComicId: '1',
+        chapterId: '1:__imported__',
+      );
+
+      final childKey = buildReaderWithLoadingChildKey(
+        comicId: '1',
+        sourceRef: resolvedLocalImportedRef,
+      );
+
+      expect(childKey, 'reader:1:local:local:1:1:__imported__');
+    },
+  );
+
+  test(
+    'ReaderWithLoading does not use legacy placeholder sourceRef when resolved sourceRef is available',
+    () {
+      final resolvedLocalImportedRef = SourceRef.fromLegacyLocal(
+        localType: 'local',
+        localComicId: '1',
+        chapterId: '1:__imported__',
+      );
+      final legacyPlaceholderRef = SourceRef.fromLegacy(
+        comicId: '1',
+        sourceKey: 'local',
+      );
+
+      final diagnosticRef = resolveReaderDiagnosticSourceRef(
+        readerPropsSourceRef: null,
+        resolvedSourceRefForDiagnostics: resolvedLocalImportedRef,
+        widgetSourceRef: legacyPlaceholderRef,
+        comicId: '1',
+        sourceKey: 'local',
+      );
+
+      expect(diagnosticRef, isNotNull);
+      expect(diagnosticRef!.id, 'local:local:1:1:__imported__');
+      expect(diagnosticRef.id, isNot(legacyPlaceholderRef.id));
+    },
+  );
+
   test('canonical active tab seeds compatibility history without legacy lookup', () {
     final history = buildReaderCompatibilityHistory(
       model: _TestHistoryModel(

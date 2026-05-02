@@ -184,6 +184,20 @@ Map<String, Object?> buildReaderParentShellDiagnosticForTesting({
 
 @visibleForTesting
 void emitReaderParentShellBuildDiagnosticForTesting(Map<String, Object?> data) {
+  ReaderDiagnostics.recordReaderLifecycle(
+    event: 'reader.parent.shell.build',
+    type: ComicType.fromKey(data['sourceKey']?.toString() ?? 'local'),
+    comicId: data['comicId']?.toString() ?? '',
+    chapterId: data['chapterId']?.toString(),
+    chapterIndex: data['chapterIndex'] as int? ?? 0,
+    page: data['page'] as int? ?? 0,
+    data: data,
+    resultSummary:
+        'branch=${data['branch']} retainedTab=${data['retainedTab']} '
+        'activeReaderTabId=${data['activeReaderTabId']} '
+        'expectedReaderTabId=${data['expectedReaderTabId']} '
+        'pageOrderId=${data['pageOrderId']}',
+  );
   AppDiagnostics.trace(
     'reader.lifecycle',
     'reader.parent.shell.build',
@@ -193,6 +207,21 @@ void emitReaderParentShellBuildDiagnosticForTesting(Map<String, Object?> data) {
 
 @visibleForTesting
 void emitReaderParentUnmountDiagnosticForTesting(Map<String, Object?> data) {
+  ReaderDiagnostics.recordReaderLifecycle(
+    event: 'reader.parent.unmount.retainedTab',
+    type: ComicType.fromKey(data['sourceKey']?.toString() ?? 'local'),
+    comicId: data['comicId']?.toString() ?? '',
+    chapterId: data['chapterId']?.toString(),
+    chapterIndex: data['chapterIndex'] as int? ?? 0,
+    page: data['page'] as int? ?? 0,
+    data: data,
+    resultSummary:
+        'reason=${data['reason']} retainedTab=${data['retainedTab']} '
+        'activeReaderTabId=${data['activeReaderTabId']} '
+        'expectedReaderTabId=${data['expectedReaderTabId']} '
+        'pageOrderId=${data['pageOrderId']} '
+        'openDurationMs=${data['openDurationMs']}',
+  );
   AppDiagnostics.warn(
     'reader.lifecycle',
     'reader.parent.unmount.retainedTab',
