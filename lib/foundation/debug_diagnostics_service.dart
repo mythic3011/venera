@@ -141,6 +141,7 @@ class DebugDiagnosticsService {
           await ReaderDebugSnapshotService(
             localLibraryStore: App.repositories.localLibrary.store,
             comicDetailStore: App.repositories.comicDetailStore,
+            readerSessionStore: App.repositories.readerSession.store,
           ).build(
             comicId: comicId,
             chapterId: chapterId is String && chapterId.isNotEmpty

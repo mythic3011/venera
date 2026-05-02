@@ -1,12 +1,15 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:venera/features/reader/data/reader_session_repository.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/reader/reader_diagnostics.dart';
 import 'package:venera/foundation/reader/reader_debug_snapshot.dart';
 import 'package:venera/foundation/reader/reader_trace_recorder.dart';
+import 'package:venera/foundation/source_ref.dart';
 
 void main() {
   late Directory tempDir;
@@ -36,6 +39,7 @@ void main() {
         await ReaderDebugSnapshotService(
           localLibraryStore: store,
           comicDetailStore: store,
+          readerSessionStore: store,
         ).build(
           comicId: 'comic-1',
           chapterId: 'chapter-1',
@@ -45,6 +49,7 @@ void main() {
 
     expect(snapshot.comicId, 'comic-1');
     expect(snapshot.localLibraryItemId, 'local_item:comic-1');
+    expect(snapshot.readerTabId, 'local:local:comic-1:chapter-1');
     expect(snapshot.pageOrderId, 'order-1');
     expect(snapshot.chapterId, 'chapter-1');
     expect(snapshot.sourcePlatformId, 'platform-1');
@@ -56,6 +61,7 @@ void main() {
     expect(snapshot.toJson()['sourcePlatformId'], 'platform-1');
     expect(snapshot.toJson()['sourceComicId'], 'source-comic-1');
     expect(snapshot.toJson()['linkStatus'], 'active');
+    expect(snapshot.toJson()['readerTabId'], 'local:local:comic-1:chapter-1');
   });
 
   test('snapshot fails loudly when canonical comic is missing', () async {
@@ -63,6 +69,7 @@ void main() {
       ReaderDebugSnapshotService(
         localLibraryStore: store,
         comicDetailStore: store,
+        readerSessionStore: store,
       ).build(
         comicId: 'missing',
         chapterId: 'chapter-1',
@@ -80,6 +87,7 @@ void main() {
       ReaderDebugSnapshotService(
         localLibraryStore: store,
         comicDetailStore: store,
+        readerSessionStore: store,
       ).build(
         comicId: 'comic-1',
         chapterId: 'chapter-1',
@@ -209,4 +217,29 @@ Future<void> _insertCanonicalReaderFixture(
   await store.replacePageOrderItems('order-1', const [
     PageOrderItemRecord(pageOrderId: 'order-1', pageId: 'page-1', sortOrder: 0),
   ]);
+  final sourceRef = SourceRef.fromLegacyLocal(
+    localType: 'local',
+    localComicId: 'comic-1',
+    chapterId: 'chapter-1',
+  );
+  final sessionId = ReaderSessionRepository.sessionIdForComic('comic-1');
+  final tabId = ReaderSessionRepository.defaultTabIdForSourceRef(sourceRef);
+  await store.upsertReaderSession(
+    ReaderSessionRecord(id: sessionId, comicId: 'comic-1'),
+  );
+  await store.upsertReaderTab(
+    ReaderTabRecord(
+      id: tabId,
+      sessionId: sessionId,
+      comicId: 'comic-1',
+      chapterId: 'chapter-1',
+      pageIndex: 0,
+      sourceRefJson: jsonEncode(sourceRef.toJson()),
+      pageOrderId: 'order-1',
+    ),
+  );
+  await store.setReaderSessionActiveTab(
+    sessionId: sessionId,
+    activeTabId: tabId,
+  );
 }
