@@ -123,10 +123,33 @@ void main() {
     expect(snapshot.imageCount, 3);
     expect(snapshot.maxPage, isNull);
     expect(snapshot.imagesPerPage, isNull);
+    final diagnosticEvent =
+        DevDiagnosticsApi.recent(channel: 'reader.lifecycle').single;
+    expect(diagnosticEvent.message, 'pagination.diagnostics.unavailable');
     expect(
-      DevDiagnosticsApi.recent(channel: 'reader.lifecycle').single.message,
-      'pagination.diagnostics.unavailable',
+      diagnosticEvent.data['reason'],
+      'pagination_snapshot_unavailable',
     );
+    expect(diagnosticEvent.data.containsKey('stackTrace'), isFalse);
+  });
+
+  test('dispose diagnostics use context unavailable reason without stack spam', () {
+    buildReaderPaginationDiagnosticsForTesting(
+      includePagination: true,
+      imageCount: 3,
+      maxPage: () => throw StateError('layout unavailable during dispose'),
+      imagesPerPage: () => throw StateError('layout unavailable during dispose'),
+      unavailableReason: 'context_unavailable_during_dispose',
+    );
+
+    final diagnosticEvent =
+        DevDiagnosticsApi.recent(channel: 'reader.lifecycle').single;
+    expect(diagnosticEvent.message, 'pagination.diagnostics.unavailable');
+    expect(
+      diagnosticEvent.data['reason'],
+      'context_unavailable_during_dispose',
+    );
+    expect(diagnosticEvent.data.containsKey('stackTrace'), isFalse);
   });
 
   test(

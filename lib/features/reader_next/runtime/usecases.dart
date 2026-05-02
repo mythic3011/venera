@@ -1,5 +1,6 @@
 import 'cache_keys.dart';
 import 'gateway.dart';
+import 'local_resolver.dart';
 import 'models.dart';
 import 'ports.dart';
 import 'session.dart';
@@ -9,13 +10,16 @@ class ReaderNextRuntime {
     required RemoteAdapterGateway gateway,
     required ReaderSessionStore sessionStore,
     ImageCacheStore imageCacheStore = const NoopImageCacheStore(),
+    LocalReaderPageResolver localPageResolver = const LegacyLocalReaderPageResolver(),
   }) : _gateway = gateway,
        _sessionStore = sessionStore,
-       _imageCacheStore = imageCacheStore;
+       _imageCacheStore = imageCacheStore,
+       _localPageResolver = localPageResolver;
 
   final RemoteAdapterGateway _gateway;
   final ReaderSessionStore _sessionStore;
   final ImageCacheStore _imageCacheStore;
+  final LocalReaderPageResolver _localPageResolver;
 
   Future<List<SearchResultItem>> search({
     required String sourceKey,
@@ -42,26 +46,59 @@ class ReaderNextRuntime {
     required String chapterRefId,
     required int page,
   }) async {
-    final images = await _gateway.loadReaderPageImages(
-      identity: identity,
-      chapterRefId: chapterRefId,
-      page: page,
-    );
+    final isRemote = identity.sourceRef.isRemote;
+    final images = isRemote
+        ? await _gateway.loadReaderPageImages(
+            identity: identity,
+            chapterRefId: chapterRefId,
+            page: page,
+          )
+        : await _localPageResolver.loadReaderPageImages(
+            identity: identity,
+            chapterRefId: chapterRefId,
+            page: page,
+          );
+
+    if (images.isEmpty) {
+      throw ReaderRuntimeException(
+        isRemote ? 'REMOTE_PAGES_EMPTY' : 'LOCAL_PAGES_EMPTY',
+        isRemote
+            ? 'Remote chapter has no renderable pages'
+            : 'Local chapter has no renderable pages',
+      );
+    }
+
+    if (isRemote) {
+      return images
+          .map(
+            (image) => ReaderImageRefWithCacheKey(
+              image: image,
+              cacheKey: buildReaderImageCacheKey(
+                sourceRef: identity.sourceRef,
+                canonicalComicId: identity.canonicalComicId,
+                upstreamComicRefId: identity.sourceRef.upstreamComicRefId,
+                chapterRefId: chapterRefId,
+                imageKey: image.imageKey,
+              ),
+            ),
+          )
+          .toList();
+    }
 
     return images
         .map(
           (image) => ReaderImageRefWithCacheKey(
             image: image,
-            cacheKey: buildReaderImageCacheKey(
-              sourceRef: identity.sourceRef,
-              canonicalComicId: identity.canonicalComicId,
-              upstreamComicRefId: identity.sourceRef.upstreamComicRefId,
-              chapterRefId: chapterRefId,
-              imageKey: image.imageKey,
-            ),
+            cacheKey: [
+              identity.sourceRef.sourceKey,
+              identity.canonicalComicId,
+              identity.sourceRef.upstreamComicRefId,
+              chapterRefId,
+              image.imageKey,
+            ].join('@'),
           ),
         )
-        .toList();
+        .toList(growable: false);
   }
 
   Future<void> saveResumeSession({

@@ -36,6 +36,7 @@ ReaderPaginationDiagnostics _buildReaderPaginationDiagnostics({
   required int? imageCount,
   required int? Function() maxPage,
   required int? Function() imagesPerPage,
+  String? unavailableReason,
 }) {
   if (!includePagination || imageCount == null) {
     return ReaderPaginationDiagnostics(
@@ -50,11 +51,15 @@ ReaderPaginationDiagnostics _buildReaderPaginationDiagnostics({
       maxPage: maxPage(),
       imagesPerPage: imagesPerPage(),
     );
-  } catch (error, stackTrace) {
+  } catch (error) {
+    final fallbackReason = unavailableReason ?? 'pagination_snapshot_unavailable';
     AppDiagnostics.warn(
       'reader.lifecycle',
       'pagination.diagnostics.unavailable',
-      data: {'error': error.toString(), 'stackTrace': stackTrace.toString()},
+      data: {
+        'reason': fallbackReason,
+        'error': error.toString(),
+      },
     );
     return ReaderPaginationDiagnostics(
       imageCount: imageCount,
@@ -70,12 +75,14 @@ ReaderPaginationDiagnostics buildReaderPaginationDiagnosticsForTesting({
   required int? imageCount,
   required int? Function() maxPage,
   required int? Function() imagesPerPage,
+  String? unavailableReason,
 }) {
   return _buildReaderPaginationDiagnostics(
     includePagination: includePagination,
     imageCount: imageCount,
     maxPage: maxPage,
     imagesPerPage: imagesPerPage,
+    unavailableReason: unavailableReason,
   );
 }
 
@@ -83,15 +90,19 @@ extension _ReaderDiagnosticsState on _ReaderState {
   void recordImageControllerLifecycle(
     String lifecycle, {
     required String owner,
+    bool includePagination = true,
     bool? ready,
     Map<String, Object?> data = const {},
   }) {
     final context = currentReaderContext();
     final pagination = _buildReaderPaginationDiagnostics(
-      includePagination: images != null,
+      includePagination: includePagination && images != null,
       imageCount: images?.length,
       maxPage: () => maxPage,
       imagesPerPage: () => mode.isContinuous ? 1 : imagesPerPage,
+      unavailableReason: lifecycle == 'dispose'
+          ? 'context_unavailable_during_dispose'
+          : null,
     );
     ReaderDiagnostics.updateReaderState(
       lifecycle: 'imageController.$lifecycle',

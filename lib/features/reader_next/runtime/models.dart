@@ -134,6 +134,19 @@ class CanonicalComicId {
 
   final String value;
 
+  factory CanonicalComicId.local({
+    required String localComicId,
+  }) {
+    final normalized = localComicId.trim();
+    if (normalized.isEmpty) {
+      throw ReaderNextBoundaryException(
+        'CANONICAL_ID_INVALID',
+        'local canonical comic id is malformed',
+      );
+    }
+    return CanonicalComicId._('local:$normalized');
+  }
+
   static bool _looksCanonical(String id) => id.contains(':');
 }
 
@@ -159,6 +172,30 @@ class ReaderNextOpenRequest {
       throw ReaderNextBoundaryException(
         'INITIAL_PAGE_INVALID',
         'initialPage must be >= 1 for ReaderNext remote open request',
+      );
+    }
+    return ReaderNextOpenRequest._(
+      canonicalComicId: canonicalComicId,
+      sourceRef: sourceRef,
+      initialPage: initialPage,
+    );
+  }
+
+  factory ReaderNextOpenRequest.local({
+    required CanonicalComicId canonicalComicId,
+    required SourceRef sourceRef,
+    required int initialPage,
+  }) {
+    if (sourceRef.type != SourceRefType.local) {
+      throw ReaderNextBoundaryException(
+        'SOURCE_REF_REQUIRED',
+        'Local ReaderNext open request requires local SourceRef',
+      );
+    }
+    if (initialPage < 1) {
+      throw ReaderNextBoundaryException(
+        'INITIAL_PAGE_INVALID',
+        'initialPage must be >= 1 for ReaderNext local open request',
       );
     }
     return ReaderNextOpenRequest._(

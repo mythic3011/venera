@@ -101,7 +101,7 @@ Future<FavoritesRouteDecision> routeFavoritesReadOpen({
     return FavoritesRouteDecision.blocked;
   }
 
-  final bridgeResult = ReaderNextOpenBridge.fromLegacyRemote(
+  final bridgeResult = ReaderNextOpenBridge.fromLegacy(
     sourceKey: input.sourceKey,
     comicId: input.recordId,
     chapterId: '0',

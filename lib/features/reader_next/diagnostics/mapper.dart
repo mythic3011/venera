@@ -25,7 +25,18 @@ ReaderNextLoadError mapReaderNextRuntimeError(Object error) {
           diagnosticCode: error.code,
         );
       case 'ADAPTER_NOT_FOUND':
+      case 'LOCAL_STORAGE_UNAVAILABLE':
+      case 'LOCAL_COMIC_NOT_FOUND':
         return ReaderNextSourceUnavailableError(
+          userMessage: error.message,
+          diagnosticCode: error.code,
+        );
+      case 'LOCAL_IDENTITY_MISSING':
+      case 'LOCAL_CHAPTER_NOT_FOUND':
+      case 'LOCAL_PAGES_EMPTY':
+      case 'REMOTE_PAGES_EMPTY':
+      case 'LOCAL_PAGE_FILE_MISSING':
+        return ReaderNextSourceBoundaryError(
           userMessage: error.message,
           diagnosticCode: error.code,
         );

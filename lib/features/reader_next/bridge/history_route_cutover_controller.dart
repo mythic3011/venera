@@ -141,7 +141,7 @@ class HistoryRouteCutoverController {
     }
 
     final chapterId = row.chapterId.trim().isEmpty ? null : row.chapterId.trim();
-    final bridgeResult = ReaderNextOpenBridge.fromLegacyRemote(
+    final bridgeResult = ReaderNextOpenBridge.fromLegacy(
       sourceKey: row.sourceRef.sourceKey,
       comicId: row.sourceRef.refId,
       chapterId: chapterId,

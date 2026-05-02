@@ -46,5 +46,45 @@ void main() {
       expect(mapped.diagnosticCode, 'READER_NEXT_UNKNOWN');
       expect(mapped.userMessage, contains('boom'));
     });
+
+    test('maps local resolver unavailable and boundary codes', () {
+      final unavailable = mapReaderNextRuntimeError(
+        ReaderRuntimeException(
+          'LOCAL_STORAGE_UNAVAILABLE',
+          'Local storage unavailable',
+        ),
+      );
+      expect(unavailable, isA<ReaderNextSourceUnavailableError>());
+      expect(unavailable.diagnosticCode, 'LOCAL_STORAGE_UNAVAILABLE');
+
+      final boundary = mapReaderNextRuntimeError(
+        ReaderRuntimeException(
+          'LOCAL_CHAPTER_NOT_FOUND',
+          'Local chapter missing',
+        ),
+      );
+      expect(boundary, isA<ReaderNextSourceBoundaryError>());
+      expect(boundary.diagnosticCode, 'LOCAL_CHAPTER_NOT_FOUND');
+    });
+
+    test('maps empty/missing page payload runtime codes to boundary errors', () {
+      final remoteEmpty = mapReaderNextRuntimeError(
+        ReaderRuntimeException(
+          'REMOTE_PAGES_EMPTY',
+          'Remote chapter has no renderable pages',
+        ),
+      );
+      expect(remoteEmpty, isA<ReaderNextSourceBoundaryError>());
+      expect(remoteEmpty.diagnosticCode, 'REMOTE_PAGES_EMPTY');
+
+      final localMissing = mapReaderNextRuntimeError(
+        ReaderRuntimeException(
+          'LOCAL_PAGE_FILE_MISSING',
+          'Local reader page file does not exist',
+        ),
+      );
+      expect(localMissing, isA<ReaderNextSourceBoundaryError>());
+      expect(localMissing.diagnosticCode, 'LOCAL_PAGE_FILE_MISSING');
+    });
   });
 }

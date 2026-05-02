@@ -81,5 +81,43 @@ void main() {
         ReaderNextBridgeDiagnosticCode.canonicalIdInUpstreamField,
       );
     });
+
+    test('local source builds local open request without remote reconstruction', () {
+      final result = ReaderNextOpenBridge.fromLegacy(
+        sourceKey: 'local',
+        comicId: 'local-comic-1',
+        chapterId: '1:chapter-key',
+      );
+
+      expect(result.isBlocked, isFalse);
+      final request = result.request!;
+      expect(request.sourceRef.type, SourceRefType.local);
+      expect(request.sourceRef.sourceKey, 'local');
+      expect(request.sourceRef.upstreamComicRefId, 'local-comic-1');
+      expect(request.sourceRef.chapterRefId, '1:chapter-key');
+      expect(request.canonicalComicId.value, 'local:local-comic-1');
+    });
+
+    test('fromLegacy keeps remote behavior unchanged for non-local source', () {
+      final legacy = ReaderNextOpenBridge.fromLegacy(
+        sourceKey: 'nhentai',
+        comicId: '646922',
+        chapterId: '0',
+      );
+      final remote = ReaderNextOpenBridge.fromLegacyRemote(
+        sourceKey: 'nhentai',
+        comicId: '646922',
+        chapterId: '0',
+      );
+
+      expect(legacy.isBlocked, remote.isBlocked);
+      expect(legacy.request?.canonicalComicId.value, remote.request?.canonicalComicId.value);
+      expect(legacy.request?.sourceRef.type, remote.request?.sourceRef.type);
+      expect(legacy.request?.sourceRef.sourceKey, remote.request?.sourceRef.sourceKey);
+      expect(
+        legacy.request?.sourceRef.upstreamComicRefId,
+        remote.request?.sourceRef.upstreamComicRefId,
+      );
+    });
   });
 }

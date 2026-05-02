@@ -29,6 +29,16 @@ void main() {
       expect(files, <String>['lib/pages/comic_detail_page.dart']);
     });
 
+    test('production pages must not call ReaderNextOpenBridge.fromLegacy directly', () {
+      final matches = _scanForPattern(
+        root: Directory('lib/pages'),
+        include: (file) => file.path.endsWith('.dart'),
+        pattern: RegExp(r'ReaderNextOpenBridge\.fromLegacy\('),
+      );
+
+      expect(matches, isEmpty);
+    });
+
     test(
       'no production file references ReaderNext presentation classes directly',
       () {

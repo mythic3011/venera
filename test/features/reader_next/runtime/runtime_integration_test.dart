@@ -12,6 +12,10 @@ class _FakeExternalSourceAdapter implements ExternalSourceAdapter {
   String? lastPageUpstreamComicRefId;
   String? lastPageChapterRefId;
   int? lastPageIndex;
+  List<ReaderImageRef> pageImages = const <ReaderImageRef>[
+    ReaderImageRef(imageKey: 'img-1', imageUrl: 'https://example.com/1.jpg'),
+    ReaderImageRef(imageKey: 'img-2', imageUrl: 'https://example.com/2.jpg'),
+  ];
 
   @override
   Future<List<SearchResultItem>> search({required SearchQuery query}) async {
@@ -47,10 +51,32 @@ class _FakeExternalSourceAdapter implements ExternalSourceAdapter {
     lastPageUpstreamComicRefId = upstreamComicRefId;
     lastPageChapterRefId = chapterRefId;
     lastPageIndex = page;
-    return const <ReaderImageRef>[
-      ReaderImageRef(imageKey: 'img-1', imageUrl: 'https://example.com/1.jpg'),
-      ReaderImageRef(imageKey: 'img-2', imageUrl: 'https://example.com/2.jpg'),
-    ];
+    return pageImages;
+  }
+}
+
+class _RecordingLocalResolver implements LocalReaderPageResolver {
+  ComicIdentity? lastIdentity;
+  String? lastChapterRefId;
+  int? lastPage;
+  List<ReaderImageRef> images = const <ReaderImageRef>[
+    ReaderImageRef(imageKey: 'local-1', imageUrl: '/tmp/local-1.jpg'),
+  ];
+  Object? throwError;
+
+  @override
+  Future<List<ReaderImageRef>> loadReaderPageImages({
+    required ComicIdentity identity,
+    required String chapterRefId,
+    required int page,
+  }) async {
+    lastIdentity = identity;
+    lastChapterRefId = chapterRefId;
+    lastPage = page;
+    if (throwError != null) {
+      throw throwError!;
+    }
+    return images;
   }
 }
 
@@ -120,6 +146,21 @@ void main() {
       expect(adapter.lastPageIndex, 5);
     });
 
+    test('remote ReaderNext route with empty image refs throws typed error', () async {
+      adapter.pageImages = const <ReaderImageRef>[];
+      await expectLater(
+        () => runtime.loadReaderPage(
+          identity: identity(),
+          chapterRefId: 'ch-1',
+          page: 1,
+        ),
+        throwsA(
+          isA<ReaderRuntimeException>()
+              .having((e) => e.code, 'code', 'REMOTE_PAGES_EMPTY'),
+        ),
+      );
+    });
+
     test('saveResumeSession then loadResumeSession round-trips', () async {
       await runtime.saveResumeSession(
         identity: identity(),
@@ -134,6 +175,128 @@ void main() {
       expect(session?.sourceRef.upstreamComicRefId, upstreamComicRefId);
       expect(session?.chapterRefId, 'ch-9');
       expect(session?.page, 11);
+    });
+  });
+
+  group('ReaderNextRuntime local resolver flow', () {
+    late _FakeExternalSourceAdapter adapter;
+    late _RecordingLocalResolver localResolver;
+    late ReaderNextRuntime runtime;
+
+    setUp(() {
+      adapter = _FakeExternalSourceAdapter(sourceKey: 'fake-source');
+      localResolver = _RecordingLocalResolver();
+      final registry = SourceRegistry()..register(adapter);
+      runtime = ReaderNextRuntime(
+        gateway: RemoteAdapterGateway(registry),
+        sessionStore: InMemoryReaderSessionStore(),
+        localPageResolver: localResolver,
+      );
+    });
+
+    test('ReaderNext local resolver opens local chapter pages', () async {
+      final identity = ComicIdentity(
+        canonicalComicId: 'local:local-comic-1',
+        sourceRef: SourceRef.local(
+          sourceKey: 'local',
+          comicRefId: 'local-comic-1',
+          chapterRefId: '1:chapter-key',
+        ),
+      );
+
+      final refs = await runtime.loadReaderPage(
+        identity: identity,
+        chapterRefId: '1:chapter-key',
+        page: 1,
+      );
+
+      expect(refs, hasLength(1));
+      expect(refs.first.image.imageUrl, '/tmp/local-1.jpg');
+      expect(refs.first.cacheKey, contains('local:local-comic-1'));
+      expect(refs.first.cacheKey, isNot(contains('Instance of')));
+      expect(localResolver.lastIdentity?.sourceRef.type, SourceRefType.local);
+      expect(localResolver.lastIdentity?.sourceRef.upstreamComicRefId, 'local-comic-1');
+      expect(localResolver.lastChapterRefId, '1:chapter-key');
+      expect(adapter.lastPageUpstreamComicRefId, isNull);
+    });
+
+    test('ReaderNext local resolver blocks missing local comic without fallback', () async {
+      localResolver.throwError = ReaderRuntimeException(
+        'LOCAL_COMIC_NOT_FOUND',
+        'Local comic was not found for ReaderNext request',
+      );
+      final identity = ComicIdentity(
+        canonicalComicId: 'local:missing-local-comic',
+        sourceRef: SourceRef.local(
+          sourceKey: 'local',
+          comicRefId: 'missing-local-comic',
+          chapterRefId: '1:chapter-key',
+        ),
+      );
+
+      await expectLater(
+        () => runtime.loadReaderPage(
+          identity: identity,
+          chapterRefId: '1:chapter-key',
+          page: 1,
+        ),
+        throwsA(
+          isA<ReaderRuntimeException>()
+              .having((e) => e.code, 'code', 'LOCAL_COMIC_NOT_FOUND'),
+        ),
+      );
+      expect(adapter.lastPageUpstreamComicRefId, isNull);
+    });
+
+    test('ReaderNext local resolver maps legacy late failure to LOCAL_STORAGE_UNAVAILABLE', () async {
+      localResolver.throwError = ReaderRuntimeException(
+        'LOCAL_STORAGE_UNAVAILABLE',
+        'Local storage is unavailable',
+      );
+      final identity = ComicIdentity(
+        canonicalComicId: 'local:local-comic-1',
+        sourceRef: SourceRef.local(
+          sourceKey: 'local',
+          comicRefId: 'local-comic-1',
+          chapterRefId: '1:chapter-key',
+        ),
+      );
+
+      await expectLater(
+        () => runtime.loadReaderPage(
+          identity: identity,
+          chapterRefId: '1:chapter-key',
+          page: 1,
+        ),
+        throwsA(
+          isA<ReaderRuntimeException>()
+              .having((e) => e.code, 'code', 'LOCAL_STORAGE_UNAVAILABLE'),
+        ),
+      );
+    });
+
+    test('local ReaderNext route with empty image refs throws typed error', () async {
+      localResolver.images = const <ReaderImageRef>[];
+      final identity = ComicIdentity(
+        canonicalComicId: 'local:local-comic-1',
+        sourceRef: SourceRef.local(
+          sourceKey: 'local',
+          comicRefId: 'local-comic-1',
+          chapterRefId: '1:chapter-key',
+        ),
+      );
+
+      await expectLater(
+        () => runtime.loadReaderPage(
+          identity: identity,
+          chapterRefId: '1:chapter-key',
+          page: 1,
+        ),
+        throwsA(
+          isA<ReaderRuntimeException>()
+              .having((e) => e.code, 'code', 'LOCAL_PAGES_EMPTY'),
+        ),
+      );
     });
   });
 

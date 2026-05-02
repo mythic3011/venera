@@ -117,7 +117,7 @@ class DownloadsRouteCutoverController {
         ? DownloadsRouteDecision.readerNextEligible
         : DownloadsRouteDecision.blocked;
     final bridgeResult = decision == DownloadsRouteDecision.readerNextEligible
-        ? ReaderNextOpenBridge.fromLegacyRemote(
+        ? ReaderNextOpenBridge.fromLegacy(
             sourceKey: preflight.candidate!.sourceKey,
             comicId: preflight.candidate!.upstreamComicRefId,
             chapterId: preflight.candidate!.chapterRefId,

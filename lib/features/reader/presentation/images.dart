@@ -665,7 +665,11 @@ class _GalleryModeState extends State<_GalleryMode>
 
   @override
   void dispose() {
-    reader.recordImageControllerLifecycle('dispose', owner: 'gallery');
+    reader.recordImageControllerLifecycle(
+      'dispose',
+      owner: 'gallery',
+      includePagination: false,
+    );
     reader.detachImageViewController(this);
     keyRepeatTimer?.cancel();
     controller?.dispose();
@@ -1219,7 +1223,11 @@ class _ContinuousModeState extends State<_ContinuousMode>
 
   @override
   void dispose() {
-    reader.recordImageControllerLifecycle('dispose', owner: 'continuous');
+    reader.recordImageControllerLifecycle(
+      'dispose',
+      owner: 'continuous',
+      includePagination: false,
+    );
     reader.detachImageViewController(this);
     itemPositionsListener.itemPositions.removeListener(onPositionChanged);
     _scrollController?.removeListener(onScroll);

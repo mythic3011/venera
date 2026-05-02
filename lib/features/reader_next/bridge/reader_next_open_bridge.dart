@@ -65,6 +65,8 @@ class ReaderNextBridgeResult {
 class ReaderNextOpenBridge {
   const ReaderNextOpenBridge();
 
+  static const String _localSourceKey = 'local';
+
   static ReaderNextBridgeResult fromLegacyRemote({
     required String? sourceKey,
     required String? comicId,
@@ -124,6 +126,54 @@ class ReaderNextOpenBridge {
     );
   }
 
+  static ReaderNextBridgeResult fromLegacy({
+    required String? sourceKey,
+    required String? comicId,
+    required String? chapterId,
+    int initialPage = 1,
+  }) {
+    final normalizedSourceKey = sourceKey?.trim() ?? '';
+    if (normalizedSourceKey == _localSourceKey) {
+      if (comicId == null || comicId.trim().isEmpty) {
+        return ReaderNextBridgeResult.blocked(
+          const ReaderNextBridgeDiagnostic(
+            code: ReaderNextBridgeDiagnosticCode.missingUpstreamComicRefId,
+            message:
+                'local comic identity is required for ReaderNext bridge open request',
+          ),
+        );
+      }
+      if (chapterId == null || chapterId.trim().isEmpty) {
+        return ReaderNextBridgeResult.blocked(
+          const ReaderNextBridgeDiagnostic(
+            code: ReaderNextBridgeDiagnosticCode.emptyChapterRefId,
+            message: 'chapterRefId is required for ReaderNext bridge open request',
+          ),
+        );
+      }
+      final localComicId = comicId.trim();
+      final localChapterRefId = chapterId.trim();
+      final sourceRef = SourceRef.local(
+        sourceKey: _localSourceKey,
+        comicRefId: localComicId,
+        chapterRefId: localChapterRefId,
+      );
+      return ReaderNextBridgeResult.readerNext(
+        ReaderNextOpenRequest.local(
+          canonicalComicId: CanonicalComicId.local(localComicId: localComicId),
+          sourceRef: sourceRef,
+          initialPage: initialPage,
+        ),
+      );
+    }
+    return fromLegacyRemote(
+      sourceKey: sourceKey,
+      comicId: comicId,
+      chapterId: chapterId,
+      initialPage: initialPage,
+    );
+  }
+
   ReaderNextOpenRequest toOpenRequest({required ReaderNextBridgeInput input}) {
     final sourceKey = _requireNonEmpty(fieldName: 'sourceKey', value: input.sourceKey);
     final upstreamComicRefId = _requireNonEmpty(
@@ -134,6 +184,21 @@ class ReaderNextOpenBridge {
       fieldName: 'chapterRefId',
       value: input.chapterRefId,
     );
+
+    if (sourceKey == _localSourceKey) {
+      final sourceRef = SourceRef.local(
+        sourceKey: sourceKey,
+        comicRefId: upstreamComicRefId,
+        chapterRefId: chapterRefId,
+      );
+      return ReaderNextOpenRequest.local(
+        canonicalComicId: CanonicalComicId.local(
+          localComicId: upstreamComicRefId,
+        ),
+        sourceRef: sourceRef,
+        initialPage: input.initialPage,
+      );
+    }
 
     final sourceRef = SourceRef.remote(
       sourceKey: sourceKey,
