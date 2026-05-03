@@ -374,7 +374,7 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
           icon: Icons.favorite_border,
           text: "Add to favorites".tl,
           onClick: () {
-            addFavorite(selectedComics.keys.toList());
+            addFavorite(context, selectedComics.keys.toList());
           },
         ),
         if (selectedComics.length == 1)
@@ -582,21 +582,21 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
                   icon: Icons.reorder,
                   text: "Reorder Pages".tl,
                   onClick: () {
-                    showReorderPagesDialog(App.rootContext, c as LocalComic);
+                    showReorderPagesDialog(context, c as LocalComic);
                   },
                 ),
                 MenuEntry(
                   icon: Icons.image_outlined,
                   text: "Set Cover".tl,
                   onClick: () {
-                    showSetCoverDialog(App.rootContext, c as LocalComic);
+                    showSetCoverDialog(context, c as LocalComic);
                   },
                 ),
                 MenuEntry(
                   icon: Icons.view_list_outlined,
                   text: "Manage Chapters".tl,
                   onClick: () {
-                    showManageChaptersDialog(App.rootContext, c as LocalComic);
+                    showManageChaptersDialog(context, c as LocalComic);
                   },
                 ),
                 MenuEntry(
@@ -645,7 +645,7 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
   Future<bool> deleteComics(List<LocalComic> comics) async {
     bool isDeleted = false;
     await showDialog(
-      context: App.rootContext,
+      context: context,
       builder: (context) {
         bool removeComicFile = true;
         bool removeFavoriteAndHistory = true;
@@ -843,8 +843,10 @@ Future<void> openComicFolder(LocalComic comic) async {
   } catch (e, s) {
     Log.error("Open Folder", "Failed to open comic folder: $e", s);
     // Show error message to user
-    if (App.rootContext.mounted) {
-      App.rootContext.showMessage(message: "Failed to open folder: $e");
+    final messageContext =
+        App.rootNavigatorKey.currentContext ?? App.mainNavigatorKey?.currentContext;
+    if (messageContext != null && messageContext.mounted) {
+      messageContext.showMessage(message: "Failed to open folder: $e");
     }
   }
 }
@@ -893,7 +895,7 @@ void showDeleteChaptersPopWindow(BuildContext context, LocalComic comic) {
                         Future.delayed(const Duration(milliseconds: 200), () {
                           gateway.deleteChapters(comic, chapters);
                         });
-                        App.rootContext.pop();
+                        context.pop();
                       },
                       child: Text("Submit".tl),
                     ),

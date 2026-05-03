@@ -205,7 +205,7 @@ class _SyncDataWidgetState extends State<_SyncDataWidget>
                     borderRadius: BorderRadius.circular(16),
                     onTap: () {
                       showDialogMessage(
-                        App.rootContext,
+                        context,
                         "Error".tl,
                         DataSync().lastError!,
                       );

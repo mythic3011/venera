@@ -133,7 +133,7 @@ class _LeftBarState extends State<_LeftBar> implements FolderList {
                 icon: Icons.add,
                 text: 'Create Folder'.tl,
                 onClick: () {
-                  newFolder().then((value) {
+                  newFolder(context).then((value) {
                     setState(() {
                       folders = favoritesRepo.folderNames;
                     });
@@ -144,7 +144,7 @@ class _LeftBarState extends State<_LeftBar> implements FolderList {
                 icon: Icons.reorder,
                 text: 'Sort'.tl,
                 onClick: () {
-                  sortFolders().then((value) {
+                  sortFolders(context).then((value) {
                     setState(() {
                       folders = favoritesRepo.folderNames;
                     });
@@ -183,7 +183,7 @@ class _LeftBarState extends State<_LeftBar> implements FolderList {
             icon: const Icon(Icons.settings),
             onPressed: () {
               showPopUpWidget(
-                App.rootContext,
+                context,
                 setFavoritesPagesWidget(),
               );
             },

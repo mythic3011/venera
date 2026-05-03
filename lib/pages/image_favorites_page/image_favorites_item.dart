@@ -42,7 +42,7 @@ class _ImageFavoritesItemState extends State<_ImageFavoritesItem> {
   }
 
   void goPhotoView(ImageFavorite imageFavorite) {
-    Navigator.of(App.rootContext).push(
+    Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => ImageFavoritesPhotoView(
           comic: widget.imageFavoritesComic,
@@ -54,7 +54,7 @@ class _ImageFavoritesItemState extends State<_ImageFavoritesItem> {
 
   void copyTitle() {
     Clipboard.setData(ClipboardData(text: widget.imageFavoritesComic.title));
-    App.rootContext.showMessage(message: 'Copy the title successfully'.tl);
+    context.showMessage(message: 'Copy the title successfully'.tl);
   }
 
   void onLongPress() {
@@ -71,7 +71,7 @@ class _ImageFavoritesItemState extends State<_ImageFavoritesItem> {
   }
 
   void showMenu(Offset location, BuildContext context) {
-    showMenuX(App.rootContext, location, [
+    showMenuX(context, location, [
       MenuEntry(
         icon: Icons.chrome_reader_mode_outlined,
         text: 'Details'.tl,

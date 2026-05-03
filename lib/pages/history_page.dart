@@ -158,8 +158,11 @@ class _HistoryPageState extends State<HistoryPage> {
     await _refreshActivity();
   }
 
-  Future<void> _openHistoryComic(ReaderActivityItem comic) async {
-    await App.rootContext.to(() => buildHistoryComicDetailRoute(comic));
+  Future<void> _openHistoryComic(
+    BuildContext context,
+    ReaderActivityItem comic,
+  ) async {
+    await context.to(() => buildHistoryComicDetailRoute(comic));
   }
 
   @override
@@ -299,7 +302,7 @@ class _HistoryPageState extends State<HistoryPage> {
                       });
                     }
                   : (c, heroId) {
-                      _openHistoryComic(c as ReaderActivityItem);
+                      _openHistoryComic(context, c as ReaderActivityItem);
                     },
               badgeBuilder: (c) {
                 if (isLocalSourceKey(c.sourceKey)) {

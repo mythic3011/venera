@@ -193,7 +193,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
   }
 
   void showFolderSelector() {
-    Navigator.of(App.rootContext).push(
+    Navigator.of(context).push(
       PageRouteBuilder(
         barrierDismissible: true,
         fullscreenDialog: true,

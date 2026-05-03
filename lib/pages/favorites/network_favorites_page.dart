@@ -1,6 +1,7 @@
 part of 'favorites_page.dart';
 
 Future<bool> _deleteComic(
+  BuildContext context,
   String cid,
   String? fid,
   String sourceKey,
@@ -14,7 +15,7 @@ Future<bool> _deleteComic(
   var result = false;
 
   await showDialog(
-    context: App.rootContext,
+    context: context,
     builder: (context) {
       bool loading = false;
       return StatefulBuilder(builder: (context, setState) {
@@ -128,7 +129,7 @@ class _NormalFavoritePageState extends State<_NormalFavoritePage> {
               icon: Icons.sync,
               text: "Convert to local".tl,
               onClick: () {
-                importNetworkFolder(widget.data.key, 9999999, null, null);
+                importNetworkFolder(context, widget.data.key, 9999999, null, null);
               },
             )
           ]),
@@ -165,6 +166,7 @@ class _NormalFavoritePageState extends State<_NormalFavoritePage> {
             text: "Remove".tl,
             onClick: () async {
               var res = await _deleteComic(
+                context,
                 comic.id,
                 null,
                 comic.sourceKey,
@@ -559,7 +561,7 @@ class _FavoriteFolder extends StatelessWidget {
               icon: Icons.sync,
               text: "Convert to local".tl,
               onClick: () {
-                importNetworkFolder(data.key, 9999999, title, folderID);
+                importNetworkFolder(context, data.key, 9999999, title, folderID);
               },
             )
           ]),
@@ -580,6 +582,7 @@ class _FavoriteFolder extends StatelessWidget {
             text: "Remove".tl,
             onClick: () async {
               var res = await _deleteComic(
+                context,
                 comic.id,
                 null,
                 comic.sourceKey,

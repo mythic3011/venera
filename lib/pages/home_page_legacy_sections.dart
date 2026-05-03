@@ -167,7 +167,10 @@ class _LocalState extends State<_Local> {
                       },
                     ),
                   const Spacer(),
-                  Button.filled(onPressed: import, child: Text("Import".tl)),
+                  Button.filled(
+                    onPressed: () => import(context),
+                    child: Text("Import".tl),
+                  ),
                 ],
               ).paddingHorizontal(16).paddingVertical(8),
             ],
@@ -177,10 +180,10 @@ class _LocalState extends State<_Local> {
     );
   }
 
-  void import() {
+  void import(BuildContext context) {
     showDialog(
       barrierDismissible: false,
-      context: App.rootContext,
+      context: context,
       builder: (context) {
         return const _ImportComicsWidget();
       },

@@ -308,7 +308,7 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
                     icon: Icon(Icons.clear_all),
                     onPressed: () {
                       showConfirmDialog(
-                        context: App.rootContext,
+                        context: context,
                         title: "Mark all as read".tl,
                         content: "Do you want to mark all as read?".tl,
                         onConfirm: () {
@@ -403,7 +403,7 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
     }
     String? selectedFolder;
     showDialog(
-      context: App.rootContext,
+      context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setState) {
@@ -471,7 +471,7 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
       }
 
       var loadingController = showLoadingDialog(
-        App.rootContext,
+        context,
         withProgress: true,
         cancelButtonText: "Cancel".tl,
         onCancel: onCancel,
@@ -506,7 +506,7 @@ class _FollowUpdatesPageState extends AutomaticGlobalState<FollowUpdatesPage> {
     }
 
     var loadingController = showLoadingDialog(
-      App.rootContext,
+      context,
       withProgress: true,
       cancelButtonText: "Cancel".tl,
       onCancel: onCancel,

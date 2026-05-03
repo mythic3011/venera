@@ -129,10 +129,10 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
           injectedExecutor: favPage.widget.readerNextOpenExecutor,
           injectedFactory: favPage.widget.readerNextOpenExecutorFactory,
         );
-        App.rootContext.showMessage(message: 'ReaderNext open dispatched'.tl);
+        context.showMessage(message: 'ReaderNext open dispatched'.tl);
       },
       onBlocked: (result) async {
-        App.rootContext.showMessage(
+        context.showMessage(
           message: 'ReaderNext blocked (${result.diagnostic.blockedReason})'.tl,
         );
       },
@@ -480,6 +480,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                             onPressed: () {
                               context.pop();
                               importNetworkFolder(
+                                context,
                                 networkSource!,
                                 selectUpdatePageNumKey
                                     .currentState!
@@ -552,7 +553,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                       text: "Rename".tl,
                       onClick: () {
                         showInputDialog(
-                          context: App.rootContext,
+                          context: context,
                           title: "Rename".tl,
                           hintText: "New Name".tl,
                           onConfirm: (value) {
@@ -605,7 +606,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                       icon: Icons.update,
                       text: "Update Comics Info".tl,
                       onClick: () {
-                        updateComicsInfo(widget.folder).then((newComics) {
+                        updateComicsInfo(context, widget.folder).then((newComics) {
                           if (mounted) {
                             setState(() {
                               comics = newComics;
@@ -620,7 +621,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                       color: context.colorScheme.error,
                       onClick: () {
                         showConfirmDialog(
-                          context: App.rootContext,
+                          context: context,
                           title: "Delete".tl,
                           content: "Delete folder '@f' ?".tlParams({
                             "f": widget.folder,
@@ -937,7 +938,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
         .toList();
 
     showPopUpWidget(
-      App.rootContext,
+      context,
       StatefulBuilder(
         builder: (context, setState) {
           return PopUpWidgetScaffold(
@@ -961,7 +962,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                               child: Center(
                                 child: TextButton(
                                   onPressed: () {
-                                    newFolder().then((v) {
+                                    newFolder(context).then((v) {
                                       setState(() {
                                         targetFolders = favoritesRepo
                                             .folderNames
@@ -1048,7 +1049,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                               );
                             }
                           }
-                          App.rootContext.pop();
+                          context.pop();
                           updateComics();
                           _cancel();
                         },

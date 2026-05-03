@@ -1,9 +1,9 @@
 part of 'favorites_page.dart';
 
 /// Open a dialog to create a new favorite folder.
-Future<void> newFolder() async {
+Future<void> newFolder(BuildContext context) async {
   return showDialog(
-    context: App.rootContext,
+    context: context,
     builder: (context) {
       var controller = TextEditingController();
       String? error;
@@ -80,11 +80,11 @@ String? validateFolderName(String newFolderName) {
   return null;
 }
 
-void addFavorite(List<Comic> comics) {
+void addFavorite(BuildContext context, List<Comic> comics) {
   var folders = favoritesRepo.folderNames;
 
   showDialog(
-    context: App.rootContext,
+    context: context,
     builder: (context) {
       String? selectedFolder = appdata.settings['quickFavorite'];
 
@@ -135,7 +135,10 @@ void addFavorite(List<Comic> comics) {
   );
 }
 
-Future<List<FavoriteItem>> updateComicsInfo(String folder) async {
+Future<List<FavoriteItem>> updateComicsInfo(
+  BuildContext context,
+  String folder,
+) async {
   var comics = favoritesRepo.getFolderComics(folder);
 
   Future<void> updateSingleComic(int index) async {
@@ -194,7 +197,7 @@ Future<List<FavoriteItem>> updateComicsInfo(String folder) async {
   bool isCanceled = false;
 
   showDialog(
-    context: App.rootContext,
+    context: context,
     builder: (context) {
       return ValueListenableBuilder(
         valueListenable: finished,
@@ -262,11 +265,11 @@ Future<List<FavoriteItem>> updateComicsInfo(String folder) async {
   return comics;
 }
 
-Future<void> sortFolders() async {
+Future<void> sortFolders(BuildContext context) async {
   var folders = favoritesRepo.folderNames;
 
   await showPopUpWidget(
-    App.rootContext,
+    context,
     StatefulBuilder(
       builder: (context, setState) {
         return PopUpWidgetScaffold(
@@ -313,6 +316,7 @@ Future<void> sortFolders() async {
 }
 
 Future<void> importNetworkFolder(
+  BuildContext context,
   String source,
   int updatePageNum,
   String? folder,
@@ -333,7 +337,7 @@ Future<void> importNetworkFolder(
       source,
       folderID ?? "",
     )) {
-      App.rootContext.showMessage(message: "Folder already exists".tl);
+      context.showMessage(message: "Folder already exists".tl);
       return;
     }
   }
@@ -453,7 +457,7 @@ Future<void> importNetworkFolder(
   void Function()? closeDialog;
 
   showDialog(
-    context: App.rootContext,
+    context: context,
     builder: (context) {
       return StatefulBuilder(
         builder: (context, setState) {
