@@ -220,7 +220,7 @@ Each feature works locally, but the whole system has no single truth.
 
 ### What We Learned
 
-A DB should not become authoritative just because a function can read it.
+A storage surface should not become authoritative just because a function can read it.
 
 For each domain, there must be one declared authority:
 
@@ -452,7 +452,7 @@ M-model-inventory-1
 #### Storage authority inventory
 
 ```text
-S-storage-authority-inventory-1
+ST-storage-authority-inventory-1
 - list each user-visible domain state
 - map canonical authority
 - map compatibility fallback
@@ -464,6 +464,8 @@ S-storage-authority-inventory-1
 ### Then Do Narrow Migrations
 
 #### Reader route facade
+
+This is a conceptual sketch, not a final API.
 
 ```dart
 class AppRouter {
@@ -516,7 +518,7 @@ M-model-3
 #### Small storage moves
 
 ```text
-S-storage-1
+ST-storage-1
 - declare authority table for reader/domain storage
 - convert ambiguous reads into explicit fallback helpers
 - forbid new direct legacy reads outside migration boundary
@@ -576,10 +578,8 @@ If a diagnostic cannot help eliminate a debug branch, it is probably noise.
 
 ## Practical Lesson
 
-The reader issue was not only a reader bug.
-
-It was a routing ownership bug, a model ownership bug, a storage authority bug,
-and a diagnostics usefulness bug expressing the same architectural weakness.
+The reader issue exposed routing ownership problems first, then revealed the same
+ownership weakness in model placement, storage authority, and diagnostics design.
 
 Short-term convenience created long-term ambiguity about who owns truth.
 

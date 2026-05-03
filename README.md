@@ -14,9 +14,9 @@
 > service.
 >
 > **Breaking-change fork notice:** this fork does **not** preserve the old
-> fragmented local data / DB design as a compatibility target. The old storage
-> model is considered legacy technical debt and may be removed, migrated, or
-> replaced without backward-compatible guarantees.
+> fragmented local data / DB design as a compatibility target. Previous
+> runtime/storage layouts may be removed, migrated, or replaced without
+> backward-compatible guarantees.
 >
 > 上游狀態：原始儲存庫已由上游作者停止維護。
 >
@@ -26,8 +26,8 @@
 > best-effort，優先服務本人使用流程，並不提供保證式支援。
 >
 > **Breaking-change fork notice：**此 fork **不會**把舊有分散式 local
-> data / DB 設計視為相容性目標。舊 storage model 會被視為 legacy technical
-> debt，之後可能被移除、遷移或直接替換，不保證 backward compatibility。
+> data / DB 設計視為相容性目標。舊有 runtime/storage 佈局之後可能被移除、
+> 遷移或直接替換，不保證 backward compatibility。
 
 [![flutter](https://img.shields.io/badge/flutter-3.41.4-blue)](https://flutter.dev/)
 [![License](https://img.shields.io/github/license/mythic3011/venera)](https://github.com/mythic3011/venera/blob/master/LICENSE)
@@ -48,19 +48,17 @@ reliable debugging.
 In particular, this fork does **not** intend to keep the old fragmented data
 model as a permanent compatibility layer.
 
-Legacy examples include:
+Examples of compatibility surfaces under review include:
 
 ```text
 local.db
 history.db
 local_favorite.db
 implicitData.json
+fragmented local databases
 mixed app/domain state in JSON files
-platform-specific if/else source handling
-scattered route helpers without a single reader navigation owner
-page-local classes/models used as cross-feature contracts
-legacy integer/source-key identity mapping used as runtime identity
-logs that contain events but not enough decision-useful correlation data
+runtime identity derived from legacy IDs/source keys
+unclear ownership boundaries across routing, models, storage, and diagnostics
 ```
 
 The intended direction is:
@@ -79,12 +77,13 @@ multiple feature-specific stores. Foreign key enforcement, WAL mode, and proper
 schema ownership should be treated as part of the baseline DB design.
 Reference: [SQLite official documentation](https://www.sqlite.org/docs.html).
 
-The reader refactor also exposed a broader architectural rule used by this
-fork: critical flows should have one declared owner. UI pages should express
-user intent, feature modules should own request/model contracts, routing should
-own navigation and route diagnostics, and storage layers should declare whether
-they are canonical authority, compatibility fallback, cache, preference, or
-diagnostic-only state.
+This fork is moving toward clearer ownership boundaries for storage, routing,
+reader sessions, source management, and diagnostics. Critical flows should have
+one declared owner. UI pages should express user intent, feature modules should
+own request and model contracts, routing should own navigation and route
+diagnostics, and storage layers should declare whether they are canonical
+authority, compatibility fallback, cache, preference, or diagnostic-only
+state.
 
 See also: [Ownership Lessons From Reader Debugging](./docs/tech-notes/routing-model-storage-diagnostics-ownership.md).
 
@@ -98,19 +97,17 @@ ownership、debug / smoke verification，就會直接簡化、替換或移除。
 
 此 fork 不打算長期維護舊有分散式 data model 作為 compatibility layer。
 
-舊設計例子包括：
+正在檢視中的 compatibility surface 例子包括：
 
 ```text
 local.db
 history.db
 local_favorite.db
 implicitData.json
+分散式 local databases
 JSON 內混入 app state / domain state
-針對 platform/source 的大量 if/else
-routing helpers 分散，缺少單一 reader navigation owner
-page-local classes/models 被其他 feature 當成 contract 使用
-把 legacy int / source key 當 runtime identity
-log 有事件但缺少足夠 decision/debug correlation context
+以 legacy IDs / source keys 推導 runtime identity
+routing、model、storage、diagnostics ownership 邊界不清
 ```
 
 目標方向是：
@@ -123,11 +120,12 @@ log 有事件但缺少足夠 decision/debug correlation context
 - 以 ownership 劃分 feature contracts、view models、runtime models 的放置位置
 - diagnostics 需要包含 identity、authority、lifecycle phase 與 correlation IDs
 
-Reader refactor 亦暴露一個更大的架構規則：critical flows 必須有明確 owner。
-UI page 只應表達 user intent；feature module 應擁有 request/model contract；
-routing layer 應擁有 navigation 與 route diagnostics；storage layer 必須標明
-自己是 canonical authority、compatibility fallback、cache、preference，還是
-diagnostic-only state。
+此 fork 正朝向更清晰的 ownership boundary：storage、routing、
+reader sessions、source management、diagnostics 等 critical flows 都應有明確
+owner。UI page 只應表達 user intent；feature module 應擁有 request/model
+contract；routing layer 應擁有 navigation 與 route diagnostics；storage layer
+必須標明自己是 canonical authority、compatibility fallback、cache、
+preference，還是 diagnostic-only state。
 
 ## Data Compatibility Policy
 

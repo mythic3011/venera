@@ -137,3 +137,41 @@ PR 應包含：
 Large or unfocused PRs may be rejected even if the idea is acceptable.
 
 即使方向合理，過大或範圍不清的 PR 仍可能被拒絕。
+
+## Architecture Direction / 架構方向
+
+This fork is moving toward clearer ownership boundaries for routing, feature
+contracts, storage authority, and diagnostics.
+
+Contributions should prefer these directions:
+
+- UI pages express user intent, but should not become long-term owners of
+  shared route construction, feature contracts, or cross-feature models
+- feature modules should own request/model contracts that cross page boundaries
+- storage-backed changes should identify canonical authority, fallback, cache,
+  preference, or diagnostic-only state before adding new reads or writes
+- diagnostics should add decision-useful evidence, not only more event volume
+
+If a change introduces a new cross-feature model, route helper, or storage read
+path, explain why that ownership belongs in that layer.
+
+If ownership is unclear, prefer an inventory, design note, or narrow refactor
+plan first instead of expanding the ambiguity in code.
+
+此 fork 正朝向更清晰的 routing、feature contract、storage authority、
+diagnostics ownership boundary。
+
+提交修改時，請優先符合以下方向：
+
+- UI page 應表達 user intent，但不應長期擁有共享 route construction、
+  feature contract 或跨 feature model
+- 只要 request/model 會跨 page 邊界，就應由 feature module 擁有
+- 涉及 storage 的修改，新增 read/write 前應先標明它是 canonical
+  authority、fallback、cache、preference，還是 diagnostic-only state
+- diagnostics 應提供可幫助決策的證據，而不只是增加 event 數量
+
+如果變更引入新的跨 feature model、route helper 或 storage read path，
+請說明該 ownership 為何屬於該層。
+
+如果 ownership 仍不清晰，請先做 inventory、design note，或小型 refactor
+plan，而不是直接把模糊邊界擴散到程式碼內。
