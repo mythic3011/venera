@@ -9,8 +9,11 @@ const Set<String> _sensitiveCryptoTypes = <String>{
 const String sourceSecurityField = 'security';
 const String allowSensitiveCryptoField = 'allowSensitiveCrypto';
 const bool defaultAllowSensitiveCrypto = true;
+const String allowPrivateHttpField = 'allowPrivateHttp';
+const bool defaultAllowPrivateHttp = false;
 
 final Set<String> _trustedCryptoSourceKeys = <String>{};
+final Set<String> _trustedHttpSourceKeys = <String>{};
 
 void configureTrustedCryptoSources(Iterable<String> sourceKeys) {
   _trustedCryptoSourceKeys
@@ -27,6 +30,19 @@ bool canUseSensitiveCrypto({required String sourceKey}) {
     return true;
   }
   return _trustedCryptoSourceKeys.contains(sourceKey);
+}
+
+void configureTrustedHttpSources(Iterable<String> sourceKeys) {
+  _trustedHttpSourceKeys
+    ..clear()
+    ..addAll(sourceKeys.where((key) => key.trim().isNotEmpty));
+}
+
+bool canUsePrivateHttpTargets({required String sourceKey}) {
+  if (_trustedHttpSourceKeys.isEmpty) {
+    return defaultAllowPrivateHttp;
+  }
+  return _trustedHttpSourceKeys.contains(sourceKey);
 }
 
 Set<String> buildTrustedCryptoSourceKeys({
