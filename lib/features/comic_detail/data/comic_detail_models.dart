@@ -113,6 +113,24 @@ class ReaderTabVm {
   });
 }
 
+class ReadingProgressVm {
+  final String? currentChapterId;
+  final int currentChapterIndex;
+  final int currentPageIndex;
+  final int? currentGroup;
+  final Set<String> readChapters;
+  final DateTime? updatedAt;
+
+  ReadingProgressVm({
+    this.currentChapterId,
+    this.currentChapterIndex = 0,
+    this.currentPageIndex = 0,
+    this.currentGroup,
+    Set<String> readChapters = const <String>{},
+    this.updatedAt,
+  }) : readChapters = Set.unmodifiable(readChapters);
+}
+
 class PageOrderSummaryVm {
   final String? activeOrderId;
   final PageOrderKind? activeOrderType;
@@ -204,6 +222,7 @@ class ComicDetailViewModel {
   final List<SourceTagVm> sourceTags;
   final List<ChapterVm> chapters;
   final List<ReaderTabVm> readerTabs;
+  final ReadingProgressVm? continueProgress;
   final PageOrderSummaryVm pageOrderSummary;
   final ComicDetailActions availableActions;
   final DateTime? updatedAt;
@@ -218,6 +237,7 @@ class ComicDetailViewModel {
     List<SourceTagVm> sourceTags = const <SourceTagVm>[],
     List<ChapterVm> chapters = const <ChapterVm>[],
     List<ReaderTabVm> readerTabs = const <ReaderTabVm>[],
+    this.continueProgress,
     this.pageOrderSummary = PageOrderSummaryVm.empty,
     this.availableActions = ComicDetailActions.none,
     this.updatedAt,

@@ -140,6 +140,19 @@ class UnifiedCanonicalComicDetailRepository implements ComicDetailRepository {
 
     final summary = await store.loadPageOrderSummary(comicId);
     final readerTabs = await readerSessions.loadReaderTabs(comicId);
+    ReaderTabVm? activeReaderTab;
+    for (final tab in readerTabs) {
+      if (tab.isActive) {
+        activeReaderTab = tab;
+        break;
+      }
+    }
+    final progressTab =
+        activeReaderTab ?? (readerTabs.isEmpty ? null : readerTabs.first);
+    final readChapters = (latestHistory?.readEpisode ?? '')
+        .split(',')
+        .where((entry) => entry.isNotEmpty)
+        .toSet();
     final libraryState = _resolveLibraryState(
       localLibraryItems: snapshot.localLibraryItems,
       primarySource: primarySource,
@@ -154,6 +167,21 @@ class UnifiedCanonicalComicDetailRepository implements ComicDetailRepository {
       sourceTags: sourceTags,
       chapters: chapters,
       readerTabs: readerTabs,
+      continueProgress: progressTab == null && latestHistory == null
+          ? null
+          : ReadingProgressVm(
+              currentChapterId: progressTab?.currentChapterId,
+              currentChapterIndex: latestHistory?.chapterIndex ?? 0,
+              currentPageIndex:
+                  progressTab?.currentPageIndex ??
+                  latestHistory?.pageIndex ??
+                  0,
+              currentGroup: latestHistory?.chapterGroup,
+              readChapters: readChapters,
+              updatedAt:
+                  progressTab?.updatedAt ??
+                  _parseStoreDateTime(latestHistory?.eventTime),
+            ),
       pageOrderSummary: PageOrderSummaryVm(
         activeOrderId: summary.activeOrderId,
         activeOrderType: _mapPageOrderKind(summary.activeOrderType),

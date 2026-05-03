@@ -6,8 +6,13 @@ import 'package:venera/foundation/history.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/source_ref.dart';
 import 'package:venera/pages/comic_details_page/comic_page.dart';
+import 'package:venera/utils/translations.dart';
 
 void main() {
+  setUpAll(() {
+    AppTranslation.translations = {'en_US': {}};
+  });
+
   final localComic = LocalComic(
     id: 'comic-local',
     title: 'Local Comic',
@@ -28,7 +33,10 @@ void main() {
       libraryState: LibraryState.localOnly,
     );
 
-    final rendered = buildLocalDetailsFromCanonicalForTesting(detail, localComic);
+    final rendered = buildLocalDetailsFromCanonicalForTesting(
+      detail,
+      localComic,
+    );
 
     expect(rendered.subTitle, contains('Remote source: Not linked'));
     expect(rendered.tags['legacy'], ['tag']);
@@ -61,12 +69,13 @@ void main() {
           platform: platform,
         ),
       ],
-      userTags: const [
-        ComicTagVm(id: 'user-tag-1', name: 'queued'),
-      ],
+      userTags: const [ComicTagVm(id: 'user-tag-1', name: 'queued')],
     );
 
-    final rendered = buildLocalDetailsFromCanonicalForTesting(detail, localComic);
+    final rendered = buildLocalDetailsFromCanonicalForTesting(
+      detail,
+      localComic,
+    );
 
     expect(rendered.subTitle, contains('Remote source: CopyManga'));
     expect(rendered.url, 'https://example.com/comic/1');
@@ -159,25 +168,94 @@ void main() {
     expect(request.chapterRefId, '1:__imported__');
   });
 
-  test('local detail read request does not fall back to placeholder chapter id', () {
-    final sourceRef = SourceRef.fromLegacyLocal(
-      localType: 'local',
-      localComicId: 'comic-local',
-      chapterId: '1:__imported__',
-    );
-    final request = buildComicDetailReaderOpenRequest(
-      comic: ComicDetails.fromJson({
+  test(
+    'local detail read request does not fall back to placeholder chapter id',
+    () {
+      final sourceRef = SourceRef.fromLegacyLocal(
+        localType: 'local',
+        localComicId: 'comic-local',
+        chapterId: '1:__imported__',
+      );
+      final request = buildComicDetailReaderOpenRequest(
+        comic: ComicDetails.fromJson({
+          'title': 'Local Comic',
+          'sourceKey': 'local',
+          'comicId': 'comic-local',
+        }),
+        sourceRef: sourceRef,
+        ep: 1,
+        page: 1,
+        group: null,
+      );
+
+      expect(request.sourceRef.id, isNot('local:local:comic-local:_'));
+      expect(request.chapterRefId, isNot('_'));
+    },
+  );
+
+  test(
+    'local detail compatibility history uses canonical continue progress',
+    () {
+      final comic = ComicDetails.fromJson({
         'title': 'Local Comic',
         'sourceKey': 'local',
         'comicId': 'comic-local',
-      }),
-      sourceRef: sourceRef,
-      ep: 1,
-      page: 1,
-      group: null,
+        'cover': 'file:///tmp/cover.png',
+        'chapters': {
+          '1:__imported__': 'Imported Chapter',
+          '2:__imported__': 'Imported Chapter 2',
+        },
+      });
+      final detail = ComicDetailViewModel(
+        comicId: 'comic-local',
+        title: 'Local Comic',
+        libraryState: LibraryState.downloaded,
+        chapters: const [
+          ChapterVm(chapterId: '1:__imported__', title: 'Imported Chapter'),
+          ChapterVm(chapterId: '2:__imported__', title: 'Imported Chapter 2'),
+        ],
+        continueProgress: ReadingProgressVm(
+          currentChapterId: '2:__imported__',
+          currentPageIndex: 7,
+          readChapters: const {'2'},
+        ),
+      );
+
+      final history = buildComicDetailCompatibilityHistoryFromDetailForTesting(
+        model: comic,
+        chapters: comic.chapters,
+        canonicalDetail: detail,
+      );
+
+      expect(history.ep, 2);
+      expect(history.page, 7);
+      expect(history.readEpisode, contains('2'));
+    },
+  );
+
+  test('comic detail history label renders imported chapter progress', () {
+    final comic = ComicDetails.fromJson({
+      'title': 'Local Comic',
+      'sourceKey': 'local',
+      'comicId': 'comic-local',
+      'cover': 'file:///tmp/cover.png',
+      'chapters': {
+        '1:__imported__': 'Imported Chapter',
+        '2:__imported__': 'Imported Chapter 2',
+      },
+    });
+    final history = History.fromModel(
+      model: comic,
+      ep: 2,
+      page: 7,
+      readChapters: const {'2'},
     );
 
-    expect(request.sourceRef.id, isNot('local:local:comic-local:_'));
-    expect(request.chapterRefId, isNot('_'));
+    final text = buildComicDetailHistoryLabelForTesting(
+      comic: comic,
+      history: history,
+    );
+
+    expect(text, 'Last Reading: Imported Chapter 2 P7');
   });
 }

@@ -169,6 +169,7 @@ abstract mixin class _ComicPageActions {
   Future<void> read([int? ep, int? page, int? group]) async {
     final resumeSourceRef = await ReaderResumeService(
       readerSessions: App.repositories.readerSession,
+      loadLegacyResumeSourceRef: HistoryManager().findResumeSourceRef,
     ).loadPreferredResumeSourceRef(comic.id, comic.comicType);
     final sourceRef = resolveComicDetailsReadSourceRef(
       comicId: comic.id,

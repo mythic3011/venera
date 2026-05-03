@@ -34,7 +34,6 @@ import 'package:venera/pages/favorites/favorites_page.dart';
 import 'package:venera/features/reader/presentation/reader.dart';
 import 'package:venera/utils/file_type.dart';
 import 'package:venera/utils/io.dart';
-import 'package:venera/utils/ext.dart';
 import 'package:venera/utils/tags_translation.dart';
 import 'package:venera/utils/translations.dart';
 import 'dart:math' as math;
@@ -61,6 +60,7 @@ class ComicPage extends StatefulWidget {
     this.cover,
     this.title,
     this.heroTag,
+    this.progressContext,
   });
 
   final String id;
@@ -73,6 +73,8 @@ class ComicPage extends StatefulWidget {
 
   final String? heroTag;
 
+  final ComicDetailProgressContext? progressContext;
+
   @override
   State<ComicPage> createState() => _ComicPageState();
 }
@@ -84,9 +86,24 @@ class ComicDetailPage extends ComicPage {
     super.cover,
     super.title,
     super.heroTag,
+    super.progressContext,
   }) : super(id: comicId, sourceKey: localSourceKey);
 
   String get comicId => id;
+}
+
+class ComicDetailProgressContext {
+  const ComicDetailProgressContext({
+    required this.chapterId,
+    required this.page,
+    this.group,
+    this.sourceRef,
+  });
+
+  final String chapterId;
+  final int page;
+  final int? group;
+  final SourceRef? sourceRef;
 }
 
 @visibleForTesting
@@ -203,12 +220,114 @@ History buildComicDetailCompatibilityHistoryForTesting({
   );
 }
 
+Set<String> _synthesizeCompatibilityReadChapters({
+  required ComicChapters? chapters,
+  required int resolvedChapterIndex,
+  required int? group,
+}) {
+  if (resolvedChapterIndex < 1) {
+    return const <String>{};
+  }
+  if (group == null || chapters == null || !chapters.isGrouped) {
+    return <String>{resolvedChapterIndex.toString()};
+  }
+  var remainingIndex = resolvedChapterIndex;
+  for (var i = 0; i < chapters.groupCount; i++) {
+    final chapterGroup = chapters.getGroupByIndex(i);
+    if (remainingIndex > chapterGroup.length) {
+      remainingIndex -= chapterGroup.length;
+      continue;
+    }
+    return <String>{'$resolvedChapterIndex', '${i + 1}-$remainingIndex'};
+  }
+  return <String>{resolvedChapterIndex.toString()};
+}
+
+@visibleForTesting
+History buildComicDetailCompatibilityHistoryFromDetailForTesting({
+  required HistoryMixin model,
+  required ComicChapters? chapters,
+  required ComicDetailViewModel? canonicalDetail,
+  ComicDetailProgressContext? progressContext,
+}) {
+  final progress =
+      canonicalDetail?.continueProgress ??
+      (progressContext == null
+          ? null
+          : ReadingProgressVm(
+              currentChapterId: progressContext.chapterId,
+              currentPageIndex: progressContext.page,
+              currentGroup: progressContext.group,
+            ));
+  final chapterId = progress?.currentChapterId;
+  final chapterIds = chapters?.ids.toList(growable: false);
+  final chapterIndexFromId = switch (chapterId) {
+    null => 0,
+    _ when chapterIds == null => 0,
+    _ => chapterIds.indexOf(chapterId) + 1,
+  };
+  final resolvedChapterIndex = chapterIndexFromId > 0
+      ? chapterIndexFromId
+      : (progress?.currentChapterIndex ?? 0);
+  final readChapters = progress == null
+      ? const <String>{}
+      : (progress.readChapters.isNotEmpty
+            ? progress.readChapters
+            : _synthesizeCompatibilityReadChapters(
+                chapters: chapters,
+                resolvedChapterIndex: resolvedChapterIndex,
+                group: progress.currentGroup,
+              ));
+  return History.fromModel(
+    model: model,
+    ep: resolvedChapterIndex,
+    page: progress?.currentPageIndex ?? 0,
+    group: progress?.currentGroup,
+    readChapters: readChapters,
+    time: progress?.updatedAt,
+  );
+}
+
+@visibleForTesting
+String buildComicDetailHistoryLabelForTesting({
+  required ComicDetails comic,
+  required History history,
+}) {
+  final haveChapter = comic.chapters != null;
+  final page = history.page;
+  final ep = history.ep;
+  final group = history.group;
+  if (haveChapter) {
+    var epName = "E$ep";
+    String? groupName;
+    try {
+      if (group == null) {
+        epName = comic.chapters!.titles.elementAt(
+          math.min(ep - 1, comic.chapters!.length - 1),
+        );
+      } else {
+        groupName = comic.chapters!.groups.elementAt(group - 1);
+        epName = comic.chapters!
+            .getGroupByIndex(group - 1)
+            .values
+            .elementAt(ep - 1);
+      }
+    } catch (_) {}
+    return groupName == null
+        ? "${"Last Reading".tl}: $epName P$page"
+        : "${"Last Reading".tl}: $groupName $epName P$page";
+  }
+  return "${"Last Reading".tl}: P$page";
+}
+
 @visibleForTesting
 Future<ComicDetailViewModel?> loadLocalComicDetailViewModelForTesting({
   required String comicId,
   required ComicDetailStorePort store,
 }) {
-  return UnifiedLocalComicDetailRepository(store: store).getComicDetail(comicId);
+  return UnifiedLocalComicDetailRepository(
+    store: store,
+  ).getComicDetail(comicId);
 }
 
 class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
@@ -288,10 +407,42 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
       return;
     }
     setState(() {
-      history = buildComicDetailCompatibilityHistoryForTesting(
+      final detail = _canonicalDetailVm;
+      history = buildComicDetailCompatibilityHistoryFromDetailForTesting(
         model: model,
         chapters: model.chapters,
-        canonicalActiveTab: activeTab,
+        canonicalDetail: detail == null
+            ? null
+            : ComicDetailViewModel(
+                comicId: detail.comicId,
+                title: detail.title,
+                coverLocalPath: detail.coverLocalPath,
+                libraryState: detail.libraryState,
+                primarySource: detail.primarySource,
+                userTags: detail.userTags,
+                sourceTags: detail.sourceTags,
+                chapters: detail.chapters,
+                readerTabs: detail.readerTabs,
+                continueProgress: activeTab == null
+                    ? detail.continueProgress
+                    : ReadingProgressVm(
+                        currentChapterId: activeTab.currentChapterId,
+                        currentChapterIndex:
+                            detail.continueProgress?.currentChapterIndex ?? 0,
+                        currentPageIndex: activeTab.currentPageIndex,
+                        currentGroup: detail.continueProgress?.currentGroup,
+                        readChapters:
+                            detail.continueProgress?.readChapters ??
+                            const <String>{},
+                        updatedAt:
+                            activeTab.updatedAt ??
+                            detail.continueProgress?.updatedAt,
+                      ),
+                pageOrderSummary: detail.pageOrderSummary,
+                availableActions: detail.availableActions,
+                updatedAt: detail.updatedAt,
+              ),
+        progressContext: widget.progressContext,
       );
     });
   }
@@ -398,16 +549,20 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
       isAddToLocalFav = await App.repositories.comicDetailStore
           .isComicFavorited(widget.id);
       _canonicalComicId = widget.id;
-      history = null;
-      return Res(
-        buildLocalDetailsFromCanonicalDetailForTesting(
-          detail,
-          fallbackCover: detail.coverLocalPath == null
-              ? Uri.file(localItem.localRootPath).toString()
-              : null,
-          fallbackUpdatedAt: detail.updatedAt,
-        ),
+      final localDetails = buildLocalDetailsFromCanonicalDetailForTesting(
+        detail,
+        fallbackCover: detail.coverLocalPath == null
+            ? Uri.file(localItem.localRootPath).toString()
+            : null,
+        fallbackUpdatedAt: detail.updatedAt,
       );
+      history = buildComicDetailCompatibilityHistoryFromDetailForTesting(
+        model: localDetails,
+        chapters: localDetails.chapters,
+        canonicalDetail: detail,
+        progressContext: widget.progressContext,
+      );
+      return Res(localDetails);
     }
     var comicSource = ComicSource.find(widget.sourceKey);
     if (comicSource == null) {
@@ -430,12 +585,11 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
     _canonicalDetailVm = await App.repositories.comicDetail.getComicDetail(
       _canonicalComicId!,
     );
-    history = buildComicDetailCompatibilityHistoryForTesting(
+    history = buildComicDetailCompatibilityHistoryFromDetailForTesting(
       model: remoteDetail.data.detail,
       chapters: remoteDetail.data.detail.chapters,
-      canonicalActiveTab: _canonicalDetailVm?.readerTabs.firstWhereOrNull(
-        (tab) => tab.isActive,
-      ),
+      canonicalDetail: _canonicalDetailVm,
+      progressContext: widget.progressContext,
     );
     return Res(remoteDetail.data.detail, subData: remoteDetail.subData);
   }
@@ -659,38 +813,12 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
                   const SizedBox(width: 8),
                   Builder(
                     builder: (context) {
-                      bool haveChapter = comic.chapters != null;
-                      var page = history!.page;
-                      var ep = history!.ep;
-                      var group = history!.group;
-                      String text;
-                      if (haveChapter) {
-                        var epName = "E$ep";
-                        String? groupName;
-                        try {
-                          if (group == null) {
-                            epName = comic.chapters!.titles.elementAt(
-                              math.min(ep - 1, comic.chapters!.length - 1),
-                            );
-                          } else {
-                            groupName = comic.chapters!.groups.elementAt(
-                              group - 1,
-                            );
-                            epName = comic.chapters!
-                                .getGroupByIndex(group - 1)
-                                .values
-                                .elementAt(ep - 1);
-                          }
-                        } catch (e) {
-                          // ignore
-                        }
-                        text = groupName == null
-                            ? "${"Last Reading".tl}: $epName P$page"
-                            : "${"Last Reading".tl}: $groupName $epName P$page";
-                      } else {
-                        text = "${"Last Reading".tl}: P$page";
-                      }
-                      return Text(text);
+                      return Text(
+                        buildComicDetailHistoryLabelForTesting(
+                          comic: comic,
+                          history: history!,
+                        ),
+                      );
                     },
                   ),
                   const SizedBox(width: 4),
@@ -1250,8 +1378,7 @@ class _ComicPageLoadingPlaceHolder extends StatelessWidget {
       child = const SizedBox();
     }
 
-    final normalizedTag =
-        heroTag == null ? null : buildCoverHeroTag(heroTag!);
+    final normalizedTag = heroTag == null ? null : buildCoverHeroTag(heroTag!);
     final imageContainer = Container(
       decoration: BoxDecoration(
         color: context.colorScheme.primaryContainer,
