@@ -87,7 +87,7 @@ bool shouldBypassReaderNextForComicDetailRead({required String sourceKey}) {
   return isLocalSourceKey(sourceKey);
 }
 
-abstract mixin class _ComicPageActions {
+mixin _ComicPageActions on State<ComicPage> {
   void update();
 
   void retry();
@@ -109,8 +109,11 @@ abstract mixin class _ComicPageActions {
     isLiking = true;
     update();
     var res = await comicSource.likeOrUnlikeComic!(comic.id, isLiked);
+    if (!mounted) {
+      return;
+    }
     if (res.error) {
-      App.rootContext.showMessage(message: res.errorMessage!);
+      context.showMessage(message: res.errorMessage!);
     } else {
       isLiked = !isLiked;
     }
@@ -141,7 +144,7 @@ abstract mixin class _ComicPageActions {
 
   void openFavPanel() {
     showSideBar(
-      App.rootContext,
+      context,
       _FavoritePanel(
         cid: comic.id,
         type: comic.comicType,
@@ -169,7 +172,7 @@ abstract mixin class _ComicPageActions {
     legacyAddLocalFavorite(folder, _toFavoriteItem(), comic.findUpdateTime());
     isAddToLocalFav = true;
     update();
-    App.rootContext.showMessage(message: "Added".tl);
+    context.showMessage(message: "Added".tl);
   }
 
   void share() {
@@ -254,7 +257,7 @@ abstract mixin class _ComicPageActions {
       openLegacy: openLegacyReader,
       openReaderNext: (_) async => openLegacyReader(),
       onBridgeBlocked: (diagnostic) async {
-        App.rootContext.showMessage(
+        context.showMessage(
           message:
               'ReaderNext blocked: ${diagnostic.code.name} (${diagnostic.message})',
         );
@@ -274,14 +277,17 @@ abstract mixin class _ComicPageActions {
   void download() async {
     final runtimeComicId = canonicalComicId ?? comic.id;
     if (legacyIsDownloading(comic.id, comic.comicType)) {
-      App.rootContext.showMessage(message: "The comic is downloading".tl);
+      context.showMessage(message: "The comic is downloading".tl);
       return;
     }
     if (comic.chapters == null &&
         await App.repositories.localLibrary.hasPrimaryLocalLibraryItem(
           runtimeComicId,
         )) {
-      App.rootContext.showMessage(message: "The comic is downloaded".tl);
+      if (!mounted) {
+        return;
+      }
+      context.showMessage(message: "The comic is downloaded".tl);
       return;
     }
 
@@ -292,7 +298,7 @@ abstract mixin class _ComicPageActions {
       bool isLoading = false;
       bool isGettingLink = false;
       await showDialog(
-        context: App.rootContext,
+        context: context,
         builder: (context) {
           return StatefulBuilder(
             builder: (context, setState) {
@@ -326,7 +332,7 @@ abstract mixin class _ComicPageActions {
                                   if (value.success) {
                                     archives = value.data;
                                   } else {
-                                    App.rootContext.showMessage(
+                                    context.showMessage(
                                       message: value.errorMessage!,
                                     );
                                   }
@@ -366,7 +372,7 @@ abstract mixin class _ComicPageActions {
                       var res = await comicSource.archiveDownloader!
                           .getDownloadUrl(comic.id, archives![selected].id);
                       if (res.error) {
-                        App.rootContext.showMessage(message: res.errorMessage!);
+                        context.showMessage(message: res.errorMessage!);
                         setState(() {
                           isGettingLink = false;
                         });
@@ -375,7 +381,7 @@ abstract mixin class _ComicPageActions {
                           legacyAddDownloadTask(
                             ArchiveDownloadTask(res.data, comic),
                           );
-                          App.rootContext.showMessage(
+                          context.showMessage(
                             message: "Download started".tl,
                           );
                         }
@@ -408,6 +414,9 @@ abstract mixin class _ComicPageActions {
       var downloaded = <int>[];
       final downloadedChapterIds = await App.repositories.localLibrary
           .loadDownloadedChapterIds(runtimeComicId);
+      if (!mounted) {
+        return;
+      }
       if (downloadedChapterIds.isNotEmpty) {
         for (int i = 0; i < comic.chapters!.length; i++) {
           if (downloadedChapterIds.contains(comic.chapters!.ids.elementAt(i))) {
@@ -416,7 +425,7 @@ abstract mixin class _ComicPageActions {
         }
       }
       await showSideBar(
-        App.rootContext,
+        context,
         _SelectDownloadChapter(
           comic.chapters!.titles.toList(),
           (v) => selected = v,
@@ -435,7 +444,10 @@ abstract mixin class _ComicPageActions {
         ),
       );
     }
-    App.rootContext.showMessage(message: "Download started".tl);
+    if (!mounted) {
+      return;
+    }
+    context.showMessage(message: "Download started".tl);
     update();
   }
 
@@ -457,7 +469,7 @@ abstract mixin class _ComicPageActions {
     final controller = TextEditingController();
     var saved = false;
     await showDialog(
-      context: App.rootContext,
+      context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setState) {
@@ -526,8 +538,8 @@ abstract mixin class _ComicPageActions {
                   onPressed: () async {
                     await _saveCanonicalUserTags(targetComicId, tags);
                     saved = true;
-                    if (App.rootContext.mounted) {
-                      App.rootContext.showMessage(message: 'Saved'.tl);
+                    if (context.mounted) {
+                      context.showMessage(message: 'Saved'.tl);
                     }
                     if (dialogContext.mounted) {
                       Navigator.pop(dialogContext);
@@ -558,7 +570,6 @@ abstract mixin class _ComicPageActions {
   }
 
   void showMoreActions() {
-    var context = App.rootContext;
     showMenuX(context, Offset(context.width - 16, context.padding.top), [
       MenuEntry(
         icon: Icons.copy,
@@ -607,7 +618,7 @@ abstract mixin class _ComicPageActions {
 
   void showComments() {
     showSideBar(
-      App.rootContext,
+      context,
       CommentsPage(data: comic, source: comicSource),
     );
   }
@@ -619,7 +630,7 @@ abstract mixin class _ComicPageActions {
     var rating = 0.0;
     var isLoading = false;
     showDialog(
-      context: App.rootContext,
+      context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setState) => SimpleDialog(
           title: const Text("Rating"),
@@ -650,12 +661,12 @@ abstract mixin class _ComicPageActions {
                           comicSource.starRatingFunc!(comic.id, rating.round())
                               .then((value) {
                                 if (value.success) {
-                                  App.rootContext.showMessage(
+                                  context.showMessage(
                                     message: "Success".tl,
                                   );
                                   Navigator.of(dialogContext).pop();
                                 } else {
-                                  App.rootContext.showMessage(
+                                  context.showMessage(
                                     message: value.errorMessage!,
                                   );
                                   setState(() {

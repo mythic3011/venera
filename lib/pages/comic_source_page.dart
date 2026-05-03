@@ -32,12 +32,16 @@ class ComicSourcePage extends StatelessWidget {
   validateDirectSourceUrl;
 
   static Future<void> update(
-    ComicSource source, [
+    ComicSource source, {
+    BuildContext? context,
     bool showLoading = true,
-  ]) async {
+  }) async {
+    final uiContext = context ??
+        App.rootNavigatorKey.currentContext ??
+        App.mainNavigatorKey?.currentContext;
     if (!source.url.isURL) {
       if (showLoading) {
-        App.rootContext.showMessage(message: "Invalid url config");
+        uiContext?.showMessage(message: "Invalid url config");
         return;
       } else {
         throw Exception("Invalid url config");
@@ -47,8 +51,11 @@ class ComicSourcePage extends StatelessWidget {
     bool cancel = false;
     LoadingDialogController? controller;
     if (showLoading) {
+      if (uiContext == null) {
+        throw Exception("UI context is unavailable");
+      }
       controller = showLoadingDialog(
-        App.rootContext,
+        uiContext,
         onCancel: () => cancel = true,
         barrierDismissible: false,
       );
@@ -71,7 +78,7 @@ class ComicSourcePage extends StatelessWidget {
     } catch (e) {
       if (cancel) return;
       if (showLoading) {
-        App.rootContext.showMessage(message: e.toString());
+        uiContext?.showMessage(message: e.toString());
       } else {
         rethrow;
       }
@@ -499,7 +506,7 @@ class _BodyState extends State<_Body> {
 
   void delete(ComicSource source) {
     showConfirmDialog(
-      context: App.rootContext,
+      context: context,
       title: "Delete".tl,
       content: "Delete comic source '@n' ?".tlParams({"n": source.name}),
       btnColor: context.colorScheme.error,
@@ -518,7 +525,7 @@ class _BodyState extends State<_Body> {
       try {
         await Process.run("code", [source.filePath], runInShell: true);
         await showDialog(
-          context: App.rootContext,
+          context: context,
           builder: (context) => AlertDialog(
             title: const Text("Reload Configs"),
             actions: [
@@ -550,7 +557,7 @@ class _BodyState extends State<_Body> {
   }
 
   void update(ComicSource source, [bool showLoading = true]) {
-    ComicSourcePage.update(source, showLoading);
+    ComicSourcePage.update(source, showLoading: showLoading, context: context);
   }
 
   Widget _buildDirectSourceSection(BuildContext context) {
@@ -650,7 +657,7 @@ class _BodyState extends State<_Body> {
       await _sourceManagementController.addSourceFromConfigFile();
       _validatePages();
     } catch (e, s) {
-      App.rootContext.showMessage(message: e.toString());
+      context.showMessage(message: e.toString());
       Log.error("Add comic source", "$e\n$s");
     }
   }
@@ -920,6 +927,9 @@ class _CheckUpdatesButtonState extends State<_CheckUpdatesButton> {
       isLoading = true;
     });
     var count = await ComicSourcePage.checkComicSourceUpdate();
+    if (!mounted) {
+      return;
+    }
     if (count == -1) {
       context.showMessage(message: "Network error".tl);
     } else if (count == 0) {
@@ -940,7 +950,7 @@ class _CheckUpdatesButtonState extends State<_CheckUpdatesButton> {
         .join("\n");
     bool doUpdate = false;
     await showDialog(
-      context: App.rootContext,
+      context: context,
       builder: (context) {
         return ContentDialog(
           title: "Updates".tl,
@@ -957,6 +967,9 @@ class _CheckUpdatesButtonState extends State<_CheckUpdatesButton> {
         );
       },
     );
+    if (!mounted) {
+      return;
+    }
     if (doUpdate) {
       var loadingController = showLoadingDialog(
         context,
@@ -969,11 +982,23 @@ class _CheckUpdatesButtonState extends State<_CheckUpdatesButton> {
         var shouldUpdate = ComicSourceManager().availableUpdates.keys.toList();
         for (var key in shouldUpdate) {
           var source = ComicSource.find(key)!;
-          await ComicSourcePage.update(source, false);
+          await ComicSourcePage.update(
+            source,
+            context: context,
+            showLoading: false,
+          );
+          if (!mounted) {
+            loadingController.close();
+            return;
+          }
           current++;
           loadingController.setProgress(current / total);
         }
       } catch (e) {
+        if (!mounted) {
+          loadingController.close();
+          return;
+        }
         context.showMessage(message: e.toString());
       }
       loadingController.close();

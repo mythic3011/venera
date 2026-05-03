@@ -14,7 +14,7 @@ class _AboutSettingsState extends State<AboutSettings> {
   Widget build(BuildContext context) {
     return SmoothCustomScrollView(
       slivers: [
-        SliverAppbar(title: Text("About".tl)),
+        SliverAppbar(title: Text(AboutSettingsStrings.title)),
         SizedBox(
           height: 112,
           width: double.infinity,
@@ -37,40 +37,42 @@ class _AboutSettingsState extends State<AboutSettings> {
           children: [
             const SizedBox(height: 8),
             Text("V${App.version}", style: const TextStyle(fontSize: 16)),
-            Text("Venera is a free and open-source app for comic reading.".tl),
+            Text(AboutSettingsStrings.description),
             const SizedBox(height: 8),
           ],
         ).toSliver(),
         ListTile(
-          title: Text("Check for updates".tl),
+          title: Text(AboutSettingsStrings.checkForUpdates),
           trailing: Button.filled(
             isLoading: isCheckingUpdate,
-            child: Text("Check".tl),
-            onPressed: () {
+            child: Text(AboutSettingsStrings.check),
+            onPressed: () async {
               setState(() {
                 isCheckingUpdate = true;
               });
-              checkUpdateUi().then((value) {
-                setState(() {
-                  isCheckingUpdate = false;
-                });
+              await checkUpdateUi(context: context);
+              if (!mounted) {
+                return;
+              }
+              setState(() {
+                isCheckingUpdate = false;
               });
             },
           ).fixHeight(32),
         ).toSliver(),
         _SwitchSetting(
-          title: "Check for updates on startup".tl,
+          title: AboutSettingsStrings.checkOnStartup,
           settingKey: CommonSettingKeys.checkUpdateOnStart.name,
         ).toSliver(),
         ListTile(
-          title: const Text("Github"),
+          title: Text(AboutSettingsStrings.github),
           trailing: const Icon(Icons.open_in_new),
           onTap: () {
             launchUrlString(AppUrls.githubRepo);
           },
         ).toSliver(),
         ListTile(
-          title: const Text("Telegram"),
+          title: Text(AboutSettingsStrings.telegram),
           trailing: const Icon(Icons.open_in_new),
           onTap: () {
             launchUrlString(AppUrls.telegramChannel);
@@ -92,23 +94,27 @@ Future<bool> checkUpdate() async {
   return false;
 }
 
-Future<void> checkUpdateUi([
+Future<void> checkUpdateUi({
+  required BuildContext context,
   bool showMessageIfNoUpdate = true,
   bool delay = false,
-]) async {
+}) async {
   try {
     var value = await checkUpdate();
     if (value) {
       if (delay) {
         await Future.delayed(const Duration(seconds: 2));
       }
+      if (!context.mounted) {
+        return;
+      }
       showDialog(
-        context: App.rootContext,
+        context: context,
         builder: (context) {
           return ContentDialog(
-            title: "New version available".tl,
+            title: AboutSettingsStrings.newVersionAvailable,
             content: Text(
-              "A new version is available. Do you want to update now?".tl,
+              AboutSettingsStrings.updatePrompt,
             ).paddingHorizontal(16),
             actions: [
               Button.text(
@@ -116,29 +122,50 @@ Future<void> checkUpdateUi([
                   Navigator.pop(context);
                   launchUrlString(AppUrls.githubReleases);
                 },
-                child: Text("Update".tl),
+                child: Text(AboutSettingsStrings.update),
               ),
             ],
           );
         },
       );
     } else if (showMessageIfNoUpdate) {
-      App.rootContext.showMessage(message: "No new version available".tl);
+      if (!context.mounted) {
+        return;
+      }
+      context.showMessage(
+        message: AboutSettingsStrings.noNewVersionAvailable,
+      );
     }
   } catch (e, s) {
-    Log.error("Check Update", e.toString(), s);
+    diag.AppDiagnostics.error(
+      AboutSettingsStrings.checkUpdateChannel,
+      e,
+      message: AboutSettingsStrings.checkUpdateFailedMessage,
+      stackTrace: s,
+      data: {'source': 'settings.about', 'action': 'checkUpdateUi'},
+    );
   }
 }
 
 /// return true if version1 > version2
 bool _compareVersion(String version1, String version2) {
-  var v1 = version1.split(".");
-  var v2 = version2.split(".");
-  for (var i = 0; i < v1.length; i++) {
-    if (int.parse(v1[i]) > int.parse(v2[i])) {
+  return isVersionGreater(version1, version2);
+}
+
+/// return true if [left] > [right]
+bool isVersionGreater(String left, String right) {
+  final leftParts = left.split(".");
+  final rightParts = right.split(".");
+  final length = leftParts.length > rightParts.length
+      ? leftParts.length
+      : rightParts.length;
+  for (var i = 0; i < length; i++) {
+    final leftValue = i < leftParts.length ? int.parse(leftParts[i]) : 0;
+    final rightValue = i < rightParts.length ? int.parse(rightParts[i]) : 0;
+    if (leftValue > rightValue) {
       return true;
     }
-    if (int.parse(v1[i]) < int.parse(v2[i])) {
+    if (leftValue < rightValue) {
       return false;
     }
   }
