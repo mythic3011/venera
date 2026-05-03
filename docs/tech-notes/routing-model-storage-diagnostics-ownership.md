@@ -392,6 +392,62 @@ Add logs because they answer one of these questions:
 If a log cannot help eliminate a branch in the debug decision tree, it is
 probably noise.
 
+## Related Design Issue: Legacy Logs and Structured Diagnostics Are Split
+
+The app currently has two logging surfaces:
+
+```text
+legacy logs        human-readable title/content records
+structured logs    channel/message/data diagnostics records
+```
+
+The old logging path is useful for basic messages, but it does not reliably
+carry the same identity, authority, lifecycle, and correlation fields as the
+newer diagnostics API.
+
+This creates a split:
+
+```text
+legacy log says something happened
+structured diagnostic explains why it matters
+```
+
+For debugging, these two should not diverge.
+
+### Direction
+
+Legacy logs should either:
+
+1. become a thin compatibility view over structured diagnostics
+2. include the same correlation fields when recording runtime events
+
+The long-term rule is:
+
+```text
+one runtime event -> one structured diagnostic record -> optional legacy display
+```
+
+Not:
+
+```text
+one event -> separate legacy log + separate structured log with different payload
+```
+
+### Required Fields for Important Runtime Events
+
+- `channel`
+- `message`
+- `level`
+- `timestamp`
+- `identity`
+- `authority`
+- `lifecycle phase`
+- `correlationId`
+- `entrypoint` / `caller` where relevant
+
+Legacy UI/export can still show simplified text, but the source record should
+be structured.
+
 ## 5. Cleanup Strategy: Inventory First, Migration Second
 
 The root issue is ownership sprawl, not one isolated bug.
@@ -458,6 +514,16 @@ ST-storage-authority-inventory-1
 - map compatibility fallback
 - map cache/preference/diagnostic-only readers
 - identify forbidden writes and ambiguous authority reads
+- no behavior change
+```
+
+#### Log unification inventory
+
+```text
+L-log-unify-1
+- inventory legacy log writes vs structured diagnostics writes
+- classify which logs are UI notification vs runtime diagnostic
+- design adapter: legacy Log.add(...) -> structured diagnostics mirror
 - no behavior change
 ```
 
@@ -592,6 +658,7 @@ It should be:
 centralize reader navigation first
 inventory model ownership second
 declare storage authority third
+reduce legacy/structured log drift fourth
 improve decision-useful diagnostics continuously
 migrate narrow slices gradually
 ```
