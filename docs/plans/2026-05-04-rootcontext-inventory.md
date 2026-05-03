@@ -89,10 +89,13 @@ Total files with global-context access: **1**
 - `test/architecture/root_context_inventory_test.dart` enforces that every file using the global-context series patterns is explicitly classified.
 - For non-allowed categories, the test also requires owner + migration note metadata.
 
-## Backlog
+## Guard Upgrade Status
 
-`R-rootcontext-inventory-2`:
+`R-rootcontext-inventory-2`: **implemented**
 
-- upgrade guard from file-level baseline to callsite-level baseline
-- record pattern, line owner, category, migration lane
-- fail if existing file gains extra global-context callsite
+- guard upgraded from file-level baseline to callsite-level baseline
+- baseline now records `file:line` + `pattern` + `owner` + `category` + `migration lane`
+- test now fails when:
+  - a file gains extra global-context callsites
+  - a callsite moves/disappears without baseline update
+  - detected callsite pattern does not match baseline metadata
