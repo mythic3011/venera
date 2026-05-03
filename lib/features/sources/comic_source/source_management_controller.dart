@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:crypto/crypto.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
+import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/network/app_dio.dart';
@@ -332,8 +333,31 @@ class SourceManagementController {
           updatedAtMs: now,
         ),
       );
+      AppDiagnostics.info(
+        'source.management',
+        'repository.refresh.package.count',
+        data: {
+          'repositoryId': repo.id,
+          'repositoryUrl': repo.indexUrl,
+          'packageCount': packages.length,
+        },
+      );
       return packages.length;
     } catch (error) {
+      final schemaError = switch (error) {
+        SourceRepositoryIndexException(:final code) => code,
+        _ => null,
+      };
+      AppDiagnostics.warn(
+        'source.management',
+        'repository.refresh.package.schemaError',
+        data: {
+          'repositoryId': repo.id,
+          'repositoryUrl': repo.indexUrl,
+          'schemaError': schemaError,
+          'error': error.toString(),
+        },
+      );
       final errorCode = switch (error) {
         SourceRepositoryIndexException(:final code) => code,
         _ => _repositoryRefreshFailedCode,
@@ -511,11 +535,29 @@ class SourceManagementController {
     final records = <SourcePackageRecord>[];
     for (final item in entries) {
       if (item is! Map) {
+        AppDiagnostics.warn(
+          'source.management',
+          'repository.refresh.package.skipped',
+          data: {
+            'repositoryId': repositoryId,
+            'repositoryUrl': repositoryIndexUrl,
+            'reason': 'entry_not_map',
+          },
+        );
         continue;
       }
       final key = item['key']?.toString().trim();
       final rawName = item['name']?.toString().trim();
       if (key == null || key.isEmpty) {
+        AppDiagnostics.warn(
+          'source.management',
+          'repository.refresh.package.skipped',
+          data: {
+            'repositoryId': repositoryId,
+            'repositoryUrl': repositoryIndexUrl,
+            'reason': 'missing_key',
+          },
+        );
         continue;
       }
       final name = (rawName == null || rawName.isEmpty) ? key : rawName;
@@ -534,6 +576,16 @@ class SourceManagementController {
         }
         scriptUrl = _validatedHttpsUrl(resolved);
       }
+      AppDiagnostics.trace(
+        'source.management',
+        'repository.refresh.package.sourceUrl',
+        data: {
+          'repositoryId': repositoryId,
+          'repositoryUrl': repositoryIndexUrl,
+          'sourceKey': key,
+          'sourceUrl': scriptUrl,
+        },
+      );
       records.add(
         SourcePackageRecord(
           sourceKey: key,

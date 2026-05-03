@@ -7,6 +7,7 @@ import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/features/sources/comic_source/source_management_controller.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
+import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/source_identity/source_identity.dart';
 import 'package:venera/utils/io.dart';
@@ -59,6 +60,7 @@ void main() {
     UnifiedComicsStore? repositoryStore;
 
     setUp(() {
+      AppDiagnostics.configureSinksForTesting(const []);
       tempDir = Directory.systemTemp.createTempSync(
         'source-management-controller-test-',
       );
@@ -76,6 +78,7 @@ void main() {
     });
 
     tearDown(() async {
+      AppDiagnostics.resetForTesting();
       appdata.settings['comicSourceListUrl'] = oldSourceListUrl;
       if (repositoryStore != null) {
         await repositoryStore!.close();
@@ -284,6 +287,22 @@ void main() {
       );
       expect(packages.length, 1);
       expect(packages.single.sourceKey, 's1');
+
+      final diagnostics = DevDiagnosticsApi.recent(channel: 'source.management');
+      expect(
+        diagnostics.any(
+          (event) => event.message == 'repository.refresh.package.count',
+        ),
+        isTrue,
+      );
+      expect(
+        diagnostics.any(
+          (event) =>
+              event.message == 'repository.refresh.package.sourceUrl' &&
+              event.data['sourceKey'] == 's1',
+        ),
+        isTrue,
+      );
     });
 
     test('refreshRepository failure keeps repository and records failed status', () async {
@@ -328,6 +347,54 @@ void main() {
       );
       final refreshed = await repositoryStore!.loadSourceRepositoryById(repo.id);
       expect(refreshed?.lastErrorCode, 'REPOSITORY_SCHEMA_UNSUPPORTED');
+      final diagnostics = DevDiagnosticsApi.recent(channel: 'source.management');
+      expect(
+        diagnostics.any(
+          (event) =>
+              event.message == 'repository.refresh.package.schemaError' &&
+              event.data['schemaError'] == 'REPOSITORY_SCHEMA_UNSUPPORTED',
+        ),
+        isTrue,
+      );
+    });
+
+    test('refreshRepository emits skipped package diagnostics for invalid entries', () async {
+      repositoryStore = UnifiedComicsStore('${tempDir.path}/source_registry.db');
+      await repositoryStore!.init();
+      final controller = SourceManagementController(
+        repositoryStoreProvider: () => repositoryStore,
+        fetchText: (_) async => jsonEncode(<String, Object?>{
+          'sources': <Object?>[
+            'not-a-map',
+            <String, Object?>{'name': 'Missing Key'},
+            <String, Object?>{'key': 'kept', 'version': '1.0.0'},
+          ],
+        }),
+      );
+      final repo = await controller.addRepository(
+        'https://repo-skipped.example.com/index.json',
+      );
+
+      final count = await controller.refreshRepository(repo.id);
+
+      expect(count, 1);
+      final diagnostics = DevDiagnosticsApi.recent(channel: 'source.management');
+      expect(
+        diagnostics.any(
+          (event) =>
+              event.message == 'repository.refresh.package.skipped' &&
+              event.data['reason'] == 'entry_not_map',
+        ),
+        isTrue,
+      );
+      expect(
+        diagnostics.any(
+          (event) =>
+              event.message == 'repository.refresh.package.skipped' &&
+              event.data['reason'] == 'missing_key',
+        ),
+        isTrue,
+      );
     });
 
     test('repository package url escaping base path is rejected', () async {

@@ -95,7 +95,7 @@ void main() {
   ) async {
     final controller = _FakeSourceManagementController();
     await pumpPage(tester, controller);
-    expect(find.text('Installed Sources'), findsOneWidget);
+    expect(find.text('Installed Sources', skipOffstage: false), findsOneWidget);
   });
 
   testWidgets('settings comic sources page exposes available sources section', (
@@ -114,6 +114,13 @@ void main() {
     );
     await pumpPage(tester, controller);
     expect(find.text('Available Sources'), findsOneWidget);
+    expect(
+      find.text(
+        'Repository packages are listed for review only. Install support is not enabled yet.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Install pending'), findsNothing);
   });
 
   testWidgets('settings add repository action uses source management controller', (

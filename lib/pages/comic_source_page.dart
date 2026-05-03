@@ -416,6 +416,10 @@ class _BodyState extends State<_Body> {
             children: [
               Text('Available Sources', style: ts.s16),
               const SizedBox(height: 8),
+              const Text(
+                'Repository packages are listed for review only. Install support is not enabled yet.',
+              ),
+              const SizedBox(height: 8),
               if (_availablePackages.isEmpty)
                 const Text('No available sources')
               else
@@ -424,10 +428,6 @@ class _BodyState extends State<_Body> {
                     contentPadding: EdgeInsets.zero,
                     title: Text(pkg.name),
                     subtitle: Text(pkg.availableVersion ?? ''),
-                    trailing: FilledButton.tonal(
-                      onPressed: null,
-                      child: const Text('Install pending'),
-                    ),
                   ),
                 ),
             ],
