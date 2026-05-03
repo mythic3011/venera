@@ -94,6 +94,14 @@ void main() {
     expect(page.title, 'Legacy Alpha');
   });
 
+  test('local detail entry preserves hero tag for card to detail routing', () {
+    final page = buildLocalComicDetailEntry(comicA, heroTag: 'grid:local:0');
+
+    expect(page, isA<ComicDetailPage>());
+    expect(page.heroTag, 'grid:local:0');
+    expect(page.sourceKey, localSourceKey);
+  });
+
   test('local chapter labels use order and title without raw ids', () {
     final label = formatLocalChapterDisplayLabel(
       index: 1,

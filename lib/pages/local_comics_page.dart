@@ -62,8 +62,15 @@ Object resolveLocalChapterPageTarget({
   return hasChapters ? selectedChapterId! : 0;
 }
 
-ComicDetailPage buildLocalComicDetailEntry(LocalComic comic) {
-  return ComicDetailPage(comicId: comic.id, title: comic.title);
+ComicDetailPage buildLocalComicDetailEntry(
+  LocalComic comic, {
+  String? heroTag,
+}) {
+  return ComicDetailPage(
+    comicId: comic.id,
+    title: comic.title,
+    heroTag: heroTag,
+  );
 }
 
 String formatLocalChapterDisplayLabel({
@@ -544,7 +551,9 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
                   c.id,
                   ComicType.fromKey(c.sourceKey),
                 )!;
-                comic.read();
+                App.mainNavigatorKey?.currentContext?.to(
+                  () => buildLocalComicDetailEntry(comic, heroTag: heroTag),
+                );
               }
             },
             menuBuilder: (c) {
