@@ -56,6 +56,26 @@ class ReaderInitialPosition {
   });
 }
 
+class ReaderOpenRequest {
+  final String comicId;
+  final SourceRef? sourceRef;
+  final String? sourceKey;
+  final int? initialEp;
+  final int? initialPage;
+  final int? initialGroup;
+
+  const ReaderOpenRequest({
+    required this.comicId,
+    this.sourceRef,
+    this.sourceKey,
+    this.initialEp,
+    this.initialPage,
+    this.initialGroup,
+  }) : assert(sourceRef != null || sourceKey != null);
+
+  String? get sourceRefId => sourceRef?.id;
+}
+
 SourceRef? resolveReaderOpenSourceRef({
   required String comicId,
   SourceRef? explicitSourceRef,
@@ -73,6 +93,30 @@ SourceRef? resolveReaderOpenSourceRef({
     return null;
   }
   return SourceRef.fromLegacy(comicId: comicId, sourceKey: key);
+}
+
+@visibleForTesting
+ReaderOpenRequest normalizeLegacyReaderOpenRequest({
+  required String comicId,
+  SourceRef? explicitSourceRef,
+  String? sourceKey,
+  int? initialEp,
+  int? initialPage,
+  int? initialGroup,
+}) {
+  return ReaderOpenRequest(
+    comicId: comicId,
+    sourceRef: resolveReaderOpenSourceRef(
+      comicId: comicId,
+      explicitSourceRef: explicitSourceRef,
+      resumeSourceRef: null,
+      sourceKey: sourceKey,
+    ),
+    sourceKey: explicitSourceRef?.sourceKey ?? sourceKey,
+    initialEp: initialEp,
+    initialPage: initialPage,
+    initialGroup: initialGroup,
+  );
 }
 
 ReaderInitialPosition resolveReaderInitialPosition({
@@ -158,13 +202,30 @@ String buildReaderWithLoadingChildKey({
 class ReaderWithLoading extends StatefulWidget {
   const ReaderWithLoading({
     super.key,
+    this.request,
     required this.id,
     this.sourceRef,
     this.sourceKey,
     this.initialEp,
     this.initialPage,
     this.initialGroup,
-  }) : assert(sourceRef != null || sourceKey != null);
+  }) : assert(request != null || sourceRef != null || sourceKey != null);
+
+  ReaderWithLoading.fromRequest({
+    Key? key,
+    required ReaderOpenRequest request,
+  }) : this(
+         key: key,
+         request: request,
+         id: request.comicId,
+         sourceRef: request.sourceRef,
+         sourceKey: request.sourceKey,
+         initialEp: request.initialEp,
+         initialPage: request.initialPage,
+         initialGroup: request.initialGroup,
+       );
+
+  final ReaderOpenRequest? request;
 
   final String id;
 
@@ -177,6 +238,17 @@ class ReaderWithLoading extends StatefulWidget {
   final int? initialPage;
 
   final int? initialGroup;
+
+  ReaderOpenRequest get normalizedRequest =>
+      request ??
+      normalizeLegacyReaderOpenRequest(
+        comicId: id,
+        explicitSourceRef: sourceRef,
+        sourceKey: sourceKey,
+        initialEp: initialEp,
+        initialPage: initialPage,
+        initialGroup: initialGroup,
+      );
 
   @override
   State<ReaderWithLoading> createState() => _ReaderWithLoadingState();
@@ -194,8 +266,8 @@ class _ReaderWithLoadingState
       readerPropsSourceRef: data?.sourceRef,
       resolvedSourceRefForDiagnostics: _resolvedSourceRefForDiagnostics,
       widgetSourceRef: widget.sourceRef,
-      comicId: widget.id,
-      sourceKey: widget.sourceKey,
+      comicId: widget.normalizedRequest.comicId,
+      sourceKey: widget.normalizedRequest.sourceKey,
     );
   }
 
@@ -212,7 +284,7 @@ class _ReaderWithLoadingState
     final type = ComicType.fromKey(sourceRef.sourceKey);
     final chapterIds = data?.chapters?.ids;
     final runtimeContext = buildReaderRuntimeContext(
-      comicId: widget.id,
+      comicId: widget.normalizedRequest.comicId,
       type: type,
       chapterIndex: data?.history.ep ?? 0,
       page: data?.history.page ?? 0,
@@ -242,7 +314,7 @@ class _ReaderWithLoadingState
       pageOrderId: activeTab?.pageOrderId,
       parentKey: widget.key?.toString(),
       readerChildKey: buildReaderWithLoadingChildKey(
-        comicId: widget.id,
+        comicId: widget.normalizedRequest.comicId,
         sourceRef: sourceRef,
       ),
     );
@@ -269,7 +341,7 @@ class _ReaderWithLoadingState
     final type = ComicType.fromKey(sourceRef.sourceKey);
     final chapterIds = data?.chapters?.ids;
     final runtimeContext = buildReaderRuntimeContext(
-      comicId: widget.id,
+      comicId: widget.normalizedRequest.comicId,
       type: type,
       chapterIndex: data?.history.ep ?? 0,
       page: data?.history.page ?? 0,
@@ -303,7 +375,7 @@ class _ReaderWithLoadingState
         pageOrderId: activeTab?.pageOrderId,
         parentKey: widget.key?.toString(),
         readerChildKey: buildReaderWithLoadingChildKey(
-          comicId: widget.id,
+          comicId: widget.normalizedRequest.comicId,
           sourceRef: sourceRef,
         ),
         reason: reason,
@@ -332,10 +404,11 @@ class _ReaderWithLoadingState
       _readerChildMounted = true;
       _readerChildMountedAt = DateTime.now();
     }
+    final request = widget.normalizedRequest;
     final initialPosition = resolveReaderInitialPosition(
-      requestedEp: widget.initialEp,
-      requestedPage: widget.initialPage,
-      requestedGroup: widget.initialGroup,
+      requestedEp: request.initialEp,
+      requestedPage: request.initialPage,
+      requestedGroup: request.initialGroup,
       historyEp: data.history.ep,
       historyPage: data.history.page,
       historyGroup: data.history.group,
@@ -343,7 +416,7 @@ class _ReaderWithLoadingState
     return Reader(
       key: ValueKey(
         buildReaderWithLoadingChildKey(
-          comicId: widget.id,
+          comicId: request.comicId,
           sourceRef: data.sourceRef,
         ),
       ),
@@ -392,19 +465,20 @@ class _ReaderWithLoadingState
 
   @override
   Future<Res<ReaderProps>> loadData() async {
-    final sourceKey = widget.sourceKey;
+    final request = widget.normalizedRequest;
+    final sourceKey = request.sourceKey;
     final resumeSourceRef = sourceKey == null
         ? null
         : await ReaderResumeService(
             readerSessions: App.repositories.readerSession,
             loadLegacyResumeSourceRef: HistoryManager().findResumeSourceRef,
           ).loadPreferredResumeSourceRef(
-            widget.id,
+            request.comicId,
             ComicType.fromKey(sourceKey),
           );
     final resolvedRefResult = resolveReaderLoadSourceRef(
-      comicId: widget.id,
-      explicitSourceRef: widget.sourceRef,
+      comicId: request.comicId,
+      explicitSourceRef: request.sourceRef,
       resumeSourceRef: resumeSourceRef,
       sourceKey: sourceKey,
       sourceExists: (sourceKey) => ComicSource.find(sourceKey) != null,
@@ -417,7 +491,7 @@ class _ReaderWithLoadingState
     final type = ComicType.fromKey(resolvedSourceRef.sourceKey);
     final readerSessions = App.repositories.readerSession;
     final canonicalComicId = buildReaderRuntimeContext(
-      comicId: widget.id,
+      comicId: request.comicId,
       type: type,
       chapterIndex: 0,
       page: 0,
@@ -432,11 +506,12 @@ class _ReaderWithLoadingState
       'reader.open.boundary.resolved',
       data: {
         'comicId': canonicalComicId,
-        'requestedComicId': widget.id,
+        'requestedComicId': request.comicId,
         'loadMode': resolvedSourceRef.type == SourceRefType.local
             ? 'local'
             : 'remote',
         'sourceKey': resolvedSourceRef.sourceKey,
+        'requestSourceRefId': request.sourceRefId,
         'sourceRefId': resolvedSourceRef.id,
         'sourceRefType': resolvedSourceRef.type.key,
         'sourceRefRouteKey': resolvedSourceRef.routeKey,
@@ -455,7 +530,7 @@ class _ReaderWithLoadingState
     if (resolvedSourceRef.type == SourceRefType.local) {
       final localDetail = await UnifiedLocalComicDetailRepository(
         store: App.repositories.comicDetailStore,
-      ).getComicDetail(widget.id);
+      ).getComicDetail(request.comicId);
       if (localDetail == null) {
         return Res.error("LOCAL_ASSET_MISSING");
       }
@@ -463,7 +538,7 @@ class _ReaderWithLoadingState
       return Res(
         ReaderProps(
           type: type,
-          cid: widget.id,
+          cid: request.comicId,
           name: localDetail.title,
           chapters: chapters,
           history: buildReaderCompatibilityHistory(
@@ -471,7 +546,7 @@ class _ReaderWithLoadingState
               title: localDetail.title,
               subTitle: localDetail.primarySource?.sourceTitle,
               cover: localDetail.coverLocalPath ?? '',
-              id: widget.id,
+              id: request.comicId,
               historyType: type,
             ),
             chapters: chapters,
@@ -501,7 +576,7 @@ class _ReaderWithLoadingState
     return Res(
       ReaderProps(
         type: type,
-        cid: widget.id,
+        cid: request.comicId,
         name: comic.data.title,
         chapters: comic.data.chapters,
         history: buildReaderCompatibilityHistory(

@@ -5,6 +5,7 @@ import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/history.dart';
 import 'package:venera/features/reader/presentation/reader.dart';
 import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/pages/comic_details_page/comic_page.dart';
 
 class _TestHistoryModel with HistoryMixin {
   _TestHistoryModel({
@@ -81,6 +82,66 @@ void main() {
     expect(withLegacy, isNotNull);
     expect(withLegacy!.type, SourceRefType.remote);
     expect(withLegacy.sourceKey, 'copymanga');
+  });
+
+  test('reader open request uses sourceRef id as canonical identity', () {
+    final sourceRef = SourceRef.fromLegacyLocal(
+      localType: 'local',
+      localComicId: 'comic-local',
+      chapterId: '1:__imported__',
+    );
+    const comicId = 'comic-local';
+
+    final request = ReaderOpenRequest(
+      comicId: comicId,
+      sourceRef: sourceRef,
+      sourceKey: sourceRef.sourceKey,
+      initialEp: 1,
+      initialPage: 2,
+    );
+
+    expect(request.sourceRefId, 'local:local:comic-local:1:__imported__');
+  });
+
+  test('ReaderWithLoading normalizes legacy id sourceKey initialEp into ReaderOpenRequest', () {
+    final request = normalizeLegacyReaderOpenRequest(
+      comicId: 'comic-1',
+      explicitSourceRef: null,
+      sourceKey: 'copymanga',
+      initialEp: 3,
+      initialPage: 7,
+      initialGroup: 2,
+    );
+
+    expect(request.comicId, 'comic-1');
+    expect(request.sourceRef, isNotNull);
+    expect(request.sourceRef!.sourceKey, 'copymanga');
+    expect(request.initialEp, 3);
+    expect(request.initialPage, 7);
+    expect(request.initialGroup, 2);
+  });
+
+  test('ReaderWithLoading accepts resolved ReaderOpenRequest as single contract', () {
+    final request = ReaderOpenRequest(
+      comicId: 'comic-local',
+      sourceRef: SourceRef.fromLegacyLocal(
+        localType: 'local',
+        localComicId: 'comic-local',
+        chapterId: '1:__imported__',
+      ),
+      sourceKey: 'local',
+      initialEp: 1,
+      initialPage: 3,
+    );
+
+    final widget = ReaderWithLoading.fromRequest(request: request);
+
+    expect(widget.normalizedRequest.comicId, 'comic-local');
+    expect(
+      widget.normalizedRequest.sourceRefId,
+      'local:local:comic-local:1:__imported__',
+    );
+    expect(widget.normalizedRequest.initialPage, 3);
   });
 
   test('legacy_history_ep_page_group_controls_initial_position_when_no_override', () {
@@ -190,6 +251,31 @@ void main() {
   );
 
   test(
+    'ReaderWithLoading does not build parent key from placeholder chapter id when sourceRef is resolved',
+    () {
+      final resolvedLocalImportedRef = SourceRef.fromLegacyLocal(
+        localType: 'local',
+        localComicId: '1',
+        chapterId: '1:__imported__',
+      );
+      final request = normalizeLegacyReaderOpenRequest(
+        comicId: '1',
+        explicitSourceRef: resolvedLocalImportedRef,
+        sourceKey: 'local',
+        initialEp: 1,
+      );
+
+      final childKey = buildReaderWithLoadingChildKey(
+        comicId: request.comicId,
+        sourceRef: request.sourceRef!,
+      );
+
+      expect(childKey, 'reader:1:local:local:1:1:__imported__');
+      expect(childKey, isNot('reader:1:local:local:1:_'));
+    },
+  );
+
+  test(
     'ReaderWithLoading does not use legacy placeholder sourceRef when resolved sourceRef is available',
     () {
       final resolvedLocalImportedRef = SourceRef.fromLegacyLocal(
@@ -263,5 +349,34 @@ void main() {
 
     expect(history.ep, 0);
     expect(history.page, 0);
+  });
+
+  test('detail and history reader requests produce the same resolved local reader identity', () {
+    final resolvedLocalRef = SourceRef.fromLegacyLocal(
+      localType: 'local',
+      localComicId: 'comic-local',
+      chapterId: '1:__imported__',
+    );
+    final detailRequest = buildComicDetailReaderOpenRequest(
+      comic: ComicDetails.fromJson({
+        'title': 'Local Comic',
+        'sourceKey': 'local',
+        'comicId': 'comic-local',
+      }),
+      sourceRef: resolvedLocalRef,
+      ep: 1,
+      page: 5,
+      group: null,
+    );
+    final historyRequest = normalizeLegacyReaderOpenRequest(
+      comicId: 'comic-local',
+      explicitSourceRef: resolvedLocalRef,
+      sourceKey: resolvedLocalRef.sourceKey,
+      initialEp: 1,
+      initialPage: 5,
+    );
+
+    expect(detailRequest.sourceRef.id, historyRequest.sourceRefId);
+    expect(detailRequest.sourceRef.id, 'local:local:comic-local:1:__imported__');
   });
 }
