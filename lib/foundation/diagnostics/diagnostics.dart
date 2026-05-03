@@ -229,14 +229,17 @@ class _LegacyLogDiagnosticSink implements DiagnosticSink {
 
   @override
   void record(DiagnosticEvent event) {
+    if (event.data['legacyOrigin'] == true) {
+      return;
+    }
     switch (event.level) {
       case DiagnosticLevel.trace:
       case DiagnosticLevel.info:
         return;
       case DiagnosticLevel.warn:
-        legacy_log.Log.warning(event.channel, _format(event));
+        legacy_log.Log.projectedWarning(event.channel, _format(event));
       case DiagnosticLevel.error:
-        legacy_log.Log.error(event.channel, _format(event));
+        legacy_log.Log.projectedError(event.channel, _format(event));
     }
   }
 }
@@ -248,6 +251,52 @@ String _format(DiagnosticEvent event) {
 }
 
 final talker.Talker appTalker = talker.Talker();
+
+String _legacyTitleToChannel(String title) {
+  final normalized = title
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '.')
+      .replaceAll(RegExp(r'\.{2,}'), '.')
+      .replaceAll(RegExp(r'^\.+|\.+$'), '');
+  if (normalized.isEmpty) {
+    return 'legacy.log.unknown';
+  }
+  return 'legacy.log.$normalized';
+}
+
+void _bridgeLegacyLogToDiagnostics(
+  legacy_log.LogLevel level,
+  String title,
+  String content, {
+  Object? error,
+  Object? stackTrace,
+}) {
+  final channel = _legacyTitleToChannel(title);
+  switch (level) {
+    case legacy_log.LogLevel.info:
+      AppDiagnostics.info(
+        channel,
+        content,
+        data: {'legacyOrigin': true, 'legacyTitle': title},
+      );
+    case legacy_log.LogLevel.warning:
+      AppDiagnostics.warn(
+        channel,
+        content,
+        data: {'legacyOrigin': true, 'legacyTitle': title},
+      );
+    case legacy_log.LogLevel.error:
+      AppDiagnostics.error(
+        channel,
+        error ?? content,
+        stackTrace: stackTrace is StackTrace
+            ? stackTrace
+            : (stackTrace == null ? null : StackTrace.fromString('$stackTrace')),
+        message: content,
+        data: {'legacyOrigin': true, 'legacyTitle': title},
+      );
+  }
+}
 
 abstract final class AppDiagnostics {
   static final DiagnosticRingBuffer _ringBuffer = DiagnosticRingBuffer();
@@ -376,6 +425,7 @@ abstract final class AppDiagnostics {
   }
 
   static List<DiagnosticSink> _defaultSinks() {
+    legacy_log.Log.configureStructuredEmitter(_bridgeLegacyLogToDiagnostics);
     return [
       _ringBuffer,
       _TalkerDiagnosticSink(appTalker),

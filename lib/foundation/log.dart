@@ -17,6 +17,15 @@ class LogItem {
 
 enum LogLevel { error, warning, info }
 
+typedef StructuredLogEmitter =
+    void Function(
+      LogLevel level,
+      String title,
+      String content, {
+      Object? error,
+      Object? stackTrace,
+    });
+
 class Log {
   static final List<LogItem> _logs = <LogItem>[];
 
@@ -42,6 +51,7 @@ class Log {
   static bool ignoreLimitation = false;
 
   static bool isMuted = false;
+  static StructuredLogEmitter? _structuredEmitter;
 
   static void printWarning(String text) {
     debugPrint('\x1B[33m$text\x1B[0m');
@@ -120,15 +130,40 @@ class Log {
     }
   }
 
+  static void configureStructuredEmitter(StructuredLogEmitter? emitter) {
+    _structuredEmitter = emitter;
+  }
+
   static info(String title, String content) {
     addLog(LogLevel.info, title, content);
+    _structuredEmitter?.call(LogLevel.info, title, content);
   }
 
   static warning(String title, String content) {
     addLog(LogLevel.warning, title, content);
+    _structuredEmitter?.call(LogLevel.warning, title, content);
   }
 
   static error(String title, Object content, [Object? stackTrace]) {
+    var info = content.toString();
+    if (stackTrace != null) {
+      info += "\n${stackTrace.toString()}";
+    }
+    addLog(LogLevel.error, title, info);
+    _structuredEmitter?.call(
+      LogLevel.error,
+      title,
+      info,
+      error: content,
+      stackTrace: stackTrace,
+    );
+  }
+
+  static void projectedWarning(String title, String content) {
+    addLog(LogLevel.warning, title, content);
+  }
+
+  static void projectedError(String title, Object content, [Object? stackTrace]) {
     var info = content.toString();
     if (stackTrace != null) {
       info += "\n${stackTrace.toString()}";
