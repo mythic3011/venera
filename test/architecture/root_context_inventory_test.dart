@@ -10,7 +10,6 @@ void main() {
       'lib/app/navigation/handle_text_share.dart': 'ui_navigation',
       'lib/components/comic.dart': 'ui_navigation',
       'lib/components/js_ui.dart': 'dialog_popup',
-      'lib/components/message.dart': 'dialog_popup',
       'lib/foundation/local/local_comic.dart': 'background_service',
       'lib/init.dart': 'background_service',
       'lib/network/cloudflare.dart': 'background_service',
@@ -27,7 +26,6 @@ void main() {
       'lib/app/navigation/handle_text_share.dart': 'navigation',
       'lib/components/comic.dart': 'ui-components',
       'lib/components/js_ui.dart': 'js-bridge',
-      'lib/components/message.dart': 'ui-components',
       'lib/foundation/local/local_comic.dart': 'local-foundation',
       'lib/init.dart': 'bootstrap',
       'lib/network/cloudflare.dart': 'network',
@@ -48,8 +46,6 @@ void main() {
           'Require caller BuildContext for navigation actions instead of global navigator lookup.',
       'lib/components/js_ui.dart':
           'Route JS-driven dialogs/messages through typed UI bridge with caller-provided context.',
-      'lib/components/message.dart':
-          'Require explicit context for select dialog and block silent root/main fallback.',
       'lib/foundation/local/local_comic.dart':
           'Emit typed result/events and let UI layer own dialog/navigation rendering.',
       'lib/init.dart':

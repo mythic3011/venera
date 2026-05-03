@@ -36,7 +36,7 @@ Scope pattern:
 - `App.rootNavigatorKey.currentContext`
 - `App.mainNavigatorKey?.currentContext`
 
-Total files with global-context access: **16**
+Total files with global-context access: **15**
 
 ### allowed_bootstrap
 
@@ -63,7 +63,6 @@ Total files with global-context access: **16**
 ### dialog_popup
 
 - `lib/components/js_ui.dart`
-- `lib/components/message.dart`
 
 ### background_service
 
@@ -100,3 +99,11 @@ Total files with global-context access: **16**
 
 - `test/architecture/root_context_inventory_test.dart` enforces that every file using the global-context series patterns is explicitly classified.
 - For non-allowed categories, the test also requires owner + migration note metadata.
+
+## Backlog
+
+`R-rootcontext-inventory-2`:
+
+- upgrade guard from file-level baseline to callsite-level baseline
+- record pattern, line owner, category, migration lane
+- fail if existing file gains extra global-context callsite
