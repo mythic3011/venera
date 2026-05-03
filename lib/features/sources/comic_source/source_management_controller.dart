@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:crypto/crypto.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
+import 'package:venera/foundation/appdata_authority_audit.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
@@ -463,17 +464,40 @@ class SourceManagementController {
     return SourceRepositoryView.fromRecord(updated);
   }
 
-  Future<String> _resolvePrimarySourceIndexUrl() async {
+  Future<String> loadPrimaryRepositoryUrl() async {
+    final primary = await _loadPrimaryRepository();
+    return primary?.indexUrl ?? _defaultSourceRepositories.first.url;
+  }
+
+  Future<void> setPrimaryRepositoryUrl(String indexUrl) async {
     final store = _repositoryStoreProvider();
-    if (store != null) {
-      await _ensureRepositoryRegistrySeeded(store);
-      final repositories = await store.loadSourceRepositories();
-      final enabled = repositories.where((repo) => repo.enabled);
-      if (enabled.isNotEmpty) {
-        return enabled.first.indexUrl;
-      }
+    if (store == null) {
+      return;
     }
-    return appdata.settings['comicSourceListUrl'] as String;
+    await _ensureRepositoryRegistrySeeded(store);
+    final normalizedUrl = indexUrl.trim();
+    if (normalizedUrl.isEmpty) {
+      return;
+    }
+    final repositories = await store.loadSourceRepositories();
+    final current = repositories.cast<SourceRepositoryRecord?>().firstWhere(
+      (repo) => repo?.enabled == true,
+      orElse: () => repositories.isEmpty ? null : repositories.first,
+    );
+    final replacement = await addRepository(
+      normalizedUrl,
+      name: current?.name,
+      userAdded: current?.userAdded ?? true,
+      trustLevel: current?.trustLevel ?? 'user',
+      enabled: true,
+    );
+    if (current != null && current.id != replacement.id) {
+      await store.deleteSourceRepository(current.id);
+    }
+  }
+
+  Future<String> _resolvePrimarySourceIndexUrl() async {
+    return loadPrimaryRepositoryUrl();
   }
 
   Future<void> _ensureRepositoryRegistrySeeded(UnifiedComicsStore store) async {
@@ -481,10 +505,17 @@ class SourceManagementController {
     if (current.isNotEmpty) {
       return;
     }
-    final fromSettings = (appdata.settings['comicSourceListUrl'] as String)
-        .trim();
+    final fromSettings = _readLegacySourceListUrl();
     final now = DateTime.now().millisecondsSinceEpoch;
     if (fromSettings.isNotEmpty) {
+      AppDiagnostics.info(
+        'source.management',
+        'source.repository.registry.legacy_seed_hit',
+        data: {
+          'seedUrl': fromSettings,
+          'seedSource': 'comicSourceListUrl',
+        },
+      );
       await store.upsertSourceRepository(
         SourceRepositoryRecord(
           id: _repositoryIdFromUrl(fromSettings),
@@ -500,6 +531,11 @@ class SourceManagementController {
       );
       return;
     }
+    AppDiagnostics.info(
+      'source.management',
+      'source.repository.registry.legacy_seed_miss',
+      data: {'seedSource': 'comicSourceListUrl'},
+    );
     for (final repo in _defaultSourceRepositories) {
       await store.upsertSourceRepository(
         SourceRepositoryRecord(
@@ -515,6 +551,47 @@ class SourceManagementController {
         ),
       );
     }
+  }
+
+  Future<SourceRepositoryView?> _loadPrimaryRepository() async {
+    final store = _repositoryStoreProvider();
+    if (store == null) {
+      return null;
+    }
+    await _ensureRepositoryRegistrySeeded(store);
+    final repositories = await store.loadSourceRepositories();
+    final enabled = repositories.where((repo) => repo.enabled);
+    final primary = enabled.isNotEmpty
+        ? enabled.first
+        : (repositories.isEmpty ? null : repositories.first);
+    if (primary != null) {
+      AppDiagnostics.info(
+        'source.management',
+        'source.repository.registry.canonical_hit',
+        data: {
+          'repositoryId': primary.id,
+          'repositoryUrl': primary.indexUrl,
+        },
+      );
+      return SourceRepositoryView.fromRecord(primary);
+    }
+    return null;
+  }
+
+  String _readLegacySourceListUrl() {
+    recordAppdataAuthorityDiagnostic(
+      channel: 'appdata.audit',
+      event: 'appdata.authority.access',
+      key: 'comicSourceListUrl',
+      storage: AppdataAuditStorage.settings,
+      access: 'read',
+      data: const <String, Object?>{'owner': 'SourceManagementController'},
+    );
+    final raw = (appdata.settings['comicSourceListUrl'] as String).trim();
+    if (raw.contains('git.nyne.dev')) {
+      return _defaultSourceRepositories.first.url;
+    }
+    return raw;
   }
 
   String _repositoryIdFromUrl(String url) {

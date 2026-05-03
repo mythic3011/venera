@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
 import 'package:flutter/material.dart';
@@ -687,9 +688,10 @@ class _BodyState extends State<_Body> {
 }
 
 class _ComicSourceList extends StatefulWidget {
-  const _ComicSourceList(this.onAdd);
+  const _ComicSourceList(this.onAdd, {required this.controller});
 
   final Future<void> Function(String) onAdd;
+  final SourceManagementController controller;
 
   @override
   State<_ComicSourceList> createState() => _ComicSourceListState();
@@ -699,6 +701,15 @@ class _ComicSourceListState extends State<_ComicSourceList> {
   List? json;
   bool changed = false;
   var controller = TextEditingController();
+
+  Future<void> _loadPrimaryRepositoryUrl() async {
+    final primaryUrl = await widget.controller.loadPrimaryRepositoryUrl();
+    if (!mounted) {
+      return;
+    }
+    controller.text = primaryUrl;
+    load();
+  }
 
   void load() async {
     if (json != null) {
@@ -736,17 +747,16 @@ class _ComicSourceListState extends State<_ComicSourceList> {
   @override
   void initState() {
     super.initState();
-    controller.text = appdata.settings['comicSourceListUrl'];
-    load();
+    unawaited(_loadPrimaryRepositoryUrl());
   }
 
   @override
   void dispose() {
-    super.dispose();
     if (changed) {
-      appdata.settings['comicSourceListUrl'] = controller.text;
-      appdata.saveData();
+      unawaited(widget.controller.setPrimaryRepositoryUrl(controller.text));
     }
+    controller.dispose();
+    super.dispose();
   }
 
   @override
@@ -842,8 +852,7 @@ class _ComicSourceListState extends State<_ComicSourceList> {
                   var fileName = json![index]["fileName"];
                   var url = json![index]["url"];
                   if (url == null || !(url.toString()).isURL) {
-                    var listUrl =
-                        appdata.settings['comicSourceListUrl'] as String;
+                    var listUrl = controller.text;
                     if (listUrl
                         .replaceFirst("https://", "")
                         .replaceFirst("http://", "")
@@ -873,6 +882,21 @@ class _ComicSourceListState extends State<_ComicSourceList> {
       },
     );
   }
+}
+
+@visibleForTesting
+Future<String> loadComicSourcePrimaryRepositoryUrlForTesting(
+  SourceManagementController controller,
+) {
+  return controller.loadPrimaryRepositoryUrl();
+}
+
+@visibleForTesting
+Future<void> persistComicSourcePrimaryRepositoryUrlForTesting(
+  SourceManagementController controller,
+  String url,
+) {
+  return controller.setPrimaryRepositoryUrl(url);
 }
 
 void _validatePages() {

@@ -1,7 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:venera/features/sources/comic_source/direct_js_source_validator.dart';
 import 'package:venera/features/sources/comic_source/source_management_controller.dart';
+import 'package:venera/foundation/appdata.dart';
+import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/pages/comic_source_page.dart';
 import 'package:venera/utils/translations.dart';
 
@@ -20,9 +25,20 @@ class _FakeSourceManagementController extends SourceManagementController {
   int refreshRepositoryCalls = 0;
   int refreshRepositoriesCalls = 0;
   int addSourceFromUrlCalls = 0;
+  String primaryRepositoryUrl = '';
+  int setPrimaryRepositoryUrlCalls = 0;
 
   @override
   Future<List<SourceRepositoryView>> listRepositories() async => repositories;
+
+  @override
+  Future<String> loadPrimaryRepositoryUrl() async => primaryRepositoryUrl;
+
+  @override
+  Future<void> setPrimaryRepositoryUrl(String indexUrl) async {
+    setPrimaryRepositoryUrlCalls++;
+    primaryRepositoryUrl = indexUrl;
+  }
 
   @override
   Future<List<SourcePackageView>> listAvailablePackages({
@@ -287,5 +303,94 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.addSourceFromUrlCalls, 0);
+  });
+
+  test('source page loads primary repository url from canonical registry', () async {
+    final tempDir = await Directory.systemTemp.createTemp(
+      'source-page-primary-url-',
+    );
+    final store = UnifiedComicsStore(p.join(tempDir.path, 'source_registry.db'));
+    await store.init();
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await store.upsertSourceRepository(
+        SourceRepositoryRecord(
+          id: 'repo-canonical',
+          name: 'Canonical Repo',
+          indexUrl: 'https://repo.example.com/index.json',
+          enabled: true,
+          userAdded: true,
+          trustLevel: 'user',
+          lastRefreshStatus: 'never',
+          createdAtMs: now,
+          updatedAtMs: now,
+        ),
+      );
+      final controller = SourceManagementController(
+        repositoryStoreProvider: () => store,
+      );
+
+      final url = await loadComicSourcePrimaryRepositoryUrlForTesting(controller);
+
+      expect(url, 'https://repo.example.com/index.json');
+    } finally {
+      await store.close();
+      if (tempDir.existsSync()) {
+        await tempDir.delete(recursive: true);
+      }
+    }
+  });
+
+  test('source page does not persist repository url to comicSourceListUrl appdata key', () async {
+    final tempDir = await Directory.systemTemp.createTemp(
+      'source-page-no-appdata-write-',
+    );
+    final store = UnifiedComicsStore(p.join(tempDir.path, 'source_registry.db'));
+    final oldListUrl = appdata.settings['comicSourceListUrl'] as String;
+    await store.init();
+    try {
+      appdata.settings['comicSourceListUrl'] =
+          'https://example.com/legacy-index.json';
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await store.upsertSourceRepository(
+        SourceRepositoryRecord(
+          id: 'repo-canonical',
+          name: 'Canonical Repo',
+          indexUrl: 'https://repo.example.com/index.json',
+          enabled: true,
+          userAdded: true,
+          trustLevel: 'user',
+          lastRefreshStatus: 'never',
+          createdAtMs: now,
+          updatedAtMs: now,
+        ),
+      );
+      final controller = SourceManagementController(
+        repositoryStoreProvider: () => store,
+      );
+
+      await persistComicSourcePrimaryRepositoryUrlForTesting(
+        controller,
+        'https://repo-2.example.com/index.json',
+      );
+
+      expect(
+        appdata.settings['comicSourceListUrl'],
+        'https://example.com/legacy-index.json',
+      );
+      final repositories = await controller.listRepositories();
+      expect(
+        repositories.any(
+          (repo) => repo.indexUrl == 'https://repo-2.example.com/index.json',
+        ),
+        isTrue,
+      );
+    } finally {
+      appdata.settings['comicSourceListUrl'] = oldListUrl;
+      await store.close();
+      if (tempDir.existsSync()) {
+        await tempDir.delete(recursive: true);
+      }
+    }
   });
 }

@@ -219,6 +219,93 @@ void main() {
       expect(repos.single.trustLevel, 'official');
     });
 
+    test('source repository registry uses canonical repositories before appdata legacy list', () async {
+      repositoryStore = UnifiedComicsStore('${tempDir.path}/source_registry.db');
+      await repositoryStore!.init();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await repositoryStore!.upsertSourceRepository(
+        SourceRepositoryRecord(
+          id: 'repo-canonical',
+          name: 'Canonical Repo',
+          indexUrl: 'https://repo.example.com/index.json',
+          enabled: true,
+          userAdded: true,
+          trustLevel: 'user',
+          lastRefreshStatus: 'never',
+          createdAtMs: now,
+          updatedAtMs: now,
+        ),
+      );
+      final controller = SourceManagementController(
+        repositoryStoreProvider: () => repositoryStore,
+      );
+
+      final url = await controller.loadPrimaryRepositoryUrl();
+
+      expect(url, 'https://repo.example.com/index.json');
+    });
+
+    test('controller uses comicSourceListUrl only when repository registry is empty', () async {
+      repositoryStore = UnifiedComicsStore('${tempDir.path}/source_registry.db');
+      await repositoryStore!.init();
+      final controller = SourceManagementController(
+        repositoryStoreProvider: () => repositoryStore,
+        fetchText: (url) async {
+          expect(url, 'https://repo.example.com/index.json');
+          return '[]';
+        },
+      );
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await repositoryStore!.upsertSourceRepository(
+        SourceRepositoryRecord(
+          id: 'repo-canonical',
+          name: 'Canonical Repo',
+          indexUrl: 'https://repo.example.com/index.json',
+          enabled: true,
+          userAdded: true,
+          trustLevel: 'user',
+          lastRefreshStatus: 'never',
+          createdAtMs: now,
+          updatedAtMs: now,
+        ),
+      );
+      final source = _fakeSource('m26-source-c', version: '1.0.0');
+      final manager = ComicSourceManager();
+      manager.add(source);
+      addTearDown(() => manager.remove(source.key));
+
+      await controller.checkUpdates();
+    });
+
+    test('controller emits legacy seed diagnostic when comicSourceListUrl seeds empty registry', () async {
+      repositoryStore = UnifiedComicsStore('${tempDir.path}/source_registry.db');
+      await repositoryStore!.init();
+      final controller = SourceManagementController(
+        repositoryStoreProvider: () => repositoryStore,
+      );
+
+      await controller.listRepositories();
+
+      final events = DevDiagnosticsApi.recent(channel: 'source.management');
+      expect(
+        events.any(
+          (event) =>
+              event.message == 'source.repository.registry.legacy_seed_hit' &&
+              event.data['seedSource'] == 'comicSourceListUrl',
+        ),
+        isTrue,
+      );
+    });
+
+    test('startup does not rewrite comicSourceListUrl appdata key as active source authority', () async {
+      final initSource = File('lib/init.dart').readAsStringSync();
+
+      expect(
+        initSource.contains("appdata.settings['comicSourceListUrl'] ="),
+        isFalse,
+      );
+    });
+
     test('addRepository inserts and listRepositories returns it', () async {
       repositoryStore = UnifiedComicsStore('${tempDir.path}/source_registry.db');
       await repositoryStore!.init();
