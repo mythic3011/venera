@@ -219,6 +219,44 @@ class _BodyState extends State<_Body> {
     }
   }
 
+  Future<void> _refreshRepositories() async {
+    setState(() {
+      _loadingRepositories = true;
+      _repositoryCommandError = null;
+    });
+    try {
+      await _sourceManagementController.refreshRepositories();
+      if (!mounted) return;
+      final repos = await _sourceManagementController.listRepositories();
+      final packages = await _sourceManagementController.listAvailablePackages();
+      if (!mounted) return;
+      setState(() {
+        _repositories = repos;
+        _availablePackages = packages;
+      });
+    } catch (error) {
+      _showRepositoryCommandError(error);
+      if (!mounted) return;
+      try {
+        final repos = await _sourceManagementController.listRepositories();
+        final packages = await _sourceManagementController.listAvailablePackages();
+        if (!mounted) return;
+        setState(() {
+          _repositories = repos;
+          _availablePackages = packages;
+        });
+      } catch (_) {
+        // Keep the last visible state if reload after a failed refresh also fails.
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingRepositories = false;
+        });
+      }
+    }
+  }
+
   void _showRepositoryCommandError(Object error) {
     final message = _repositoryErrorMessage(error);
     if (mounted) {
@@ -270,7 +308,7 @@ class _BodyState extends State<_Body> {
                   ),
                   const SizedBox(width: 8),
                   FilledButton.tonalIcon(
-                    onPressed: _loadingRepositories ? null : _reloadRepositoryData,
+                    onPressed: _loadingRepositories ? null : _refreshRepositories,
                     icon: const Icon(Icons.refresh),
                     label: Text('Refresh'.tl),
                   ),

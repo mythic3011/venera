@@ -521,5 +521,83 @@ void main() {
       final refreshed = await repositoryStore!.loadSourceRepositoryById(repo.id);
       expect(refreshed?.lastRefreshStatus, 'success');
     });
+
+    test('refreshRepositories refreshes enabled repositories and emits summary diagnostics', () async {
+      repositoryStore = UnifiedComicsStore('${tempDir.path}/source_registry.db');
+      await repositoryStore!.init();
+      final controller = SourceManagementController(
+        repositoryStoreProvider: () => repositoryStore,
+        fetchText: (url) async => switch (url) {
+          'https://example.com/legacy-index.json' => jsonEncode(
+            <String, Object?>{'sources': const <Object?>[]},
+          ),
+          'https://repo-enabled.example.com/index.json' => jsonEncode(
+            <String, Object?>{
+              'sources': <Map<String, Object?>>[
+                <String, Object?>{
+                  'key': 'custom_source',
+                  'name': 'Custom Source',
+                  'fileName': 'custom_source.js',
+                  'version': '1.0.0',
+                },
+              ],
+            },
+          ),
+          'https://repo-disabled.example.com/index.json' => jsonEncode(
+            <String, Object?>{
+              'sources': <Map<String, Object?>>[
+                <String, Object?>{
+                  'key': 'disabled_source',
+                  'name': 'Disabled Source',
+                  'fileName': 'disabled_source.js',
+                  'version': '1.0.0',
+                },
+              ],
+            },
+          ),
+          _ => throw Exception('unexpected repository url: $url'),
+        },
+      );
+      final enabledRepo = await controller.addRepository(
+        'https://repo-enabled.example.com/index.json',
+        name: 'Enabled Repo',
+      );
+      final disabledRepo = await controller.addRepository(
+        'https://repo-disabled.example.com/index.json',
+        name: 'Disabled Repo',
+      );
+      await controller.setRepositoryEnabled(disabledRepo.id, false);
+
+      await controller.refreshRepositories();
+
+      final enabledPackages = await controller.listAvailablePackages(
+        repositoryId: enabledRepo.id,
+      );
+      final disabledPackages = await controller.listAvailablePackages(
+        repositoryId: disabledRepo.id,
+      );
+      expect(enabledPackages.map((pkg) => pkg.sourceKey), <String>['custom_source']);
+      expect(disabledPackages, isEmpty);
+
+      final diagnostics = DevDiagnosticsApi.recent(channel: 'source.management');
+      expect(
+        diagnostics.any(
+          (event) =>
+              event.message == 'repository.refresh.start' &&
+              event.data['repositoryCount'] == 3 &&
+              event.data['enabledOnly'] == true,
+        ),
+        isTrue,
+      );
+      expect(
+        diagnostics.any(
+          (event) =>
+              event.message == 'repository.refresh.repositoryCount' &&
+              event.data['repositoryCount'] == 3 &&
+              event.data['selectedRepositoryCount'] == 2,
+        ),
+        isTrue,
+      );
+    });
   });
 }

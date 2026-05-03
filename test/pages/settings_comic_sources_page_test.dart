@@ -7,14 +7,18 @@ import 'package:venera/utils/translations.dart';
 
 class _FakeSourceManagementController extends SourceManagementController {
   _FakeSourceManagementController({
-    this.repositories = const <SourceRepositoryView>[],
-    this.packages = const <SourcePackageView>[],
-  });
+    List<SourceRepositoryView> repositories = const <SourceRepositoryView>[],
+    List<SourcePackageView> packages = const <SourcePackageView>[],
+    this.packagesAfterRefresh = const <SourcePackageView>[],
+  }) : repositories = List<SourceRepositoryView>.of(repositories),
+       packages = List<SourcePackageView>.of(packages);
 
   final List<SourceRepositoryView> repositories;
-  final List<SourcePackageView> packages;
+  List<SourcePackageView> packages;
+  final List<SourcePackageView> packagesAfterRefresh;
   int addRepositoryCalls = 0;
   int refreshRepositoryCalls = 0;
+  int refreshRepositoriesCalls = 0;
   int addSourceFromUrlCalls = 0;
 
   @override
@@ -50,6 +54,12 @@ class _FakeSourceManagementController extends SourceManagementController {
   Future<int> refreshRepository(String repositoryId) async {
     refreshRepositoryCalls++;
     return 1;
+  }
+
+  @override
+  Future<void> refreshRepositories({bool enabledOnly = true}) async {
+    refreshRepositoriesCalls++;
+    packages = List<SourcePackageView>.of(packagesAfterRefresh);
   }
 
   @override
@@ -162,6 +172,43 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(controller.refreshRepositoryCalls, 1);
+    },
+  );
+
+  testWidgets(
+    'settings top refresh action reloads available packages from repositories',
+    (tester) async {
+      final controller = _FakeSourceManagementController(
+        repositories: const <SourceRepositoryView>[
+          SourceRepositoryView(
+            id: 'repo-1',
+            name: 'Custom Repo',
+            indexUrl: 'https://repo-1.example.com/index.json',
+            enabled: true,
+            userAdded: true,
+            trustLevel: 'user',
+          ),
+        ],
+        packagesAfterRefresh: const <SourcePackageView>[
+          SourcePackageView(
+            sourceKey: 'custom_source',
+            repositoryId: 'repo-1',
+            name: 'Custom Source',
+            availableVersion: '1.0.0',
+            lastSeenAtMs: 1,
+          ),
+        ],
+      );
+      await pumpPage(tester, controller);
+
+      expect(find.text('No available sources'), findsOneWidget);
+
+      await tester.tap(find.text('Refresh'));
+      await tester.pumpAndSettle();
+
+      expect(controller.refreshRepositoriesCalls, 1);
+      expect(find.text('Custom Source'), findsOneWidget);
+      expect(find.text('1.0.0'), findsOneWidget);
     },
   );
 

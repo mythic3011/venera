@@ -295,6 +295,33 @@ class SourceManagementController {
     return rows.map(SourcePackageView.fromRecord).toList(growable: false);
   }
 
+  Future<void> refreshRepositories({bool enabledOnly = true}) async {
+    final repositories = await listRepositories();
+    final targets = enabledOnly
+        ? repositories.where((repo) => repo.enabled).toList(growable: false)
+        : repositories;
+    AppDiagnostics.info(
+      'source.management',
+      'repository.refresh.start',
+      data: {
+        'enabledOnly': enabledOnly,
+        'repositoryCount': repositories.length,
+      },
+    );
+    AppDiagnostics.info(
+      'source.management',
+      'repository.refresh.repositoryCount',
+      data: {
+        'enabledOnly': enabledOnly,
+        'repositoryCount': repositories.length,
+        'selectedRepositoryCount': targets.length,
+      },
+    );
+    for (final repo in targets) {
+      await refreshRepository(repo.id);
+    }
+  }
+
   Future<int> _refreshRepositoryUnsafe(String repositoryId) async {
     final store = _repositoryStoreProvider();
     if (store == null) {
