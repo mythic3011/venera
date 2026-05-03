@@ -115,7 +115,12 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
       readerNextFavoritesEnabled: readerNextFavoritesEnabled,
       openLegacy: () async {
         await App.mainNavigatorKey?.currentContext?.to(
-          () => ReaderWithLoading(id: comic.id, sourceKey: comic.sourceKey),
+          () => ReaderWithLoading.fromRequest(
+            request: ReaderOpenRequest(
+              comicId: comic.id,
+              sourceKey: comic.sourceKey,
+            ),
+          ),
         );
       },
       openReaderNext: (request) async {

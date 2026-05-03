@@ -17,6 +17,7 @@ import 'package:venera/foundation/favorites.dart';
 import 'package:venera/foundation/log.dart';
 import 'package:venera/foundation/local_metadata/local_metadata.dart';
 import 'package:venera/foundation/reader/reader_open_target.dart';
+import 'package:venera/foundation/source_ref.dart';
 import 'package:venera/network/download.dart';
 import 'package:venera/features/reader/presentation/reader.dart';
 import 'package:venera/utils/import_sort.dart';

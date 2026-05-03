@@ -2,6 +2,31 @@ part of '../local.dart';
 
 String localPageImageKey(File file) => file.uri.toString();
 
+ReaderOpenRequest buildLocalComicReaderOpenRequest({
+  required LocalComic comic,
+  required History? history,
+  required int? firstDownloadedChapter,
+  required int? firstDownloadedChapterGroup,
+  required SourceRef? resumeSourceRef,
+}) {
+  final sourceRef = resolveReaderTargetSourceRef(
+    comicId: comic.id,
+    sourceKey: comic.comicType.sourceKey,
+    chapters: comic.chapters,
+    ep: history?.ep ?? firstDownloadedChapter,
+    group: history?.group ?? firstDownloadedChapterGroup,
+    resumeSourceRef: resumeSourceRef,
+  );
+  return ReaderOpenRequest(
+    comicId: comic.id,
+    sourceRef: sourceRef,
+    sourceKey: sourceRef.sourceKey,
+    initialEp: history?.ep ?? firstDownloadedChapter,
+    initialPage: history?.page,
+    initialGroup: history?.group ?? firstDownloadedChapterGroup,
+  );
+}
+
 class LocalComic with HistoryMixin implements Comic {
   @override
   final String id;
@@ -127,22 +152,16 @@ class LocalComic with HistoryMixin implements Comic {
         }
       }
     }
-    final sourceRef = resolveReaderTargetSourceRef(
-      comicId: id,
-      sourceKey: comicType.sourceKey,
-      chapters: chapters,
-      ep: history?.ep ?? firstDownloadedChapter,
-      group: history?.group ?? firstDownloadedChapterGroup,
+    final request = buildLocalComicReaderOpenRequest(
+      comic: this,
+      history: history,
+      firstDownloadedChapter: firstDownloadedChapter,
+      firstDownloadedChapterGroup: firstDownloadedChapterGroup,
       resumeSourceRef: HistoryManager().findResumeSourceRef(id, comicType),
     );
     App.rootContext.to(
-      () => ReaderWithLoading(
-        id: id,
-        sourceRef: sourceRef,
-        sourceKey: sourceRef.sourceKey,
-        initialEp: history?.ep ?? firstDownloadedChapter,
-        initialPage: history?.page,
-        initialGroup: history?.group ?? firstDownloadedChapterGroup,
+      () => ReaderWithLoading.fromRequest(
+        request: request,
       ),
     );
   }

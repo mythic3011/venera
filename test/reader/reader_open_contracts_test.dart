@@ -3,6 +3,7 @@ import 'package:venera/features/comic_detail/data/comic_detail_models.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/history.dart';
+import 'package:venera/foundation/local.dart';
 import 'package:venera/features/reader/presentation/reader.dart';
 import 'package:venera/foundation/source_ref.dart';
 import 'package:venera/pages/comic_details_page/comic_page.dart';
@@ -142,6 +143,21 @@ void main() {
       'local:local:comic-local:1:__imported__',
     );
     expect(widget.normalizedRequest.initialPage, 3);
+  });
+
+  test('legacy ReaderWithLoading constructor remains supported during migration', () {
+    final widget = ReaderWithLoading(
+      id: 'comic-legacy',
+      sourceKey: 'copymanga',
+      initialEp: 2,
+      initialPage: 6,
+    );
+
+    expect(widget.normalizedRequest.comicId, 'comic-legacy');
+    expect(widget.normalizedRequest.sourceRef, isNotNull);
+    expect(widget.normalizedRequest.sourceKey, 'copymanga');
+    expect(widget.normalizedRequest.initialEp, 2);
+    expect(widget.normalizedRequest.initialPage, 6);
   });
 
   test('legacy_history_ep_page_group_controls_initial_position_when_no_override', () {
@@ -368,15 +384,97 @@ void main() {
       page: 5,
       group: null,
     );
-    final historyRequest = normalizeLegacyReaderOpenRequest(
-      comicId: 'comic-local',
-      explicitSourceRef: resolvedLocalRef,
-      sourceKey: resolvedLocalRef.sourceKey,
-      initialEp: 1,
-      initialPage: 5,
+    final localComic = LocalComic(
+      id: 'comic-local',
+      title: 'Local Comic',
+      subtitle: 'Imported',
+      tags: const <String>[],
+      directory: '/tmp/comic-local',
+      chapters: ComicChapters({
+        '1:__imported__': 'Imported Chapter',
+      }),
+      cover: 'cover.jpg',
+      comicType: ComicType.local,
+      downloadedChapters: const <String>['1:__imported__'],
+      createdAt: DateTime.utc(2026, 5, 3),
+    );
+    final historyRequest = buildLocalComicReaderOpenRequest(
+      comic: localComic,
+      history: History.fromModel(model: localComic, ep: 1, page: 5),
+      firstDownloadedChapter: 1,
+      firstDownloadedChapterGroup: null,
+      resumeSourceRef: resolvedLocalRef,
     );
 
     expect(detailRequest.sourceRef.id, historyRequest.sourceRefId);
     expect(detailRequest.sourceRef.id, 'local:local:comic-local:1:__imported__');
+  });
+
+  test('comic detail opens reader through ReaderOpenRequest', () {
+    final sourceRef = SourceRef.fromLegacyLocal(
+      localType: 'local',
+      localComicId: 'comic-local',
+      chapterId: '1:__imported__',
+    );
+    final detailRequest = buildComicDetailReaderOpenRequest(
+      comic: ComicDetails.fromJson({
+        'title': 'Local Comic',
+        'sourceKey': 'local',
+        'comicId': 'comic-local',
+      }),
+      sourceRef: sourceRef,
+      ep: 1,
+      page: 2,
+      group: null,
+    );
+
+    final widget = ReaderWithLoading.fromRequest(
+      request: detailRequest.toReaderOpenRequest(),
+    );
+
+    expect(widget.normalizedRequest.comicId, 'comic-local');
+    expect(
+      widget.normalizedRequest.sourceRefId,
+      'local:local:comic-local:1:__imported__',
+    );
+    expect(widget.normalizedRequest.initialPage, 2);
+  });
+
+  test('history continue opens reader through ReaderOpenRequest', () {
+    final comic = LocalComic(
+      id: 'comic-local',
+      title: 'Local Comic',
+      subtitle: 'Imported',
+      tags: const <String>[],
+      directory: '/tmp/comic-local',
+      chapters: ComicChapters({
+        '1:__imported__': 'Imported Chapter',
+      }),
+      cover: 'cover.jpg',
+      comicType: ComicType.local,
+      downloadedChapters: const <String>['1:__imported__'],
+      createdAt: DateTime.utc(2026, 5, 3),
+    );
+    final sourceRef = SourceRef.fromLegacyLocal(
+      localType: 'local',
+      localComicId: 'comic-local',
+      chapterId: '1:__imported__',
+    );
+    final request = buildLocalComicReaderOpenRequest(
+      comic: comic,
+      history: History.fromModel(model: comic, ep: 1, page: 4),
+      firstDownloadedChapter: 1,
+      firstDownloadedChapterGroup: null,
+      resumeSourceRef: sourceRef,
+    );
+
+    final widget = ReaderWithLoading.fromRequest(request: request);
+
+    expect(widget.normalizedRequest.comicId, 'comic-local');
+    expect(
+      widget.normalizedRequest.sourceRefId,
+      'local:local:comic-local:1:__imported__',
+    );
+    expect(widget.normalizedRequest.initialPage, 4);
   });
 }

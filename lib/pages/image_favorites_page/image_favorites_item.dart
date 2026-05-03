@@ -31,11 +31,13 @@ class _ImageFavoritesItemState extends State<_ImageFavoritesItem> {
 
   void goReaderPage(ImageFavoritesComic comic, int ep, int page) {
     App.rootContext.to(
-      () => ReaderWithLoading(
-        id: comic.id,
-        sourceKey: comic.sourceKey,
-        initialEp: ep,
-        initialPage: page,
+      () => ReaderWithLoading.fromRequest(
+        request: ReaderOpenRequest(
+          comicId: comic.id,
+          sourceKey: comic.sourceKey,
+          initialEp: ep,
+          initialPage: page,
+        ),
       ),
     );
   }

@@ -38,6 +38,17 @@ class ComicDetailReaderOpenRequest {
   String get sourceKey => sourceRef.sourceKey;
 
   String? get chapterRefId => sourceRef.params['chapterId']?.toString();
+
+  ReaderOpenRequest toReaderOpenRequest() {
+    return ReaderOpenRequest(
+      comicId: comicId,
+      sourceRef: sourceRef,
+      sourceKey: sourceKey,
+      initialEp: initialEp,
+      initialPage: initialPage,
+      initialGroup: initialGroup,
+    );
+  }
 }
 
 @visibleForTesting
@@ -189,13 +200,8 @@ abstract mixin class _ComicPageActions {
     Future<void> openLegacyReader() async {
       await App.rootContext
           .to(
-            () => ReaderWithLoading(
-              id: request.comicId,
-              sourceRef: request.sourceRef,
-              sourceKey: request.sourceKey,
-              initialEp: request.initialEp,
-              initialPage: request.initialPage,
-              initialGroup: request.initialGroup,
+            () => ReaderWithLoading.fromRequest(
+              request: request.toReaderOpenRequest(),
             ),
           )
           .then((_) {
