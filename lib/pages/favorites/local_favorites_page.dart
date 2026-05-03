@@ -741,7 +741,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                       text: "Jump to Detail".tl,
                       onClick: () {
                         final c = selectedComics.keys.first as FavoriteItem;
-                        App.mainNavigatorKey?.currentContext?.to(
+                        context.to(
                           () => ComicPage(id: c.id, sourceKey: c.sourceKey),
                         );
                       },
@@ -854,7 +854,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
                   lastSelectedIndex = comics.indexOf(c);
                 });
               } else if (appdata.settings["onClickFavorite"] == "viewDetail") {
-                App.mainNavigatorKey?.currentContext?.to(
+                context.to(
                   () => ComicPage(
                     id: c.id,
                     sourceKey: c.sourceKey,
