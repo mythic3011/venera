@@ -12,13 +12,20 @@ void handleTextShare() async {
 
   var channel = EventChannel('venera/text_share');
   await for (var event in channel.receiveBroadcastStream()) {
-    if (App.mainNavigatorKey == null) {
-      await Future.delayed(const Duration(milliseconds: 200));
-    }
+    final context = await _waitForMainNavigatorContext();
     if (event is String) {
-      final context =
-          App.mainNavigatorKey?.currentContext ?? App.rootNavigatorKey.currentContext;
       context?.to(() => AggregatedSearchPage(keyword: event));
     }
   }
+}
+
+Future<BuildContext?> _waitForMainNavigatorContext() async {
+  for (var i = 0; i < 10; i++) {
+    final context = App.mainNavigatorKey?.currentContext;
+    if (context != null) {
+      return context;
+    }
+    await Future.delayed(const Duration(milliseconds: 50));
+  }
+  return null;
 }

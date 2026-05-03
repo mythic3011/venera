@@ -36,7 +36,7 @@ Scope pattern:
 - `App.rootNavigatorKey.currentContext`
 - `App.mainNavigatorKey?.currentContext`
 
-Total files with global-context access: **12**
+Total files with global-context access: **11**
 
 ### allowed_bootstrap
 
@@ -49,7 +49,6 @@ Total files with global-context access: **12**
 ### ui_navigation
 
 - `lib/app/navigation/app_links.dart`
-- `lib/app/navigation/handle_text_share.dart`
 - `lib/pages/comic_source_page.dart`
 - `lib/pages/local_comics_page.dart`
 
