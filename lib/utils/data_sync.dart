@@ -17,8 +17,8 @@ import 'io.dart';
 
 class DataSync with ChangeNotifier {
   BuildContext? _resolveUiContext() {
-    return App.rootNavigatorKey.currentContext ??
-        App.mainNavigatorKey?.currentContext;
+    return App.rootNavigatorKey.currentState?.context ??
+        App.mainNavigatorKey?.currentState?.context;
   }
 
   DataSync._() {

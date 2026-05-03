@@ -133,7 +133,8 @@ class LocalComic with HistoryMixin implements Comic {
       ).syncComic(this);
     } catch (error) {
       final context =
-          App.rootNavigatorKey.currentContext ?? App.mainNavigatorKey?.currentContext;
+          App.rootNavigatorKey.currentState?.context ??
+          App.mainNavigatorKey?.currentState?.context;
       if (context != null && context.mounted) {
         context.showMessage(message: error.toString());
       }

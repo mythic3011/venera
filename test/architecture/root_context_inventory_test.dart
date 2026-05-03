@@ -6,19 +6,9 @@ void main() {
   test('global context callsites are fully classified', () {
     const classifiedByFile = <String, String>{
       'lib/main.dart': 'allowed_bootstrap',
-      'lib/foundation/local/local_comic.dart': 'background_service',
-      'lib/utils/data_sync.dart': 'background_service',
     };
-    const migrationOwnerByFile = <String, String>{
-      'lib/foundation/local/local_comic.dart': 'local-foundation',
-      'lib/utils/data_sync.dart': 'data-sync',
-    };
-    const migrationNoteByFile = <String, String>{
-      'lib/foundation/local/local_comic.dart':
-          'Emit typed result/events and let UI layer own dialog/navigation rendering.',
-      'lib/utils/data_sync.dart':
-          'Return sync result to UI layer; avoid global context resolution in utility layer.',
-    };
+    const migrationOwnerByFile = <String, String>{};
+    const migrationNoteByFile = <String, String>{};
 
     final rg = Process.runSync(
       'rg',
