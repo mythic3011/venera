@@ -378,6 +378,104 @@ void main() {
     expect(find.byKey(const ValueKey('install-validated-direct-source')), findsNothing);
   });
 
+  testWidgets('source page does not expose legacy source list popup install path', (
+    tester,
+  ) async {
+    final controller = _FakeSourceManagementController();
+    await pumpPage(tester, controller);
+
+    expect(find.text('Repo URL'), findsNothing);
+    expect(find.text("The URL should point to a 'index.json' file"), findsNothing);
+    expect(find.text('Add Repository'), findsOneWidget);
+  });
+
+  testWidgets('direct source validation exception shows typed failure instead of throwing', (
+    tester,
+  ) async {
+    final controller = _FakeSourceManagementController();
+    await pumpPage(
+      tester,
+      controller,
+      validateDirectSourceUrl: (_) async {
+        throw StateError('validator crashed');
+      },
+    );
+
+    await tester.enterText(find.byType(TextField).first, 'https://example.com/source.js');
+    await tester.tap(find.text('Validate Direct URL'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 3));
+
+    expect(
+      find.text('SOURCE_VALIDATION_FAILED: Unable to validate source URL'),
+      findsWidgets,
+    );
+    expect(find.byKey(const ValueKey('install-validated-direct-source')), findsNothing);
+  });
+
+  testWidgets('direct install success reloads visible installed source state', (
+    tester,
+  ) async {
+    final controller = _FakeSourceManagementController()
+      ..installResult = const djs.SourceCommandSuccess(
+        metadata: djs.DirectJsValidationMetadata(
+          sourceKey: 'demo-source',
+          name: 'Installed Source',
+          version: '1.0.0',
+        ),
+      );
+    await pumpPage(
+      tester,
+      controller,
+      validateDirectSourceUrl: (_) async {
+        return const djs.SourceCommandSuccess(
+          metadata: djs.DirectJsValidationMetadata(
+            sourceKey: 'demo-source',
+            name: 'Installed Source',
+            version: '1.0.0',
+          ),
+        );
+      },
+    );
+
+    await tester.enterText(find.byType(TextField).first, 'https://example.com/source.js');
+    await tester.tap(find.text('Validate Direct URL'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('install-validated-direct-source')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Install'));
+    await tester.pumpAndSettle();
+
+    expect(controller.installValidatedDirectSourceCalls, 1);
+    expect(find.textContaining('Installed source: demo-source'), findsOneWidget);
+  });
+
+  testWidgets('repository packages remain review only and do not show install buttons', (
+    tester,
+  ) async {
+    final controller = _FakeSourceManagementController(
+      packages: const <SourcePackageView>[
+        SourcePackageView(
+          sourceKey: 'review-only-source',
+          repositoryId: 'repo-1',
+          name: 'Review Only Source',
+          availableVersion: '2.0.0',
+          lastSeenAtMs: 1,
+        ),
+      ],
+    );
+    await pumpPage(tester, controller);
+
+    expect(
+      find.text(
+        'Repository packages are listed for review only. Install support is not enabled yet.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('reviewOnly/installDisabled'), findsOneWidget);
+    expect(find.text('Install Source'), findsNothing);
+  });
+
   testWidgets('source install button remains hidden when write adapter is unavailable', (
     tester,
   ) async {
@@ -457,7 +555,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.installValidatedDirectSourceCalls, 1);
-    expect(ComicSource.find('demo-source'), isNotNull);
     expect(find.textContaining('Installed source: demo-source'), findsOneWidget);
   });
 

@@ -251,13 +251,24 @@ class _BodyState extends State<_Body> {
   }
 
   void _showRepositoryCommandError(Object error) {
+    if (!mounted) {
+      return;
+    }
     final message = _repositoryErrorMessage(error);
-    if (mounted) {
-      setState(() {
-        _repositoryCommandError = message;
-      });
+    setState(() {
+      _repositoryCommandError = message;
+    });
+    if (!mounted) {
+      return;
     }
     context.showMessage(message: message);
+  }
+
+  String _directValidationErrorMessage(Object error) {
+    if (error is SourceCommandFailed) {
+      return '${error.code}: ${error.message}';
+    }
+    return 'SOURCE_VALIDATION_FAILED: Unable to validate source URL'.tl;
   }
 
   String _repositoryErrorMessage(Object error) {
@@ -662,7 +673,20 @@ class _BodyState extends State<_Body> {
       _directSourceValidationMessage = null;
       _validatedDirectSource = null;
     });
-    final result = await widget.validateDirectSourceUrl(normalized);
+    djs.SourceCommandResult result;
+    try {
+      result = await widget.validateDirectSourceUrl(normalized);
+    } catch (error) {
+      if (!mounted) return;
+      final uiMessage = _directValidationErrorMessage(error);
+      setState(() {
+        _validatedDirectSource = null;
+        _directSourceValidationMessage = uiMessage;
+        _validatingDirectSource = false;
+      });
+      context.showMessage(message: uiMessage);
+      return;
+    }
     if (!mounted) return;
     switch (result) {
       case djs.SourceCommandSuccess(:final metadata):
@@ -731,6 +755,17 @@ class _BodyState extends State<_Body> {
     }
     switch (result) {
       case djs.SourceCommandSuccess(:final metadata):
+        try {
+          await ComicSourceManager().reload();
+        } catch (error, stackTrace) {
+          Log.error('Comic source install reload', '$error\n$stackTrace');
+        }
+        if (mounted) {
+          await _reloadRepositoryData();
+        }
+        if (!mounted) {
+          return;
+        }
         setState(() {
           _validatedDirectSource = null;
           _directSourceValidationMessage =
@@ -764,203 +799,6 @@ class _ValidatedDirectSource {
 
   final String sourceUrl;
   final djs.DirectJsValidationMetadata metadata;
-}
-
-class _ComicSourceList extends StatefulWidget {
-  const _ComicSourceList(this.onAdd, {required this.controller});
-
-  final Future<void> Function(String) onAdd;
-  final SourceManagementController controller;
-
-  @override
-  State<_ComicSourceList> createState() => _ComicSourceListState();
-}
-
-class _ComicSourceListState extends State<_ComicSourceList> {
-  List? json;
-  bool changed = false;
-  var controller = TextEditingController();
-
-  Future<void> _loadPrimaryRepositoryUrl() async {
-    final primaryUrl = await widget.controller.loadPrimaryRepositoryUrl();
-    if (!mounted) {
-      return;
-    }
-    controller.text = primaryUrl;
-    load();
-  }
-
-  void load() async {
-    if (json != null) {
-      setState(() {
-        json = null;
-      });
-    }
-    if (controller.text.isEmpty) {
-      setState(() {
-        json = [];
-      });
-      return;
-    }
-    var dio = AppDio();
-    try {
-      var res = await dio.get<String>(controller.text);
-      if (res.statusCode != 200) {
-        throw "error";
-      }
-      if (mounted) {
-        setState(() {
-          json = jsonDecode(res.data!);
-        });
-      }
-    } catch (e) {
-      context.showMessage(message: "Network error".tl);
-      if (mounted) {
-        setState(() {
-          json = [];
-        });
-      }
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    unawaited(_loadPrimaryRepositoryUrl());
-  }
-
-  @override
-  void dispose() {
-    if (changed) {
-      unawaited(widget.controller.setPrimaryRepositoryUrl(controller.text));
-    }
-    controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return PopUpWidgetScaffold(title: "Comic Source".tl, body: buildBody());
-  }
-
-  Widget buildBody() {
-    var currentKey = ComicSource.all().map((e) => e.key).toList();
-
-    return ListView.builder(
-      itemCount: (json?.length ?? 1) + 1,
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return Container(
-            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: Theme.of(context).colorScheme.outlineVariant,
-                width: 0.6,
-              ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.source_outlined),
-                      const SizedBox(width: 12),
-                      Text("Repo URL".tl, style: ts.s16),
-                    ],
-                  ),
-                ),
-                TextField(
-                  controller: controller,
-                  decoration: InputDecoration(
-                    hintText: "URL",
-                    border: const UnderlineInputBorder(),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                  onChanged: (value) {
-                    changed = true;
-                  },
-                ).paddingHorizontal(16).paddingBottom(8),
-                Text(
-                  "The URL should point to a 'index.json' file".tl,
-                ).paddingLeft(16),
-                Text(
-                  "Do not report any issues related to sources to App repo.".tl,
-                ).paddingLeft(16),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () {
-                        launchUrlString(comicSourceDocUrl);
-                      },
-                      child: Text("Help".tl),
-                    ),
-                    FilledButton.tonal(
-                      onPressed: load,
-                      child: Text("Refresh".tl),
-                    ),
-                    const SizedBox(width: 16),
-                  ],
-                ),
-                const SizedBox(height: 16),
-              ],
-            ),
-          );
-        }
-
-        if (index == 1 && json == null) {
-          return Center(
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-            ).fixWidth(24).fixHeight(24),
-          );
-        }
-
-        index--;
-
-        var key = json![index]["key"];
-        var action = currentKey.contains(key)
-            ? const Icon(Icons.check, size: 20).paddingRight(8)
-            : Button.filled(
-                child: Text("Add".tl),
-                onPressed: () async {
-                  var fileName = json![index]["fileName"];
-                  var url = json![index]["url"];
-                  if (url == null || !(url.toString()).isURL) {
-                    var listUrl = controller.text;
-                    if (listUrl
-                        .replaceFirst("https://", "")
-                        .replaceFirst("http://", "")
-                        .contains("/")) {
-                      url =
-                          listUrl.substring(0, listUrl.lastIndexOf("/") + 1) +
-                          fileName;
-                    } else {
-                      url = '$listUrl/$fileName';
-                    }
-                  }
-                  await widget.onAdd(url);
-                  setState(() {});
-                },
-              ).fixHeight(32);
-
-        var description = json![index]["version"];
-        if (json![index]["description"] != null) {
-          description = "$description\n${json![index]["description"]}";
-        }
-
-        return ListTile(
-          title: Text(json![index]["name"]),
-          subtitle: Text(description),
-          trailing: action,
-        );
-      },
-    );
-  }
 }
 
 @visibleForTesting
