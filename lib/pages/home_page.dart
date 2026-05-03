@@ -346,7 +346,7 @@ class _HistoryState extends State<_History> {
                         heroTag: heroTag,
                         onTap: () {
                           context.to(
-                            () => buildHistoryComicDetailRouteForTesting(
+                            () => buildHistoryComicDetailRoute(
                               history[index],
                               heroTag: heroTag,
                             ),

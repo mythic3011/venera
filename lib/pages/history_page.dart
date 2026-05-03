@@ -59,6 +59,13 @@ Widget buildHistoryComicDetailRouteForTesting(
   ReaderActivityItem item, {
   String? heroTag,
 }) {
+  return buildHistoryComicDetailRoute(item, heroTag: heroTag);
+}
+
+Widget buildHistoryComicDetailRoute(
+  ReaderActivityItem item, {
+  String? heroTag,
+}) {
   final progressContext = buildHistoryDetailProgressContextForTesting(item);
   if (isLocalSourceKey(item.sourceKey)) {
     return ComicDetailPage(
@@ -97,8 +104,6 @@ class HistoryPage extends StatefulWidget {
 
 class _HistoryPageState extends State<HistoryPage> {
   final controller = FlyoutController();
-  final HistoryRouteCutoverController _historyCutoverController =
-      const HistoryRouteCutoverController();
   late final ReaderActivityRepository _repository;
   List<ReaderActivityItem> comics = const [];
   bool multiSelectMode = false;
@@ -154,9 +159,7 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Future<void> _openHistoryComic(ReaderActivityItem comic) async {
-    await App.rootContext.to(
-      () => buildHistoryComicDetailRouteForTesting(comic),
-    );
+    await App.rootContext.to(() => buildHistoryComicDetailRoute(comic));
   }
 
   @override
