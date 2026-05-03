@@ -104,6 +104,61 @@ void main() {
     expect(request.sourceRefId, 'local:local:comic-local:1:__imported__');
   });
 
+  test('reader open request derives sourceKey from sourceRef when present', () {
+    final request = ReaderOpenRequest(
+      comicId: 'comic-local',
+      sourceRef: SourceRef.fromLegacyLocal(
+        localType: 'local',
+        localComicId: 'comic-local',
+        chapterId: '1:__imported__',
+      ),
+      initialEp: 1,
+    );
+
+    expect(request.sourceKey, 'local');
+  });
+
+  test('reader open request rejects sourceRef and sourceKey mismatch', () {
+    expect(
+      () => ReaderOpenRequest(
+        comicId: 'comic-local',
+        sourceRef: SourceRef.fromLegacyLocal(
+          localType: 'local',
+          localComicId: 'comic-local',
+          chapterId: '1:__imported__',
+        ),
+        sourceKey: 'copymanga',
+      ),
+      throwsA(
+        isA<ReaderOpenRequestIdentityError>().having(
+          (error) => error.code,
+          'code',
+          ReaderOpenRequestIdentityErrorCode.sourceKeyMismatch,
+        ),
+      ),
+    );
+  });
+
+  test('local reader open request rejects mismatched local comic id', () {
+    expect(
+      () => ReaderOpenRequest(
+        comicId: 'comic-b',
+        sourceRef: SourceRef.fromLegacyLocal(
+          localType: 'local',
+          localComicId: 'comic-a',
+          chapterId: '1:__imported__',
+        ),
+      ),
+      throwsA(
+        isA<ReaderOpenRequestIdentityError>().having(
+          (error) => error.code,
+          'code',
+          ReaderOpenRequestIdentityErrorCode.localComicIdMismatch,
+        ),
+      ),
+    );
+  });
+
   test('ReaderWithLoading normalizes legacy id sourceKey initialEp into ReaderOpenRequest', () {
     final request = normalizeLegacyReaderOpenRequest(
       comicId: 'comic-1',
@@ -120,6 +175,19 @@ void main() {
     expect(request.initialEp, 3);
     expect(request.initialPage, 7);
     expect(request.initialGroup, 2);
+  });
+
+  test('legacy sourceKey path remains supported when sourceRef is absent', () {
+    final request = ReaderOpenRequest(
+      comicId: 'comic-legacy',
+      sourceKey: 'copymanga',
+      initialEp: 2,
+      initialPage: 6,
+    );
+
+    expect(request.comicId, 'comic-legacy');
+    expect(request.sourceRef, isNull);
+    expect(request.sourceKey, 'copymanga');
   });
 
   test('ReaderWithLoading accepts resolved ReaderOpenRequest as single contract', () {

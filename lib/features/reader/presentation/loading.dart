@@ -56,6 +56,34 @@ class ReaderInitialPosition {
   });
 }
 
+enum ReaderOpenRequestIdentityErrorCode {
+  missingSourceAuthority,
+  sourceKeyMismatch,
+  localComicIdMismatch,
+}
+
+class ReaderOpenRequestIdentityError implements Exception {
+  const ReaderOpenRequestIdentityError(
+    this.code, {
+    required this.message,
+  });
+
+  final ReaderOpenRequestIdentityErrorCode code;
+  final String message;
+
+  String get codeKey => switch (code) {
+    ReaderOpenRequestIdentityErrorCode.missingSourceAuthority =>
+      'missingSourceAuthority',
+    ReaderOpenRequestIdentityErrorCode.sourceKeyMismatch =>
+      'sourceKeyMismatch',
+    ReaderOpenRequestIdentityErrorCode.localComicIdMismatch =>
+      'localComicIdMismatch',
+  };
+
+  @override
+  String toString() => 'ReaderOpenRequestIdentityError($codeKey): $message';
+}
+
 class ReaderOpenRequest {
   final String comicId;
   final SourceRef? sourceRef;
@@ -64,16 +92,97 @@ class ReaderOpenRequest {
   final int? initialPage;
   final int? initialGroup;
 
-  const ReaderOpenRequest({
+  factory ReaderOpenRequest({
+    required String comicId,
+    SourceRef? sourceRef,
+    String? sourceKey,
+    int? initialEp,
+    int? initialPage,
+    int? initialGroup,
+  }) {
+    final normalizedSourceKey = _resolveReaderOpenRequestSourceKey(
+      sourceRef: sourceRef,
+      sourceKey: sourceKey,
+    );
+    _assertReaderOpenRequestAuthority(
+      comicId: comicId,
+      sourceRef: sourceRef,
+      sourceKey: sourceKey,
+      normalizedSourceKey: normalizedSourceKey,
+    );
+    return ReaderOpenRequest._(
+      comicId: comicId,
+      sourceRef: sourceRef,
+      sourceKey: normalizedSourceKey,
+      initialEp: initialEp,
+      initialPage: initialPage,
+      initialGroup: initialGroup,
+    );
+  }
+
+  const ReaderOpenRequest._({
     required this.comicId,
-    this.sourceRef,
-    this.sourceKey,
-    this.initialEp,
-    this.initialPage,
-    this.initialGroup,
-  }) : assert(sourceRef != null || sourceKey != null);
+    required this.sourceRef,
+    required this.sourceKey,
+    required this.initialEp,
+    required this.initialPage,
+    required this.initialGroup,
+  });
 
   String? get sourceRefId => sourceRef?.id;
+}
+
+String? _resolveReaderOpenRequestSourceKey({
+  required SourceRef? sourceRef,
+  required String? sourceKey,
+}) {
+  final explicitKey = sourceKey?.trim();
+  if (sourceRef != null) {
+    return sourceRef.sourceKey;
+  }
+  if (explicitKey == null || explicitKey.isEmpty) {
+    return null;
+  }
+  return explicitKey;
+}
+
+void _assertReaderOpenRequestAuthority({
+  required String comicId,
+  required SourceRef? sourceRef,
+  required String? sourceKey,
+  required String? normalizedSourceKey,
+}) {
+  if (sourceRef == null && normalizedSourceKey == null) {
+    throw const ReaderOpenRequestIdentityError(
+      ReaderOpenRequestIdentityErrorCode.missingSourceAuthority,
+      message: 'Reader open request requires sourceRef or sourceKey.',
+    );
+  }
+  final explicitKey = sourceKey?.trim();
+  if (sourceRef != null &&
+      explicitKey != null &&
+      explicitKey.isNotEmpty &&
+      explicitKey != sourceRef.sourceKey) {
+    throw ReaderOpenRequestIdentityError(
+      ReaderOpenRequestIdentityErrorCode.sourceKeyMismatch,
+      message:
+          'Reader open request sourceKey "$explicitKey" does not match '
+          'sourceRef.sourceKey "${sourceRef.sourceKey}".',
+    );
+  }
+  if (sourceRef?.type == SourceRefType.local) {
+    final localComicId = sourceRef?.params['localComicId']?.toString();
+    if (localComicId != null &&
+        localComicId.isNotEmpty &&
+        localComicId != comicId) {
+      throw ReaderOpenRequestIdentityError(
+        ReaderOpenRequestIdentityErrorCode.localComicIdMismatch,
+        message:
+            'Reader open request comicId "$comicId" does not match '
+            'local SourceRef comicId "$localComicId".',
+      );
+    }
+  }
 }
 
 SourceRef? resolveReaderOpenSourceRef({
