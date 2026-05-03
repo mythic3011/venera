@@ -1,4 +1,5 @@
 import 'package:venera/foundation/comic_type.dart';
+import 'package:venera/foundation/appdata_authority_audit.dart';
 import 'package:venera/foundation/source_ref.dart';
 
 enum ResumeSnapshotDiagnosticCode {
@@ -76,6 +77,18 @@ class ResumeTargetStore {
   }
 
   ResumeSnapshotReadResult readWithDiagnostic(String comicId, ComicType type) {
+    recordAppdataAuthorityDiagnostic(
+      channel: 'appdata.audit',
+      event: 'appdata.authority.access',
+      key: _storeKey,
+      storage: AppdataAuditStorage.implicitData,
+      access: 'read',
+      data: <String, Object?>{
+        'owner': 'ResumeTargetStore',
+        'comicId': comicId,
+        'type': type.value,
+      },
+    );
     final store = _readStore();
     final raw = store[_entryKey(comicId, type)];
     if (raw is! Map) {
@@ -119,6 +132,18 @@ class ResumeTargetStore {
     required int page,
     required SourceRef sourceRef,
   }) {
+    recordAppdataAuthorityDiagnostic(
+      channel: 'appdata.audit',
+      event: 'appdata.authority.access',
+      key: _storeKey,
+      storage: AppdataAuditStorage.implicitData,
+      access: 'write',
+      data: <String, Object?>{
+        'owner': 'ResumeTargetStore',
+        'comicId': comicId,
+        'type': type.value,
+      },
+    );
     final store = _readStore();
     final chapterEntryId = group == null ? '$chapter' : '$group-$chapter';
     final snapshot = ResumeSnapshot(

@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
+import 'package:venera/foundation/appdata_authority_audit.dart';
 import 'package:venera/foundation/db/local_comic_sync.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
@@ -27,6 +28,22 @@ import 'history.dart';
 
 part 'local/local_comic.dart';
 part 'local/local_sort_type.dart';
+
+String? readLocalDirectoryBookmark() {
+  recordAppdataAuthorityDiagnostic(
+    channel: 'appdata.audit',
+    event: 'appdata.authority.access',
+    key: 'localDirectoryBookmark',
+    storage: AppdataAuditStorage.implicitData,
+    access: 'read',
+    data: const <String, Object?>{'owner': 'LocalManager'},
+  );
+  final bookmark = appdata.implicitData['localDirectoryBookmark'];
+  if (bookmark is String && bookmark.isNotEmpty) {
+    return bookmark;
+  }
+  return null;
+}
 
 class LocalManager with ChangeNotifier {
   static const _localPathFilename = 'local_path';
@@ -64,13 +81,7 @@ class LocalManager with ChangeNotifier {
   String get _localPathFilePath =>
       FilePath.join(App.dataPath, _localPathFilename);
 
-  String? get _iosLocalDirectoryBookmark {
-    final bookmark = appdata.implicitData[_iosLocalDirectoryBookmarkKey];
-    if (bookmark is String && bookmark.isNotEmpty) {
-      return bookmark;
-    }
-    return null;
-  }
+  String? get _iosLocalDirectoryBookmark => readLocalDirectoryBookmark();
 
   // return error message if failed
   Future<String?> setNewPath(String newPath, {String? iosBookmark}) async {

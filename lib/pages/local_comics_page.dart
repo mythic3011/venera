@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:venera/components/components.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
+import 'package:venera/foundation/appdata_authority_audit.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/local_comics_legacy_bridge.dart';
@@ -17,8 +18,20 @@ import 'package:venera/utils/epub.dart';
 import 'package:venera/utils/io.dart';
 import 'package:venera/utils/pdf.dart';
 import 'package:venera/utils/translations.dart';
-import 'package:zip_flutter/zip_flutter.dart';
 import 'package:url_launcher/url_launcher_string.dart';
+import 'package:zip_flutter/zip_flutter.dart';
+
+String readLocalSortPreference() {
+  recordAppdataAuthorityDiagnostic(
+    channel: 'appdata.audit',
+    event: 'appdata.authority.access',
+    key: 'local_sort',
+    storage: AppdataAuditStorage.implicitData,
+    access: 'read',
+    data: const <String, Object?>{'owner': 'LocalComicsPage'},
+  );
+  return (appdata.implicitData['local_sort'] ?? 'name').toString();
+}
 
 bool canReorderLocalComicPages({
   required String comicBaseDir,
@@ -267,7 +280,7 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
 
   @override
   void initState() {
-    var sort = appdata.implicitData["local_sort"] ?? "name";
+    var sort = readLocalSortPreference();
     sortType = LocalSortType.fromString(sort);
     super.initState();
     unawaited(_initialize());

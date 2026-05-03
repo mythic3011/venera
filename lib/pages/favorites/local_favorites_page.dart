@@ -15,6 +15,35 @@ class _LocalFavoritesPage extends StatefulWidget {
   State<_LocalFavoritesPage> createState() => _LocalFavoritesPageState();
 }
 
+String readLocalFavoritesReadFilterPreference(String fallback) {
+  recordAppdataAuthorityDiagnostic(
+    channel: 'appdata.audit',
+    event: 'appdata.authority.access',
+    key: 'local_favorites_read_filter',
+    storage: AppdataAuditStorage.implicitData,
+    access: 'read',
+    data: const <String, Object?>{'owner': 'LocalFavoritesPage'},
+  );
+  return (appdata.implicitData['local_favorites_read_filter'] ?? fallback)
+      .toString();
+}
+
+int readLocalFavoritesUpdatePageNumPreference(int fallback) {
+  recordAppdataAuthorityDiagnostic(
+    channel: 'appdata.audit',
+    event: 'appdata.authority.access',
+    key: 'local_favorites_update_page_num',
+    storage: AppdataAuditStorage.implicitData,
+    access: 'read',
+    data: const <String, Object?>{'owner': 'LocalFavoritesPage'},
+  );
+  final raw = appdata.implicitData['local_favorites_update_page_num'];
+  if (raw is int) {
+    return raw;
+  }
+  return fallback;
+}
+
 class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
   late _FavoritesPageState favPage;
 
@@ -304,9 +333,7 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
 
   @override
   void initState() {
-    readFilterSelect =
-        appdata.implicitData["local_favorites_read_filter"] ??
-        readFilterList[0];
+    readFilterSelect = readLocalFavoritesReadFilterPreference(readFilterList[0]);
     favPage = context.findAncestorStateOfType<_FavoritesPageState>()!;
     if (!isAllFolder) {
       var (a, b) = favoritesRepo.findLinked(widget.folder);
@@ -1228,8 +1255,7 @@ class _SelectUpdatePageNumState extends State<_SelectUpdatePageNum> {
 
   @override
   void initState() {
-    updatePageNum =
-        appdata.implicitData["local_favorites_update_page_num"] ?? 9999999;
+    updatePageNum = readLocalFavoritesUpdatePageNumPreference(9999999);
     super.initState();
   }
 

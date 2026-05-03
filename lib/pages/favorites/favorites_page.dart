@@ -8,6 +8,7 @@ import 'package:flutter_reorderable_grid_view/widgets/reorderable_builder.dart';
 import 'package:venera/components/components.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
+import 'package:venera/foundation/appdata_authority_audit.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/consts.dart';
@@ -42,6 +43,25 @@ const _kLeftBarWidth = 256.0;
 const _kTwoPanelChangeWidth = 720.0;
 
 const favoritesRepo = FavoritesRuntimeRepository();
+
+Map<String, dynamic>? readFavoritesFolderSelection() {
+  recordAppdataAuthorityDiagnostic(
+    channel: 'appdata.audit',
+    event: 'appdata.authority.access',
+    key: 'favoriteFolder',
+    storage: AppdataAuditStorage.implicitData,
+    access: 'read',
+    data: const <String, Object?>{'owner': 'FavoritesPage'},
+  );
+  final data = appdata.implicitData['favoriteFolder'];
+  if (data is Map<String, dynamic>) {
+    return data;
+  }
+  if (data is Map) {
+    return Map<String, dynamic>.from(data);
+  }
+  return null;
+}
 
 bool isFavoritesReaderNextFlagEnabled(Object? rawValue) => rawValue == true;
 
@@ -127,7 +147,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
 
   Future<void> _initialize() async {
     await favoritesRepo.init();
-    var data = appdata.implicitData['favoriteFolder'];
+    var data = readFavoritesFolderSelection();
     if (data != null) {
       folder = data['name'];
       isNetwork = data['isNetwork'] ?? false;
