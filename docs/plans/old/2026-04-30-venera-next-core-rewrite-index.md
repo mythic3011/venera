@@ -1,5 +1,11 @@
 # Venera Next Core Rewrite Index
 
+Historical status (2026-05-04):
+
+- This index is retained as legacy planning history.
+- Active workflow authority is local `master` plus tracked current plans.
+- `feature/v0-next-queue` is treated as a stale/historical lane.
+
 ## Purpose
 
 This is the index for the active Venera Next rewrite documentation set.
