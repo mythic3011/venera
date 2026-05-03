@@ -244,6 +244,8 @@ class _ImageFavoritesPhotoViewState extends State<ImageFavoritesPhotoView> {
                   sourceKey: comic.sourceKey,
                   initialEp: ep,
                   initialPage: page,
+                  diagnosticEntrypoint: 'image_favorites.item',
+                  diagnosticCaller: 'ImageFavoritesPhotoView.read',
                 ),
               ),
             );

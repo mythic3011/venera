@@ -136,6 +136,43 @@ void emitReaderTabRetentionDiagnosticForTesting(Map<String, Object?> data) {
 }
 
 @visibleForTesting
+Map<String, Object?> buildReaderRouteDiagnosticSnapshotForTesting({
+  int? routeHash,
+  String? routeName,
+  String? routeSettingsName,
+  String? routeSettingsArgumentsType,
+  String? routeRuntimeType,
+  String? routeDiagnosticIdentity,
+  int? navigatorHash,
+  bool? rootNavigator,
+  bool? observerAttached,
+  String? observerStatus,
+  int? previousRouteHash,
+  String? previousRouteDiagnosticIdentity,
+  String? navigatorLifecycleEvent,
+}) {
+  return {
+    if (routeHash != null) 'routeHash': routeHash,
+    if (routeName != null) 'routeName': routeName,
+    if (routeSettingsName != null) 'routeSettingsName': routeSettingsName,
+    if (routeSettingsArgumentsType != null)
+      'routeSettingsArgumentsType': routeSettingsArgumentsType,
+    if (routeRuntimeType != null) 'routeRuntimeType': routeRuntimeType,
+    if (routeDiagnosticIdentity != null)
+      'routeDiagnosticIdentity': routeDiagnosticIdentity,
+    if (navigatorHash != null) 'navigatorHash': navigatorHash,
+    if (rootNavigator != null) 'rootNavigator': rootNavigator,
+    if (observerAttached != null) 'observerAttached': observerAttached,
+    if (observerStatus != null) 'observerStatus': observerStatus,
+    if (previousRouteHash != null) 'previousRouteHash': previousRouteHash,
+    if (previousRouteDiagnosticIdentity != null)
+      'previousRouteDiagnosticIdentity': previousRouteDiagnosticIdentity,
+    if (navigatorLifecycleEvent != null)
+      'navigatorLifecycleEvent': navigatorLifecycleEvent,
+  };
+}
+
+@visibleForTesting
 Map<String, Object?> buildReaderParentShellDiagnosticForTesting({
   required String owner,
   required String branch,
@@ -152,6 +189,11 @@ Map<String, Object?> buildReaderParentShellDiagnosticForTesting({
   int? selectedIndex,
   int? currentPage,
   String? routeName,
+  Map<String, Object?> routeSnapshot = const {},
+  String? requestEntrypoint,
+  String? requestCaller,
+  String? requestSourceRefId,
+  int? parentStateHash,
   String? parentKey,
   String? readerChildKey,
   String? reason,
@@ -171,12 +213,18 @@ Map<String, Object?> buildReaderParentShellDiagnosticForTesting({
     'selectedIndex': selectedIndex,
     'currentPage': currentPage,
     'routeName': routeName,
+    ...routeSnapshot,
     'expectedReaderTabId': expectedReaderTabId,
     'activeReaderTabId': activeReaderTabId,
     'pageOrderId': pageOrderId,
     'retainedTab': retainedTab,
+    if (requestEntrypoint != null) 'requestEntrypoint': requestEntrypoint,
+    if (requestCaller != null) 'requestCaller': requestCaller,
+    if (requestSourceRefId != null) 'requestSourceRefId': requestSourceRefId,
+    if (parentStateHash != null) 'parentStateHash': parentStateHash,
     'parentKey': parentKey,
     'readerChildKey': readerChildKey,
+    if (reason != null) 'disposeReason': reason,
     if (reason != null) 'reason': reason,
     if (openDurationMs != null) 'openDurationMs': openDurationMs,
   };
@@ -194,6 +242,8 @@ void emitReaderParentShellBuildDiagnosticForTesting(Map<String, Object?> data) {
     data: data,
     resultSummary:
         'branch=${data['branch']} retainedTab=${data['retainedTab']} '
+        'entrypoint=${data['requestEntrypoint']} '
+        'routeHash=${data['routeHash']} '
         'activeReaderTabId=${data['activeReaderTabId']} '
         'expectedReaderTabId=${data['expectedReaderTabId']} '
         'pageOrderId=${data['pageOrderId']}',
@@ -216,7 +266,10 @@ void emitReaderParentUnmountDiagnosticForTesting(Map<String, Object?> data) {
     page: data['page'] as int? ?? 0,
     data: data,
     resultSummary:
-        'reason=${data['reason']} retainedTab=${data['retainedTab']} '
+        'reason=${data['disposeReason'] ?? data['reason']} '
+        'entrypoint=${data['requestEntrypoint']} '
+        'routeHash=${data['routeHash']} '
+        'retainedTab=${data['retainedTab']} '
         'activeReaderTabId=${data['activeReaderTabId']} '
         'expectedReaderTabId=${data['expectedReaderTabId']} '
         'pageOrderId=${data['pageOrderId']} '

@@ -8,6 +8,8 @@ ReaderOpenRequest buildLocalComicReaderOpenRequest({
   required int? firstDownloadedChapter,
   required int? firstDownloadedChapterGroup,
   required SourceRef? resumeSourceRef,
+  String? diagnosticEntrypoint,
+  String? diagnosticCaller,
 }) {
   final sourceRef = resolveReaderTargetSourceRef(
     comicId: comic.id,
@@ -24,6 +26,8 @@ ReaderOpenRequest buildLocalComicReaderOpenRequest({
     initialEp: history?.ep ?? firstDownloadedChapter,
     initialPage: history?.page,
     initialGroup: history?.group ?? firstDownloadedChapterGroup,
+    diagnosticEntrypoint: diagnosticEntrypoint,
+    diagnosticCaller: diagnosticCaller,
   );
 }
 
@@ -158,6 +162,8 @@ class LocalComic with HistoryMixin implements Comic {
       firstDownloadedChapter: firstDownloadedChapter,
       firstDownloadedChapterGroup: firstDownloadedChapterGroup,
       resumeSourceRef: HistoryManager().findResumeSourceRef(id, comicType),
+      diagnosticEntrypoint: 'local_comic.read',
+      diagnosticCaller: 'LocalComic.read',
     );
     App.rootContext.to(
       () => ReaderWithLoading.fromRequest(

@@ -119,6 +119,8 @@ class _LocalFavoritesPageState extends State<_LocalFavoritesPage> {
             request: ReaderOpenRequest(
               comicId: comic.id,
               sourceKey: comic.sourceKey,
+              diagnosticEntrypoint: 'local_favorites.item',
+              diagnosticCaller: '_LocalFavoritesPageState._openFavoriteComic',
             ),
           ),
         );

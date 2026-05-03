@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/diagnostics/diagnostics.dart';
 
 const double _kBackGestureWidth = 20.0;
 const int _kMaxDroppedSwipePageForwardAnimationTime = 800;
@@ -30,6 +31,9 @@ class AppPageRoute<T> extends PageRoute<T> with _AppRouteTransitionMixin{
 
   String? label;
 
+  String get diagnosticIdentity =>
+      '$runtimeType(name=${settings.name}, label=${label ?? 'unresolved'})';
+
   @override
   toString() => "/$label";
 
@@ -51,6 +55,103 @@ class AppPageRoute<T> extends PageRoute<T> with _AppRouteTransitionMixin{
 
   @override
   final bool preventRebuild;
+}
+
+final Map<int, Map<String, Object?>> _navigatorLifecycleByRouteHash = {};
+final Map<int, Map<String, Object?>> _navigatorPushHostByRouteHash = {};
+
+String describeRouteDiagnosticIdentity(Route<dynamic>? route) {
+  if (route == null) {
+    return 'null';
+  }
+  if (route is AppPageRoute) {
+    return route.diagnosticIdentity;
+  }
+  return '${route.runtimeType}(name=${route.settings.name})';
+}
+
+Map<String, Object?> buildNavigatorRouteLifecycleDiagnostic({
+  required String event,
+  required Route<dynamic>? route,
+  required Route<dynamic>? previousRoute,
+  required int pageCountBeforeEvent,
+  DateTime? timestamp,
+}) {
+  return {
+    'event': event,
+    'timestamp': (timestamp ?? DateTime.now().toUtc()).toIso8601String(),
+    'routeHash': route?.hashCode,
+    'routeDiagnosticIdentity': describeRouteDiagnosticIdentity(route),
+    'previousRouteHash': previousRoute?.hashCode,
+    'previousRouteDiagnosticIdentity':
+        describeRouteDiagnosticIdentity(previousRoute),
+    'pageCountBeforeEvent': pageCountBeforeEvent,
+  };
+}
+
+void emitNavigatorRouteLifecycleDiagnostic(Map<String, Object?> data) {
+  final routeHash = data['routeHash'];
+  if (routeHash is int) {
+    _navigatorLifecycleByRouteHash[routeHash] = Map<String, Object?>.from(data);
+  }
+  AppDiagnostics.info(
+    'navigator.lifecycle',
+    data['event']?.toString() ?? 'route.lifecycle',
+    data: data,
+  );
+}
+
+Map<String, Object?> buildNavigatorPushHostDiagnostic({
+  required Route<dynamic> route,
+  required NavigatorState navigator,
+  required Route<dynamic>? currentRoute,
+  required bool rootNavigator,
+  required bool observerAttached,
+  DateTime? timestamp,
+}) {
+  return {
+    'event': 'pushHost',
+    'timestamp': (timestamp ?? DateTime.now().toUtc()).toIso8601String(),
+    'routeHash': route.hashCode,
+    'routeDiagnosticIdentity': describeRouteDiagnosticIdentity(route),
+    'navigatorHash': navigator.hashCode,
+    'rootNavigator': rootNavigator,
+    'observerAttached': observerAttached,
+    'previousRouteHash': currentRoute?.hashCode,
+    'previousRouteDiagnosticIdentity':
+        describeRouteDiagnosticIdentity(currentRoute),
+  };
+}
+
+void emitNavigatorPushHostDiagnostic(Map<String, Object?> data) {
+  final routeHash = data['routeHash'];
+  if (routeHash is int) {
+    _navigatorPushHostByRouteHash[routeHash] = Map<String, Object?>.from(data);
+  }
+  AppDiagnostics.info(
+    'navigator.lifecycle',
+    'navigator.push.host',
+    data: data,
+  );
+}
+
+Map<String, Object?>? navigatorLifecycleDiagnosticForRouteHash(int? routeHash) {
+  if (routeHash == null) {
+    return null;
+  }
+  return _navigatorLifecycleByRouteHash[routeHash];
+}
+
+Map<String, Object?>? navigatorPushHostDiagnosticForRouteHash(int? routeHash) {
+  if (routeHash == null) {
+    return null;
+  }
+  return _navigatorPushHostByRouteHash[routeHash];
+}
+
+void clearNavigatorRouteDiagnosticsForTesting() {
+  _navigatorLifecycleByRouteHash.clear();
+  _navigatorPushHostByRouteHash.clear();
 }
 
 mixin _AppRouteTransitionMixin<T> on PageRoute<T> {

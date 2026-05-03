@@ -91,6 +91,8 @@ class ReaderOpenRequest {
   final int? initialEp;
   final int? initialPage;
   final int? initialGroup;
+  final String? diagnosticEntrypoint;
+  final String? diagnosticCaller;
 
   factory ReaderOpenRequest({
     required String comicId,
@@ -99,6 +101,8 @@ class ReaderOpenRequest {
     int? initialEp,
     int? initialPage,
     int? initialGroup,
+    String? diagnosticEntrypoint,
+    String? diagnosticCaller,
   }) {
     final normalizedSourceKey = _resolveReaderOpenRequestSourceKey(
       sourceRef: sourceRef,
@@ -117,6 +121,8 @@ class ReaderOpenRequest {
       initialEp: initialEp,
       initialPage: initialPage,
       initialGroup: initialGroup,
+      diagnosticEntrypoint: diagnosticEntrypoint,
+      diagnosticCaller: diagnosticCaller,
     );
   }
 
@@ -127,6 +133,8 @@ class ReaderOpenRequest {
     required this.initialEp,
     required this.initialPage,
     required this.initialGroup,
+    required this.diagnosticEntrypoint,
+    required this.diagnosticCaller,
   });
 
   String? get sourceRefId => sourceRef?.id;
@@ -212,6 +220,8 @@ ReaderOpenRequest normalizeLegacyReaderOpenRequest({
   int? initialEp,
   int? initialPage,
   int? initialGroup,
+  String? diagnosticEntrypoint,
+  String? diagnosticCaller,
 }) {
   return ReaderOpenRequest(
     comicId: comicId,
@@ -225,6 +235,8 @@ ReaderOpenRequest normalizeLegacyReaderOpenRequest({
     initialEp: initialEp,
     initialPage: initialPage,
     initialGroup: initialGroup,
+    diagnosticEntrypoint: diagnosticEntrypoint,
+    diagnosticCaller: diagnosticCaller,
   );
 }
 
@@ -368,6 +380,7 @@ class _ReaderWithLoadingState
   DateTime? _readerChildMountedAt;
   bool _readerChildMounted = false;
   String? _routeNameSnapshot;
+  Map<String, Object?> _routeDiagnosticSnapshot = const {};
   SourceRef? _resolvedSourceRefForDiagnostics;
 
   SourceRef? _diagnosticSourceRef({ReaderProps? data}) {
@@ -416,11 +429,16 @@ class _ReaderWithLoadingState
       selectedIndex: data?.history.ep,
       currentPage: data?.history.page,
       routeName: routeName,
+      routeSnapshot: _routeDiagnosticSnapshot,
       expectedReaderTabId: ReaderSessionRepository.defaultTabIdForSourceRef(
         sourceRef,
       ),
       activeReaderTabId: activeTab?.tabId,
       pageOrderId: activeTab?.pageOrderId,
+      requestEntrypoint: widget.normalizedRequest.diagnosticEntrypoint,
+      requestCaller: widget.normalizedRequest.diagnosticCaller,
+      requestSourceRefId: widget.normalizedRequest.sourceRefId,
+      parentStateHash: hashCode,
       parentKey: widget.key?.toString(),
       readerChildKey: buildReaderWithLoadingChildKey(
         comicId: widget.normalizedRequest.comicId,
@@ -479,9 +497,14 @@ class _ReaderWithLoadingState
         selectedIndex: data?.history.ep,
         currentPage: data?.history.page,
         routeName: routeName,
+        routeSnapshot: _routeDiagnosticSnapshot,
         expectedReaderTabId: expectedReaderTabId,
         activeReaderTabId: activeTab?.tabId,
         pageOrderId: activeTab?.pageOrderId,
+        requestEntrypoint: widget.normalizedRequest.diagnosticEntrypoint,
+        requestCaller: widget.normalizedRequest.diagnosticCaller,
+        requestSourceRefId: widget.normalizedRequest.sourceRefId,
+        parentStateHash: hashCode,
         parentKey: widget.key?.toString(),
         readerChildKey: buildReaderWithLoadingChildKey(
           comicId: widget.normalizedRequest.comicId,
@@ -545,7 +568,35 @@ class _ReaderWithLoadingState
 
   @override
   Widget? buildFrame(BuildContext context, Widget child) {
-    _routeNameSnapshot = ModalRoute.of(context)?.settings.name;
+    final route = ModalRoute.of(context);
+    _routeNameSnapshot = route?.settings.name;
+    final routeHash = route?.hashCode;
+    final hostDiagnostic = navigatorPushHostDiagnosticForRouteHash(routeHash);
+    final lifecycleDiagnostic = navigatorLifecycleDiagnosticForRouteHash(
+      routeHash,
+    );
+    _routeDiagnosticSnapshot = buildReaderRouteDiagnosticSnapshotForTesting(
+      routeHash: routeHash,
+      routeName: _routeNameSnapshot,
+      routeSettingsName: route?.settings.name,
+      routeSettingsArgumentsType: route?.settings.arguments?.runtimeType
+          .toString(),
+      routeRuntimeType: route?.runtimeType.toString(),
+      routeDiagnosticIdentity: route is AppPageRoute
+          ? route.diagnosticIdentity
+          : null,
+      navigatorHash: hostDiagnostic?['navigatorHash'] as int?,
+      rootNavigator: hostDiagnostic?['rootNavigator'] as bool?,
+      observerAttached: hostDiagnostic?['observerAttached'] as bool?,
+      observerStatus: lifecycleDiagnostic == null
+          ? 'observer_miss'
+          : 'observer_seen',
+      previousRouteHash: hostDiagnostic?['previousRouteHash'] as int?,
+      previousRouteDiagnosticIdentity:
+          hostDiagnostic?['previousRouteDiagnosticIdentity'] as String?,
+      navigatorLifecycleEvent:
+          lifecycleDiagnostic?['event'] as String?,
+    );
     final branch = isLoading
         ? 'loading'
         : (error != null ? 'error' : 'content');

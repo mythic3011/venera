@@ -27,6 +27,8 @@ class ComicDetailReaderOpenRequest {
     this.initialEp,
     this.initialPage,
     this.initialGroup,
+    this.diagnosticEntrypoint,
+    this.diagnosticCaller,
   });
 
   final String comicId;
@@ -34,6 +36,8 @@ class ComicDetailReaderOpenRequest {
   final int? initialEp;
   final int? initialPage;
   final int? initialGroup;
+  final String? diagnosticEntrypoint;
+  final String? diagnosticCaller;
 
   String get sourceKey => sourceRef.sourceKey;
 
@@ -47,6 +51,8 @@ class ComicDetailReaderOpenRequest {
       initialEp: initialEp,
       initialPage: initialPage,
       initialGroup: initialGroup,
+      diagnosticEntrypoint: diagnosticEntrypoint,
+      diagnosticCaller: diagnosticCaller,
     );
   }
 }
@@ -58,6 +64,8 @@ ComicDetailReaderOpenRequest buildComicDetailReaderOpenRequest({
   required int? ep,
   required int? page,
   required int? group,
+  String? diagnosticEntrypoint,
+  String? diagnosticCaller,
 }) {
   final resolvedComicId =
       sourceRef.params['localComicId']?.toString() ??
@@ -69,6 +77,8 @@ ComicDetailReaderOpenRequest buildComicDetailReaderOpenRequest({
     initialEp: ep,
     initialPage: page,
     initialGroup: group,
+    diagnosticEntrypoint: diagnosticEntrypoint,
+    diagnosticCaller: diagnosticCaller,
   );
 }
 
@@ -178,6 +188,20 @@ abstract mixin class _ComicPageActions {
   ///
   /// [group] the chapter group number, start from 1
   Future<void> read([int? ep, int? page, int? group]) async {
+    await _readWithEntrypoint(
+      ep,
+      page,
+      group,
+      entrypoint: 'comic_detail.read',
+    );
+  }
+
+  Future<void> _readWithEntrypoint(
+    int? ep,
+    int? page,
+    int? group, {
+    required String entrypoint,
+  }) async {
     final resumeSourceRef = await ReaderResumeService(
       readerSessions: App.repositories.readerSession,
       loadLegacyResumeSourceRef: HistoryManager().findResumeSourceRef,
@@ -196,6 +220,8 @@ abstract mixin class _ComicPageActions {
       ep: ep,
       page: page,
       group: group,
+      diagnosticEntrypoint: entrypoint,
+      diagnosticCaller: '_ComicPageActions._readWithEntrypoint',
     );
     Future<void> openLegacyReader() async {
       await App.rootContext
@@ -247,7 +273,12 @@ abstract mixin class _ComicPageActions {
     var ep = history?.ep ?? 1;
     var page = history?.page ?? 1;
     var group = history?.group;
-    read(ep, page, group);
+    _readWithEntrypoint(
+      ep,
+      page,
+      group,
+      entrypoint: 'comic_detail.continue',
+    );
   }
 
   void onReadEnd();

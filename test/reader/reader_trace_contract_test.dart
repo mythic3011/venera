@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/widgets.dart';
 import 'package:venera/foundation/comic_type.dart';
+import 'package:venera/foundation/app_page_route.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/reader/reader_diagnostics.dart';
 import 'package:venera/features/reader/data/reader_runtime_context.dart';
@@ -10,10 +12,12 @@ import 'package:venera/features/reader/presentation/reader.dart';
 void main() {
   setUp(() {
     AppDiagnostics.configureSinksForTesting(const []);
+    clearNavigatorRouteDiagnosticsForTesting();
   });
 
   tearDown(() {
     AppDiagnostics.resetForTesting();
+    clearNavigatorRouteDiagnosticsForTesting();
   });
 
   test('required_event_name_and_phase_serialize_consistently', () {
@@ -45,6 +49,97 @@ void main() {
     expect(event['chapterIndex'], 3);
     expect(event['page'], 7);
   });
+
+  test('reader route lifecycle trace includes push and pop route identity', () {
+    AppDiagnostics.resetForTesting();
+    AppDiagnostics.configureSinksForTesting(const []);
+    final route = AppPageRoute<void>(
+      builder: (_) => const SizedBox(),
+      settings: const RouteSettings(name: '/reader'),
+    )..label = 'ReaderWithLoading';
+    final previousRoute = AppPageRoute<void>(
+      builder: (_) => const SizedBox(),
+      settings: const RouteSettings(name: '/detail'),
+    )..label = 'ComicPage';
+
+    final pushData = buildNavigatorRouteLifecycleDiagnostic(
+      event: 'didPush',
+      route: route,
+      previousRoute: previousRoute,
+      pageCountBeforeEvent: 2,
+      timestamp: DateTime.utc(2026, 1, 1),
+    );
+    emitNavigatorRouteLifecycleDiagnostic(pushData);
+
+    final popData = buildNavigatorRouteLifecycleDiagnostic(
+      event: 'didPop',
+      route: route,
+      previousRoute: previousRoute,
+      pageCountBeforeEvent: 2,
+      timestamp: DateTime.utc(2026, 1, 1, 0, 0, 1),
+    );
+    emitNavigatorRouteLifecycleDiagnostic(popData);
+
+    final events = DevDiagnosticsApi.recent(channel: 'navigator.lifecycle')
+        .where(
+          (event) =>
+              event.data['timestamp'] == '2026-01-01T00:00:00.000Z' ||
+              event.data['timestamp'] == '2026-01-01T00:00:01.000Z',
+        )
+        .toList();
+    expect(events.map((event) => event.message), ['didPush', 'didPop']);
+    expect(events.first.data['routeHash'], route.hashCode);
+    expect(
+      events.first.data['routeDiagnosticIdentity'],
+      contains('label=ReaderWithLoading'),
+    );
+    expect(events.first.data['previousRouteHash'], previousRoute.hashCode);
+    expect(events.first.data['pageCountBeforeEvent'], 2);
+    expect(
+      events.last.data['previousRouteDiagnosticIdentity'],
+      contains('label=ComicPage'),
+    );
+  });
+
+  test(
+    'reader parent dispose route hash can be correlated with navigator observer route hash',
+    () {
+      final route = AppPageRoute<void>(
+        builder: (_) => const SizedBox(),
+        settings: const RouteSettings(name: '/reader'),
+      )..label = 'ReaderWithLoading';
+
+      final lifecycle = buildNavigatorRouteLifecycleDiagnostic(
+        event: 'didPush',
+        route: route,
+        previousRoute: null,
+        pageCountBeforeEvent: 1,
+        timestamp: DateTime.utc(2026, 1, 1),
+      );
+      final parentDispose = buildReaderParentShellDiagnosticForTesting(
+        owner: 'ReaderWithLoading.parentUnmount',
+        branch: 'content',
+        readerChildMounted: false,
+        comicId: '1',
+        loadMode: 'local',
+        sourceKey: 'local',
+        chapterId: '1:__imported__',
+        chapterIndex: 1,
+        page: 1,
+        selectedIndex: 1,
+        currentPage: 1,
+        routeName: '/reader',
+        routeSnapshot: {'routeHash': route.hashCode},
+        expectedReaderTabId: 'local:local:1:1:__imported__',
+        activeReaderTabId: 'local:local:1:1:__imported__',
+        pageOrderId: '1:__imported__:source_default',
+        reason: 'parentState.dispose',
+        openDurationMs: 1800,
+      );
+
+      expect(parentDispose['routeHash'], lifecycle['routeHash']);
+    },
+  );
 
   test('all_phases_serialize_to_stable_names', () {
     expect(ReaderTracePhase.sourceResolution.name, 'sourceResolution');
@@ -218,6 +313,104 @@ void main() {
   );
 
   test(
+    'route diagnostic snapshot omits unavailable fields safely',
+    () {
+      final data = buildReaderRouteDiagnosticSnapshotForTesting(
+        routeHash: 42,
+        routeName: '/reader',
+      );
+
+      expect(data['routeHash'], 42);
+      expect(data['routeName'], '/reader');
+      expect(data.containsKey('routeSettingsArgumentsType'), isFalse);
+      expect(data.containsKey('routeDiagnosticIdentity'), isFalse);
+    },
+  );
+
+  test(
+    'reader route host snapshot records navigator identity and reports observer miss when lifecycle is absent',
+    () {
+      emitNavigatorPushHostDiagnostic({
+        'event': 'pushHost',
+        'timestamp': '2026-01-01T00:00:00.000Z',
+        'routeHash': 42,
+        'navigatorHash': 7,
+        'rootNavigator': false,
+        'observerAttached': false,
+        'previousRouteHash': 11,
+        'previousRouteDiagnosticIdentity': 'ComicDetailPage',
+      });
+
+      final host = navigatorPushHostDiagnosticForRouteHash(42)!;
+      final lifecycle = navigatorLifecycleDiagnosticForRouteHash(42);
+      final snapshot = buildReaderRouteDiagnosticSnapshotForTesting(
+        routeHash: 42,
+        navigatorHash: host['navigatorHash'] as int?,
+        rootNavigator: host['rootNavigator'] as bool?,
+        observerAttached: host['observerAttached'] as bool?,
+        observerStatus: lifecycle == null ? 'observer_miss' : 'observer_seen',
+        previousRouteHash: host['previousRouteHash'] as int?,
+        previousRouteDiagnosticIdentity:
+            host['previousRouteDiagnosticIdentity'] as String?,
+      );
+
+      expect(snapshot['navigatorHash'], 7);
+      expect(snapshot['rootNavigator'], isFalse);
+      expect(snapshot['observerAttached'], isFalse);
+      expect(snapshot['observerStatus'], 'observer_miss');
+      expect(snapshot['previousRouteHash'], 11);
+    },
+  );
+
+  test(
+    'reader route host snapshot correlates route hash to navigator lifecycle when observer sees push',
+    () {
+      final route = AppPageRoute<void>(
+        builder: (_) => const SizedBox(),
+        settings: const RouteSettings(name: '/reader'),
+      )..label = 'ReaderWithLoading';
+      emitNavigatorPushHostDiagnostic({
+        'event': 'pushHost',
+        'timestamp': '2026-01-01T00:00:00.000Z',
+        'routeHash': route.hashCode,
+        'navigatorHash': 9,
+        'rootNavigator': true,
+        'observerAttached': true,
+        'previousRouteHash': 12,
+        'previousRouteDiagnosticIdentity': 'ComicDetailPage',
+      });
+      emitNavigatorRouteLifecycleDiagnostic(
+        buildNavigatorRouteLifecycleDiagnostic(
+          event: 'didPush',
+          route: route,
+          previousRoute: null,
+          pageCountBeforeEvent: 1,
+          timestamp: DateTime.utc(2026, 1, 1),
+        ),
+      );
+
+      final host = navigatorPushHostDiagnosticForRouteHash(route.hashCode)!;
+      final lifecycle = navigatorLifecycleDiagnosticForRouteHash(route.hashCode);
+      final snapshot = buildReaderRouteDiagnosticSnapshotForTesting(
+        routeHash: route.hashCode,
+        navigatorHash: host['navigatorHash'] as int?,
+        rootNavigator: host['rootNavigator'] as bool?,
+        observerAttached: host['observerAttached'] as bool?,
+        observerStatus: lifecycle == null ? 'observer_miss' : 'observer_seen',
+        previousRouteHash: host['previousRouteHash'] as int?,
+        previousRouteDiagnosticIdentity:
+            host['previousRouteDiagnosticIdentity'] as String?,
+        navigatorLifecycleEvent: lifecycle?['event'] as String?,
+      );
+
+      expect(snapshot['observerStatus'], 'observer_seen');
+      expect(snapshot['navigatorHash'], 9);
+      expect(snapshot['rootNavigator'], isTrue);
+      expect(snapshot['navigatorLifecycleEvent'], 'didPush');
+    },
+  );
+
+  test(
     'shell keeps reader child mounted when active tab id matches expected local reader tab',
     () {
       final data = buildReaderParentShellDiagnosticForTesting(
@@ -233,6 +426,7 @@ void main() {
         selectedIndex: 1,
         currentPage: 1,
         routeName: null,
+        routeSnapshot: const {'routeHash': 101},
         expectedReaderTabId: 'local:local:1:1:__imported__',
         activeReaderTabId: 'local:local:1:1:__imported__',
         pageOrderId: '1:__imported__:source_default',
@@ -243,6 +437,50 @@ void main() {
       expect(data['readerChildMounted'], isTrue);
       expect(data['retainedTab'], isTrue);
       expect(data['branch'], 'content');
+    },
+  );
+
+  test(
+    'reader parent unmount diagnostic includes entrypoint route and request identity',
+    () {
+      final data = buildReaderParentShellDiagnosticForTesting(
+        owner: 'ReaderWithLoading.parentUnmount',
+        branch: 'content',
+        readerChildMounted: false,
+        comicId: '1',
+        loadMode: 'local',
+        sourceKey: 'local',
+        chapterId: '1:__imported__',
+        chapterIndex: 1,
+        page: 1,
+        selectedIndex: 1,
+        currentPage: 1,
+        routeName: '/reader',
+        routeSnapshot: const {
+          'routeHash': 42,
+          'routeSettingsName': '/reader',
+          'routeSettingsArgumentsType': 'ReaderRouteArgs',
+        },
+        expectedReaderTabId: 'local:local:1:1:__imported__',
+        activeReaderTabId: 'local:local:1:1:__imported__',
+        pageOrderId: '1:__imported__:source_default',
+        requestEntrypoint: 'local_favorites.item',
+        requestCaller: '_LocalFavoritesPageState._openFavoriteComic',
+        requestSourceRefId: 'local:local:1:1:__imported__',
+        parentStateHash: 777,
+        parentKey: 'parent-key',
+        readerChildKey: 'reader:1:local:local:1:1:__imported__',
+        reason: 'parentState.dispose',
+        openDurationMs: 88,
+      );
+
+      expect(data['requestEntrypoint'], 'local_favorites.item');
+      expect(data['requestSourceRefId'], 'local:local:1:1:__imported__');
+      expect(data['routeHash'], 42);
+      expect(data['routeSettingsName'], '/reader');
+      expect(data['routeSettingsArgumentsType'], 'ReaderRouteArgs');
+      expect(data['parentStateHash'], 777);
+      expect(data['disposeReason'], 'parentState.dispose');
     },
   );
 
@@ -268,6 +506,7 @@ void main() {
         selectedIndex: 1,
         currentPage: 1,
         routeName: null,
+        routeSnapshot: const {'routeHash': 101},
         expectedReaderTabId: 'local:local:1:1:__imported__',
         activeReaderTabId: 'local:local:1:1:__imported__',
         pageOrderId: '1:__imported__:source_default',
@@ -313,6 +552,7 @@ void main() {
         selectedIndex: 1,
         currentPage: 1,
         routeName: null,
+        routeSnapshot: const {'routeHash': 101},
         expectedReaderTabId: 'local:local:1:1:__imported__',
         activeReaderTabId: 'local:local:1:1:__imported__',
         pageOrderId: '1:__imported__:source_default',
@@ -358,6 +598,7 @@ void main() {
         selectedIndex: 1,
         currentPage: 1,
         routeName: null,
+        routeSnapshot: const {'routeHash': 101},
         expectedReaderTabId: 'local:local:1:1:__imported__',
         activeReaderTabId: 'local:local:1:1:__imported__',
         pageOrderId: '1:__imported__:source_default',
@@ -379,6 +620,7 @@ void main() {
         selectedIndex: 1,
         currentPage: 1,
         routeName: null,
+        routeSnapshot: const {'routeHash': 101},
         expectedReaderTabId: 'local:local:1:1:__imported__',
         activeReaderTabId: 'local:local:1:1:__imported__',
         pageOrderId: '1:__imported__:source_default',

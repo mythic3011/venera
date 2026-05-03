@@ -568,27 +568,66 @@ class NaviObserver extends NavigatorObserver implements Listenable {
 
   @override
   void didPop(Route route, Route? previousRoute) {
-    routes.removeLast();
+    emitNavigatorRouteLifecycleDiagnostic(
+      buildNavigatorRouteLifecycleDiagnostic(
+        event: 'didPop',
+        route: route,
+        previousRoute: previousRoute,
+        pageCountBeforeEvent: pageCount,
+      ),
+    );
+    routes.remove(route);
     notifyListeners();
   }
 
   @override
   void didPush(Route route, Route? previousRoute) {
+    emitNavigatorRouteLifecycleDiagnostic(
+      buildNavigatorRouteLifecycleDiagnostic(
+        event: 'didPush',
+        route: route,
+        previousRoute: previousRoute,
+        pageCountBeforeEvent: pageCount,
+      ),
+    );
     routes.addLast(route);
     notifyListeners();
   }
 
   @override
   void didRemove(Route route, Route? previousRoute) {
+    emitNavigatorRouteLifecycleDiagnostic(
+      buildNavigatorRouteLifecycleDiagnostic(
+        event: 'didRemove',
+        route: route,
+        previousRoute: previousRoute,
+        pageCountBeforeEvent: pageCount,
+      ),
+    );
     routes.remove(route);
     notifyListeners();
   }
 
   @override
   void didReplace({Route? newRoute, Route? oldRoute}) {
-    routes.remove(oldRoute);
-    if (newRoute != null) {
-      routes.add(newRoute);
+    emitNavigatorRouteLifecycleDiagnostic(
+      buildNavigatorRouteLifecycleDiagnostic(
+        event: 'didReplace',
+        route: newRoute,
+        previousRoute: oldRoute,
+        pageCountBeforeEvent: pageCount,
+      ),
+    );
+    final routeEntries = routes.toList();
+    final replaceIndex = oldRoute == null ? -1 : routeEntries.indexOf(oldRoute);
+    if (replaceIndex != -1 && newRoute != null) {
+      routeEntries[replaceIndex] = newRoute;
+      routes = Queue<Route>.from(routeEntries);
+    } else {
+      routes.remove(oldRoute);
+      if (newRoute != null) {
+        routes.add(newRoute);
+      }
     }
     notifyListeners();
   }

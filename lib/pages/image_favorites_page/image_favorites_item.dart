@@ -37,6 +37,8 @@ class _ImageFavoritesItemState extends State<_ImageFavoritesItem> {
           sourceKey: comic.sourceKey,
           initialEp: ep,
           initialPage: page,
+          diagnosticEntrypoint: 'image_favorites.item',
+          diagnosticCaller: '_ImageFavoritesItemState.goReaderPage',
         ),
       ),
     );

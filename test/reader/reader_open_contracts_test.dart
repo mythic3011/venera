@@ -104,6 +104,29 @@ void main() {
     expect(request.sourceRefId, 'local:local:comic-local:1:__imported__');
   });
 
+  test(
+    'reader open request preserves diagnostics entrypoint without affecting source identity',
+    () {
+      final sourceRef = SourceRef.fromLegacyLocal(
+        localType: 'local',
+        localComicId: 'comic-local',
+        chapterId: '1:__imported__',
+      );
+      final request = ReaderOpenRequest(
+        comicId: 'comic-local',
+        sourceRef: sourceRef,
+        sourceKey: sourceRef.sourceKey,
+        diagnosticEntrypoint: 'comic_detail.read',
+        diagnosticCaller: 'ComicPageActions.read',
+      );
+
+      expect(request.sourceRefId, sourceRef.id);
+      expect(request.sourceKey, sourceRef.sourceKey);
+      expect(request.diagnosticEntrypoint, 'comic_detail.read');
+      expect(request.diagnosticCaller, 'ComicPageActions.read');
+    },
+  );
+
   test('reader open request derives sourceKey from sourceRef when present', () {
     final request = ReaderOpenRequest(
       comicId: 'comic-local',
