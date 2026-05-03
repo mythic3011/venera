@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/pages/aggregated_search_page.dart';
@@ -12,18 +13,22 @@ void handleTextShare() async {
 
   var channel = EventChannel('venera/text_share');
   await for (var event in channel.receiveBroadcastStream()) {
-    final context = await _waitForMainNavigatorContext();
+    final navigator = await _waitForMainNavigatorState();
     if (event is String) {
-      context?.to(() => AggregatedSearchPage(keyword: event));
+      await navigator?.push(
+        MaterialPageRoute(
+          builder: (context) => AggregatedSearchPage(keyword: event),
+        ),
+      );
     }
   }
 }
 
-Future<BuildContext?> _waitForMainNavigatorContext() async {
+Future<NavigatorState?> _waitForMainNavigatorState() async {
   for (var i = 0; i < 10; i++) {
-    final context = App.mainNavigatorKey?.currentContext;
-    if (context != null) {
-      return context;
+    final navigator = App.mainNavigatorKey?.currentState;
+    if (navigator != null) {
+      return navigator;
     }
     await Future.delayed(const Duration(milliseconds: 50));
   }
