@@ -230,6 +230,46 @@ void main() {
       expect(callOrder, <String>['parse', 'register']);
       expect(registeredKeys, <String>['demo_source']);
     });
+
+    test('installed direct js source remains discoverable from committed file after in-memory source is cleared', () async {
+      final firstCommand = DirectJsInstallCommand(
+        adapter: ProductionDirectJsSourceWriteAdapter(
+          activeDir: activeDir,
+          stagedDir: stagedDir,
+          stagedWriter: DirectJsStagedSourceWriter(
+            activeDir: activeDir,
+            stagedDir: stagedDir,
+          ),
+          parserHandoff: DirectJsParserHandoff(
+            createAndParse: (_, committedFilePath) async =>
+                _buildSource(key: 'demo_source', filePath: committedFilePath),
+            registerSource: (_) {},
+          ),
+          installedKeyLookup: (sourceKey) async {
+            final existingFile = File('${activeDir.path}/$sourceKey.js');
+            return await existingFile.exists();
+          },
+        ),
+      );
+
+      final result = await firstCommand.execute(buildRequest());
+
+      expect(result, isA<SourceCommandSuccess>());
+      expect(await File('${activeDir.path}/demo_source.js').exists(), isTrue);
+      final secondCommand = DirectJsInstallCommand(
+        adapter: ProductionDirectJsSourceWriteAdapter(
+          activeDir: activeDir,
+          stagedDir: stagedDir,
+          installedKeyLookup: (sourceKey) async {
+            final existingFile = File('${activeDir.path}/$sourceKey.js');
+            return await existingFile.exists();
+          },
+        ),
+      );
+      final secondResult = await secondCommand.execute(buildRequest());
+      expect(secondResult, isA<SourceCommandFailed>());
+      expect((secondResult as SourceCommandFailed).code, sourceInstallKeyCollisionCode);
+    });
   });
 }
 

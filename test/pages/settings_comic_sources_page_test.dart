@@ -534,7 +534,7 @@ ComicSource _buildTestSource({
   required String key,
   required String name,
 }) {
-  return ComicSource(
+  return _StaticSettingsComicSource(
     name,
     key,
     null,
@@ -543,7 +543,7 @@ ComicSource _buildTestSource({
     null,
     const [],
     null,
-    null,
+    const <String, Map<String, dynamic>>{},
     null,
     null,
     null,
@@ -570,4 +570,46 @@ ComicSource _buildTestSource({
     null,
     identity: sourceIdentityFromKey(key, names: [name]),
   );
+}
+
+class _StaticSettingsComicSource extends ComicSource {
+  _StaticSettingsComicSource(
+    super.name,
+    super.key,
+    super.account,
+    super.categoryData,
+    super.categoryComicsData,
+    super.favoriteData,
+    super.explorePages,
+    super.searchPageData,
+    super.settings,
+    super.loadComicInfo,
+    super.loadComicThumbnail,
+    super.loadComicPages,
+    super.getImageLoadingConfig,
+    super.getThumbnailLoadingConfig,
+    super.filePath,
+    super.url,
+    super.version,
+    super.commentsLoader,
+    super.sendCommentFunc,
+    super.chapterCommentsLoader,
+    super.sendChapterCommentFunc,
+    super.likeOrUnlikeComic,
+    super.voteCommentFunc,
+    super.likeCommentFunc,
+    super.idMatcher,
+    super.translations,
+    super.handleClickTagEvent,
+    super.onTagSuggestionSelected,
+    super.linkHandler,
+    super.enableTagsSuggestions,
+    super.enableTagsTranslate,
+    super.starRatingFunc,
+    super.archiveDownloader, {
+    super.identity,
+  });
+
+  @override
+  Map<String, Map<String, dynamic>>? getSettingsDynamic() => settings;
 }
