@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:async';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/appdata_authority_audit.dart';
@@ -183,6 +184,7 @@ Future<void> _defaultInstallSourceFromJs(
   String sourceJs,
   String fileName,
 ) async {
+  // Legacy installer convergence remains deferred to a dedicated follow-up lane.
   final source = await ComicSourceParser().createAndParse(sourceJs, fileName);
   ComicSourceManager().add(source);
   _addAllPagesWithComicSource(source);
@@ -220,6 +222,9 @@ class SourceManagementController {
   final SourceRepositoryStoreProvider _repositoryStoreProvider;
   static final Map<String, Future<void>> _repositoryRefreshLocks =
       <String, Future<void>>{};
+  @visibleForTesting
+  static bool debugHasRepositoryRefreshLock(String repositoryId) =>
+      _repositoryRefreshLocks.containsKey(repositoryId);
 
   Future<void> addSourceFromUrl(String url) async {
     final normalized = url.trim();
@@ -410,7 +415,6 @@ class SourceManagementController {
       'repository.refresh.start',
       data: {
         'enabledOnly': enabledOnly,
-        'repositoryCount': repositories.length,
       },
     );
     AppDiagnostics.info(
@@ -537,13 +541,14 @@ class SourceManagementController {
   ) async {
     final previous = _repositoryRefreshLocks[repositoryId] ?? Future.value();
     final gate = Completer<void>();
-    _repositoryRefreshLocks[repositoryId] = previous.then((_) => gate.future);
+    final lockFuture = previous.then((_) => gate.future);
+    _repositoryRefreshLocks[repositoryId] = lockFuture;
     try {
       await previous;
       return await action();
     } finally {
       gate.complete();
-      if (identical(_repositoryRefreshLocks[repositoryId], gate.future)) {
+      if (identical(_repositoryRefreshLocks[repositoryId], lockFuture)) {
         _repositoryRefreshLocks.remove(repositoryId);
       }
     }
@@ -629,7 +634,13 @@ class SourceManagementController {
     }
     final fromSettings = _readLegacySourceListUrl();
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (fromSettings.isNotEmpty) {
+    final legacyUri = Uri.tryParse(fromSettings);
+    final isValidLegacySeed =
+        legacyUri != null &&
+        legacyUri.hasScheme &&
+        legacyUri.scheme.toLowerCase() == 'https' &&
+        legacyUri.host.isNotEmpty;
+    if (fromSettings.isNotEmpty && isValidLegacySeed) {
       AppDiagnostics.info(
         'source.management',
         'source.repository.registry.legacy_seed_hit',
@@ -653,11 +664,22 @@ class SourceManagementController {
       );
       return;
     }
-    AppDiagnostics.info(
-      'source.management',
-      'source.repository.registry.legacy_seed_miss',
-      data: {'seedSource': 'comicSourceListUrl'},
-    );
+    if (fromSettings.isEmpty) {
+      AppDiagnostics.info(
+        'source.management',
+        'source.repository.registry.legacy_seed_miss',
+        data: {'seedSource': 'comicSourceListUrl'},
+      );
+    } else {
+      AppDiagnostics.info(
+        'source.management',
+        'source.repository.registry.legacy_seed_invalid',
+        data: {
+          'seedUrl': fromSettings,
+          'seedSource': 'comicSourceListUrl',
+        },
+      );
+    }
     for (final repo in _defaultSourceRepositories) {
       await store.upsertSourceRepository(
         SourceRepositoryRecord(
@@ -709,11 +731,12 @@ class SourceManagementController {
       access: 'read',
       data: const <String, Object?>{'owner': 'SourceManagementController'},
     );
-    final raw = (appdata.settings['comicSourceListUrl'] as String).trim();
-    if (raw.contains('git.nyne.dev')) {
+    final raw = appdata.settings['comicSourceListUrl'];
+    final value = raw is String ? raw.trim() : '';
+    if (value.contains('git.nyne.dev')) {
       return _defaultSourceRepositories.first.url;
     }
-    return raw;
+    return value;
   }
 
   String _repositoryIdFromUrl(String url) {

@@ -297,6 +297,150 @@ void main() {
       );
     });
 
+    test('missing comicSourceListUrl falls back to default repositories', () async {
+      repositoryStore = UnifiedComicsStore('${tempDir.path}/source_registry.db');
+      await repositoryStore!.init();
+      appdata.settings['comicSourceListUrl'] = null;
+      final controller = SourceManagementController(
+        repositoryStoreProvider: () => repositoryStore,
+      );
+
+      final repos = await controller.listRepositories();
+
+      expect(repos.length, 2);
+      expect(
+        repos.map((repo) => repo.indexUrl).toSet(),
+        <String>{
+          'https://cdn.jsdelivr.net/gh/venera-app/venera-configs@main/index.json',
+          'https://cdn.jsdelivr.net/gh/mythic3011/venera-configs@main/index.json',
+        },
+      );
+    });
+
+    test('non-string comicSourceListUrl falls back to default repositories', () async {
+      repositoryStore = UnifiedComicsStore('${tempDir.path}/source_registry.db');
+      await repositoryStore!.init();
+      appdata.settings['comicSourceListUrl'] = 12345;
+      final controller = SourceManagementController(
+        repositoryStoreProvider: () => repositoryStore,
+      );
+
+      final repos = await controller.listRepositories();
+
+      expect(repos.length, 2);
+      expect(
+        repos.map((repo) => repo.indexUrl).toSet(),
+        <String>{
+          'https://cdn.jsdelivr.net/gh/venera-app/venera-configs@main/index.json',
+          'https://cdn.jsdelivr.net/gh/mythic3011/venera-configs@main/index.json',
+        },
+      );
+    });
+
+    test('invalid comicSourceListUrl does not seed legacy repository', () async {
+      repositoryStore = UnifiedComicsStore('${tempDir.path}/source_registry.db');
+      await repositoryStore!.init();
+      appdata.settings['comicSourceListUrl'] = '::::invalid uri::::';
+      final controller = SourceManagementController(
+        repositoryStoreProvider: () => repositoryStore,
+      );
+
+      final repos = await controller.listRepositories();
+      final events = DevDiagnosticsApi.recent(channel: 'source.management');
+
+      expect(
+        repos.any((repo) => repo.name == 'Legacy Source Repository'),
+        isFalse,
+      );
+      expect(
+        events.any(
+          (event) =>
+              event.message == 'source.repository.registry.legacy_seed_invalid',
+        ),
+        isTrue,
+      );
+      expect(
+        repos.map((repo) => repo.indexUrl).toSet(),
+        <String>{
+          'https://cdn.jsdelivr.net/gh/venera-app/venera-configs@main/index.json',
+          'https://cdn.jsdelivr.net/gh/mythic3011/venera-configs@main/index.json',
+        },
+      );
+    });
+
+    test('non-https comicSourceListUrl does not seed legacy repository', () async {
+      repositoryStore = UnifiedComicsStore('${tempDir.path}/source_registry.db');
+      await repositoryStore!.init();
+      appdata.settings['comicSourceListUrl'] =
+          'http://example.com/legacy-index.json';
+      final controller = SourceManagementController(
+        repositoryStoreProvider: () => repositoryStore,
+      );
+
+      final repos = await controller.listRepositories();
+      final events = DevDiagnosticsApi.recent(channel: 'source.management');
+
+      expect(
+        repos.any((repo) => repo.name == 'Legacy Source Repository'),
+        isFalse,
+      );
+      expect(
+        events.any(
+          (event) =>
+              event.message == 'source.repository.registry.legacy_seed_invalid',
+        ),
+        isTrue,
+      );
+      expect(
+        repos.map((repo) => repo.indexUrl).toSet(),
+        <String>{
+          'https://cdn.jsdelivr.net/gh/venera-app/venera-configs@main/index.json',
+          'https://cdn.jsdelivr.net/gh/mythic3011/venera-configs@main/index.json',
+        },
+      );
+    });
+
+    test('valid HTTPS comicSourceListUrl seeds legacy repository', () async {
+      repositoryStore = UnifiedComicsStore('${tempDir.path}/source_registry.db');
+      await repositoryStore!.init();
+      appdata.settings['comicSourceListUrl'] =
+          'https://example.com/legacy-index.json';
+      final controller = SourceManagementController(
+        repositoryStoreProvider: () => repositoryStore,
+      );
+
+      final repos = await controller.listRepositories();
+      final events = DevDiagnosticsApi.recent(channel: 'source.management');
+
+      expect(repos.length, 1);
+      expect(repos.single.name, 'Legacy Source Repository');
+      expect(
+        events.any(
+          (event) =>
+              event.message == 'source.repository.registry.legacy_seed_hit',
+        ),
+        isTrue,
+      );
+    });
+
+    test('git.nyne.dev compatibility rewrite still validates as HTTPS', () async {
+      repositoryStore = UnifiedComicsStore('${tempDir.path}/source_registry.db');
+      await repositoryStore!.init();
+      appdata.settings['comicSourceListUrl'] =
+          'https://git.nyne.dev/venera/index.json';
+      final controller = SourceManagementController(
+        repositoryStoreProvider: () => repositoryStore,
+      );
+
+      final repos = await controller.listRepositories();
+
+      expect(repos.length, 1);
+      expect(
+        repos.single.indexUrl,
+        'https://cdn.jsdelivr.net/gh/venera-app/venera-configs@main/index.json',
+      );
+    });
+
     test('startup does not rewrite comicSourceListUrl appdata key as active source authority', () async {
       final initSource = File('lib/init.dart').readAsStringSync();
 
@@ -600,6 +744,10 @@ void main() {
 
       expect(maxInFlight, 1);
       expect(fetchCalls, 2);
+      expect(
+        SourceManagementController.debugHasRepositoryRefreshLock(repo.id),
+        isFalse,
+      );
       final packages = await controller.listAvailablePackages(
         repositoryId: repo.id,
       );
@@ -671,8 +819,9 @@ void main() {
         diagnostics.any(
           (event) =>
               event.message == 'repository.refresh.start' &&
-              event.data['repositoryCount'] == 3 &&
-              event.data['enabledOnly'] == true,
+              event.data['enabledOnly'] == true &&
+              event.data.containsKey('repositoryCount') == false &&
+              event.data.containsKey('selectedRepositoryCount') == false,
         ),
         isTrue,
       );
