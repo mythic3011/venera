@@ -352,6 +352,11 @@ class _WebdavSettingState extends State<_WebdavSetting> {
   bool isTesting = false;
   bool upload = true;
 
+  void _closePopup() {
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -549,7 +554,7 @@ class _WebdavSettingState extends State<_WebdavSetting> {
                     _gateway.saveAppData();
                     if (!mounted) return;
                     context.showMessage(message: "Saved".tl);
-                    App.rootPop();
+                    _closePopup();
                     return;
                   }
 
@@ -565,7 +570,7 @@ class _WebdavSettingState extends State<_WebdavSetting> {
                     _gateway.saveAppData();
                     if (!mounted) return;
                     context.showMessage(message: "Saved".tl);
-                    App.rootPop();
+                    _closePopup();
                     return;
                   }
 
@@ -589,7 +594,7 @@ class _WebdavSettingState extends State<_WebdavSetting> {
                   } else {
                     _gateway.saveAppData();
                     context.showMessage(message: "Saved".tl);
-                    App.rootPop();
+                    _closePopup();
                   }
                 },
                 child: Text("Continue".tl),
