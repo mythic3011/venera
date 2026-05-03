@@ -718,16 +718,11 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
         icon: Icons.picture_as_pdf_outlined,
         text: "Export as pdf".tl,
         onClick: () async {
-          final localPath = legacyReadLocalComicsRootPath();
           exportComics(comics, (comic, outFilePath) {
-            final resolvedComicDirectory =
-                comic.directory.contains('/') || comic.directory.contains('\\')
-                ? comic.directory
-                : FilePath.join(localPath, comic.directory);
             return createPdfFromComicIsolate(
               comic,
               outFilePath,
-              resolvedComicDirectory: resolvedComicDirectory,
+              resolvedComicDirectory: comic.baseDir,
             );
           }, ".pdf");
         },

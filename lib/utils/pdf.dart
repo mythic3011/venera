@@ -28,7 +28,7 @@ Future<void> _createPdfFromComic({
     files.removeWhere(
       (element) =>
           element is! File ||
-          element.name.toLowerCase().startsWith('cover'),
+          File(element.path).name.toLowerCase().startsWith('cover'),
     );
     files.sort((a, b) {
       var aName = (a as File).basenameWithoutExt;
@@ -127,6 +127,7 @@ Future<File> createPdfFromComicIsolate(
   String savePath,
   {required String resolvedComicDirectory}
 ) async {
+  File(savePath).parent.createSync(recursive: true);
   var receivePort = ReceivePort();
   var errorPort = ReceivePort();
   var exitPort = ReceivePort();
