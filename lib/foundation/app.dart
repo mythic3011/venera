@@ -166,6 +166,7 @@ class _App {
       readerSession: readerSessionRepository,
       readerActivity: ReaderActivityRepository(
         store: UnifiedReaderActivityStoreAdapter(runtimeStore),
+        comicDetailStore: comicDetailStore,
       ),
       readerStatus: ReaderStatusRepository(
         store: UnifiedReaderStatusStoreAdapter(runtimeStore),
