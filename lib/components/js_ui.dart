@@ -205,8 +205,12 @@ mixin class JsUiApi {
         (initialIndex >= options.length || initialIndex < 0)) {
       initialIndex = null;
     }
+    final uiContext = _resolveUiContext();
+    if (uiContext == null) {
+      return Future.value(null);
+    }
     return showSelectDialog(
-      context: _resolveUiContext(),
+      context: uiContext,
       title: title,
       options: options,
       initialIndex: initialIndex,

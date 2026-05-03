@@ -477,20 +477,15 @@ void showInfoDialog({
 }
 
 Future<int?> showSelectDialog({
-  BuildContext? context,
+  required BuildContext context,
   required String title,
   required List<String> options,
   int? initialIndex,
 }) async {
   int? current = initialIndex;
-  final dialogContext =
-      context ?? App.rootNavigatorKey.currentContext ?? App.mainNavigatorKey?.currentContext;
-  if (dialogContext == null) {
-    return null;
-  }
 
   await showDialog(
-    context: dialogContext,
+    context: context,
     builder: (context) {
       return StatefulBuilder(
         builder: (context, setState) {
