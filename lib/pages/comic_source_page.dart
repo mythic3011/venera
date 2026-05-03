@@ -142,6 +142,7 @@ class _BodyState extends State<_Body> {
   List<SourcePackageView> _availablePackages = const <SourcePackageView>[];
   bool _loadingRepositories = false;
   String? _repositoryCommandError;
+  String? _repositoryRefreshSummary;
   String? _directSourceValidationMessage;
   bool _validatingDirectSource = false;
   _ValidatedDirectSource? _validatedDirectSource;
@@ -169,8 +170,8 @@ class _BodyState extends State<_Body> {
     return SmoothCustomScrollView(
       slivers: [
         SliverAppbar(title: Text('Comic Source'.tl), style: AppbarStyle.shadow),
+        _buildDirectSourceSection(context),
         _buildRepositorySection(context),
-        _buildAddImportSection(context),
         _buildAvailableSourcesSection(context),
         _buildInstalledSourcesSection(context),
         for (var source in ComicSource.all())
@@ -214,7 +215,7 @@ class _BodyState extends State<_Body> {
       _repositoryCommandError = null;
     });
     try {
-      await _sourceManagementController.refreshRepositories();
+      final summary = await _sourceManagementController.refreshRepositoriesSummary();
       if (!mounted) return;
       final repos = await _sourceManagementController.listRepositories();
       final packages = await _sourceManagementController.listAvailablePackages();
@@ -222,6 +223,9 @@ class _BodyState extends State<_Body> {
       setState(() {
         _repositories = repos;
         _availablePackages = packages;
+        _repositoryRefreshSummary =
+            'Refreshed ${summary.refreshedRepositoryCount} repos. '
+            'Packages: ${summary.packageCount}, Skipped: ${summary.skippedCount}.';
       });
     } catch (error) {
       _showRepositoryCommandError(error);
@@ -311,6 +315,11 @@ class _BodyState extends State<_Body> {
                     _repositoryCommandError!,
                     style: TextStyle(color: context.colorScheme.error),
                   ),
+                ),
+              if (_repositoryRefreshSummary != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(_repositoryRefreshSummary!),
                 ),
               if (_repositories.isEmpty && !_loadingRepositories)
                 const Text('No repositories')
@@ -454,7 +463,13 @@ class _BodyState extends State<_Body> {
                   (pkg) => ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(pkg.name),
-                    subtitle: Text(pkg.availableVersion ?? ''),
+                    subtitle: Text(
+                      [
+                        if (pkg.availableVersion?.isNotEmpty == true)
+                          'Version: ${pkg.availableVersion}',
+                        'Status: ${_reviewOnlyPackageStatus(pkg)}',
+                      ].join('\n'),
+                    ),
                   ),
                 ),
             ],
@@ -462,6 +477,13 @@ class _BodyState extends State<_Body> {
         ),
       ),
     );
+  }
+
+  String _reviewOnlyPackageStatus(SourcePackageView package) {
+    if (ComicSource.find(package.sourceKey) != null) {
+      return 'alreadyInstalled';
+    }
+    return 'reviewOnly/installDisabled';
   }
 
   void delete(ComicSource source) {
@@ -520,98 +542,93 @@ class _BodyState extends State<_Body> {
     ComicSourcePage.update(source, showLoading);
   }
 
-  Widget _buildAddImportSection(BuildContext context) {
+  Widget _buildDirectSourceSection(BuildContext context) {
     return SliverToBoxAdapter(
-      child: SizedBox(
-        width: double.infinity,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
-              child: Row(
+      child: Card(
+        margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
                 children: [
-                  const Icon(Icons.dashboard_customize),
+                  const Icon(Icons.download_for_offline_outlined),
                   const SizedBox(width: 12),
-                  Text("Add / Import Source".tl, style: ts.s16),
+                  Text("Direct JS Validation / Install".tl, style: ts.s16),
                 ],
               ),
-            ),
-            TextField(
-              decoration: InputDecoration(
-                hintText: "URL",
-                border: const UnderlineInputBorder(),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-                suffix: IconButton(
-                  onPressed: _validatingDirectSource
-                      ? null
-                      : () => _validateDirectSourceUrl(url),
-                  icon: const Icon(Icons.fact_check_outlined),
-                ),
-              ),
-              onChanged: (value) {
-                url = value;
-              },
-              onSubmitted: _validateDirectSourceUrl,
-            ).paddingHorizontal(16).paddingBottom(8),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text(
-                'Use repositories for source catalogs. Use direct URL or local file only when you trust the source.'
-                    .tl,
-              ),
-            ),
-            if (_directSourceValidationMessage != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Text(_directSourceValidationMessage!),
-              ),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.tonalIcon(
-                  icon: const Icon(Icons.folder_copy_outlined),
-                  label: const Text("Manage Repositories"),
-                  onPressed: _promptAddRepository,
-                ),
-                FilledButton.tonalIcon(
-                  icon: Icon(Icons.file_open_outlined),
-                  label: Text("Use a config file".tl),
-                  onPressed: _selectFile,
-                ),
-                FilledButton.tonalIcon(
-                  icon: Icon(Icons.help_outline),
-                  label: Text("Help".tl),
-                  onPressed: help,
-                ),
-                _CheckUpdatesButton(),
-                FilledButton.tonalIcon(
-                  icon: _validatingDirectSource
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.verified_outlined),
-                  label: const Text("Validate Direct URL"),
-                  onPressed: _validatingDirectSource
-                      ? null
-                      : () => _validateDirectSourceUrl(url),
-                ),
-                if (_sourceManagementController.supportsDirectJsInstall &&
-                    _validatedDirectSource != null)
-                  FilledButton.icon(
-                    key: const ValueKey('install-validated-direct-source'),
-                    icon: const Icon(Icons.download_done_outlined),
-                    label: const Text('Install Source'),
-                    onPressed: _confirmInstallValidatedDirectSource,
+              const SizedBox(height: 8),
+              TextField(
+                decoration: InputDecoration(
+                  hintText: "URL",
+                  border: const UnderlineInputBorder(),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  suffix: IconButton(
+                    onPressed: _validatingDirectSource
+                        ? null
+                        : () => _validateDirectSourceUrl(url),
+                    icon: const Icon(Icons.fact_check_outlined),
                   ),
-              ],
-            ).paddingHorizontal(12).paddingVertical(8),
-            const SizedBox(height: 8),
-          ],
+                ),
+                onChanged: (value) {
+                  url = value;
+                },
+                onSubmitted: _validateDirectSourceUrl,
+              ).paddingBottom(8),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+                child: Text(
+                  'Use repositories for source catalogs. Use direct URL or local file only when you trust the source.'
+                      .tl,
+                ),
+              ),
+              if (_directSourceValidationMessage != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+                  child: Text(_directSourceValidationMessage!),
+                ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilledButton.tonalIcon(
+                    icon: Icon(Icons.file_open_outlined),
+                    label: Text("Use a config file".tl),
+                    onPressed: _selectFile,
+                  ),
+                  FilledButton.tonalIcon(
+                    icon: Icon(Icons.help_outline),
+                    label: Text("Help".tl),
+                    onPressed: help,
+                  ),
+                  _CheckUpdatesButton(),
+                  FilledButton.tonalIcon(
+                    icon: _validatingDirectSource
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.verified_outlined),
+                    label: const Text("Validate Direct URL"),
+                    onPressed: _validatingDirectSource
+                        ? null
+                        : () => _validateDirectSourceUrl(url),
+                  ),
+                  if (_sourceManagementController.supportsDirectJsInstall &&
+                      _validatedDirectSource != null)
+                    FilledButton.icon(
+                      key: const ValueKey('install-validated-direct-source'),
+                      icon: const Icon(Icons.download_done_outlined),
+                      label: const Text('Install Source'),
+                      onPressed: _confirmInstallValidatedDirectSource,
+                    ),
+                ],
+              ).paddingVertical(8),
+            ],
+          ),
         ),
       ),
     );

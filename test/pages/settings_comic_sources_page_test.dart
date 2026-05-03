@@ -96,6 +96,19 @@ class _FakeSourceManagementController extends SourceManagementController {
   }
 
   @override
+  Future<RepositoryRefreshSummary> refreshRepositoriesSummary({
+    bool enabledOnly = true,
+  }) async {
+    refreshRepositoriesCalls++;
+    packages = List<SourcePackageView>.of(packagesAfterRefresh);
+    return RepositoryRefreshSummary(
+      refreshedRepositoryCount: repositories.where((repo) => !enabledOnly || repo.enabled).length,
+      packageCount: packages.length,
+      skippedCount: 0,
+    );
+  }
+
+  @override
   Future<void> addSourceFromUrl(String url) async {
     addSourceFromUrlCalls++;
   }
@@ -191,7 +204,29 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(find.textContaining('reviewOnly/installDisabled'), findsOneWidget);
     expect(find.text('Install pending'), findsNothing);
+  });
+
+  testWidgets('source page separates direct install from repository package review', (
+    tester,
+  ) async {
+    final controller = _FakeSourceManagementController(
+      packages: const <SourcePackageView>[
+        SourcePackageView(
+          sourceKey: 's1',
+          repositoryId: 'repo-1',
+          name: 'Source One',
+          availableVersion: '1.0.0',
+          lastSeenAtMs: 1,
+        ),
+      ],
+    );
+    await pumpPage(tester, controller);
+
+    expect(find.text('Direct JS Validation / Install'), findsOneWidget);
+    expect(find.text('Repositories'), findsOneWidget);
+    expect(find.text('Available Sources'), findsOneWidget);
   });
 
   testWidgets('settings add repository action uses source management controller', (
@@ -269,7 +304,8 @@ void main() {
 
       expect(controller.refreshRepositoriesCalls, 1);
       expect(find.text('Custom Source'), findsOneWidget);
-      expect(find.text('1.0.0'), findsOneWidget);
+      expect(find.textContaining('Version: 1.0.0'), findsOneWidget);
+      expect(find.text('Refreshed 1 repos. Packages: 1, Skipped: 0.'), findsOneWidget);
     },
   );
 
@@ -320,6 +356,26 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('install-validated-direct-source')), findsOneWidget);
+  });
+
+  testWidgets('source page does not show disabled install buttons for repository packages', (
+    tester,
+  ) async {
+    final controller = _FakeSourceManagementController(
+      packages: const <SourcePackageView>[
+        SourcePackageView(
+          sourceKey: 's1',
+          repositoryId: 'repo-1',
+          name: 'Source One',
+          availableVersion: '1.0.0',
+          lastSeenAtMs: 1,
+        ),
+      ],
+    );
+    await pumpPage(tester, controller);
+
+    expect(find.textContaining('reviewOnly/installDisabled'), findsOneWidget);
+    expect(find.byKey(const ValueKey('install-validated-direct-source')), findsNothing);
   });
 
   testWidgets('source install button remains hidden when write adapter is unavailable', (

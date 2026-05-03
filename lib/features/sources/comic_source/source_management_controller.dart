@@ -135,6 +135,35 @@ class SourcePackageView {
   final int lastSeenAtMs;
 }
 
+class RepositoryRefreshSummary {
+  const RepositoryRefreshSummary({
+    required this.refreshedRepositoryCount,
+    required this.packageCount,
+    required this.skippedCount,
+  });
+
+  final int refreshedRepositoryCount;
+  final int packageCount;
+  final int skippedCount;
+}
+
+class _RepositoryRefreshResult {
+  const _RepositoryRefreshResult({
+    required this.packageCount,
+    required this.skippedCount,
+  });
+
+  final int packageCount;
+  final int skippedCount;
+}
+
+class _ExtractedPackages {
+  const _ExtractedPackages({required this.records, required this.skippedCount});
+
+  final List<SourcePackageRecord> records;
+  final int skippedCount;
+}
+
 Future<String> _defaultSourceFetchText(String url) async {
   final res = await AppDio().get<String>(
     url,
@@ -347,10 +376,11 @@ class SourceManagementController {
   }
 
   Future<int> refreshRepository(String repositoryId) async {
-    return _runSerializedRepositoryRefresh(
+    final result = await _runSerializedRepositoryRefresh(
       repositoryId,
       () => _refreshRepositoryUnsafe(repositoryId),
     );
+    return result.packageCount;
   }
 
   Future<List<SourcePackageView>> listAvailablePackages({
@@ -365,6 +395,12 @@ class SourceManagementController {
   }
 
   Future<void> refreshRepositories({bool enabledOnly = true}) async {
+    await refreshRepositoriesSummary(enabledOnly: enabledOnly);
+  }
+
+  Future<RepositoryRefreshSummary> refreshRepositoriesSummary({
+    bool enabledOnly = true,
+  }) async {
     final repositories = await listRepositories();
     final targets = enabledOnly
         ? repositories.where((repo) => repo.enabled).toList(growable: false)
@@ -386,12 +422,26 @@ class SourceManagementController {
         'selectedRepositoryCount': targets.length,
       },
     );
+    var totalPackages = 0;
+    var totalSkipped = 0;
     for (final repo in targets) {
-      await refreshRepository(repo.id);
+      final result = await _runSerializedRepositoryRefresh(
+        repo.id,
+        () => _refreshRepositoryUnsafe(repo.id),
+      );
+      totalPackages += result.packageCount;
+      totalSkipped += result.skippedCount;
     }
+    return RepositoryRefreshSummary(
+      refreshedRepositoryCount: targets.length,
+      packageCount: totalPackages,
+      skippedCount: totalSkipped,
+    );
   }
 
-  Future<int> _refreshRepositoryUnsafe(String repositoryId) async {
+  Future<_RepositoryRefreshResult> _refreshRepositoryUnsafe(
+    String repositoryId,
+  ) async {
     final store = _repositoryStoreProvider();
     if (store == null) {
       throw StateError('Unified store unavailable');
@@ -404,7 +454,7 @@ class SourceManagementController {
     final now = DateTime.now().millisecondsSinceEpoch;
     try {
       final payload = await _fetchText(repo.indexUrl);
-      final packages = _extractSourcePackages(
+      final extracted = _extractSourcePackages(
         repositoryId: repo.id,
         repositoryIndexUrl: repo.indexUrl,
         payload: payload,
@@ -412,7 +462,7 @@ class SourceManagementController {
       );
       await store.replaceSourcePackagesForRepository(
         repositoryId: repo.id,
-        records: packages,
+        records: extracted.records,
       );
       await store.upsertSourceRepository(
         SourceRepositoryRecord(
@@ -435,10 +485,14 @@ class SourceManagementController {
         data: {
           'repositoryId': repo.id,
           'repositoryUrl': repo.indexUrl,
-          'packageCount': packages.length,
+          'packageCount': extracted.records.length,
+          'skippedCount': extracted.skippedCount,
         },
       );
-      return packages.length;
+      return _RepositoryRefreshResult(
+        packageCount: extracted.records.length,
+        skippedCount: extracted.skippedCount,
+      );
     } catch (error) {
       final schemaError = switch (error) {
         SourceRepositoryIndexException(:final code) => code,
@@ -695,7 +749,7 @@ class SourceManagementController {
     return versions;
   }
 
-  List<SourcePackageRecord> _extractSourcePackages({
+  _ExtractedPackages _extractSourcePackages({
     required String repositoryId,
     required String repositoryIndexUrl,
     required String payload,
@@ -705,8 +759,10 @@ class SourceManagementController {
     final baseUri = Uri.parse(repositoryIndexUrl);
     final repositoryBaseUrl = baseUri.resolve('./').toString();
     final records = <SourcePackageRecord>[];
+    var skippedCount = 0;
     for (final item in entries) {
       if (item is! Map) {
+        skippedCount++;
         AppDiagnostics.warn(
           'source.management',
           'repository.refresh.package.skipped',
@@ -721,6 +777,7 @@ class SourceManagementController {
       final key = item['key']?.toString().trim();
       final rawName = item['name']?.toString().trim();
       if (key == null || key.isEmpty) {
+        skippedCount++;
         AppDiagnostics.warn(
           'source.management',
           'repository.refresh.package.skipped',
@@ -772,7 +829,7 @@ class SourceManagementController {
         ),
       );
     }
-    return records;
+    return _ExtractedPackages(records: records, skippedCount: skippedCount);
   }
 
   List<dynamic> _sourceEntriesFromPayload(String payload) {
