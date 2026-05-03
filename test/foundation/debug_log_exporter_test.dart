@@ -194,6 +194,26 @@ void main() {
     expect(json['paths'], isA<Map>());
     expect(json['logs'], isA<Map>());
     expect(json['structuredDiagnostics'], isA<Map>());
+    final logs = (json['logs'] as Map).cast<String, dynamic>();
+    expect(logs['newestErrorsSourceHint'], isA<String>());
+    expect(logs['newestErrorsBySource'], isA<Map>());
+    final newestErrorsBySource = (logs['newestErrorsBySource'] as Map).cast<
+      String,
+      dynamic
+    >();
+    expect(newestErrorsBySource.containsKey('session'), isTrue);
+    expect(newestErrorsBySource.containsKey('persisted'), isTrue);
+    final sessionBucket = newestErrorsBySource['session'];
+    if (sessionBucket is List) {
+      final sessionEntries = sessionBucket.cast<Map<String, dynamic>>();
+      expect(
+        sessionEntries.isEmpty ||
+            sessionEntries.any((entry) => entry['source'] == 'session'),
+        isTrue,
+      );
+    } else {
+      expect(sessionBucket, isA<String>());
+    }
     final runtime = (json['runtime'] as Map).cast<String, dynamic>();
     final paths = (json['paths'] as Map).cast<String, dynamic>();
     expect(runtime['runtimeRoot'], isA<String?>());
