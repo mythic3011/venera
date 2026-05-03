@@ -3,8 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:url_launcher/url_launcher_string.dart';
-import 'package:venera/foundation/app.dart';
-import 'package:venera/foundation/js_engine.dart';
+import 'package:venera/foundation/app/app.dart';
+import 'package:venera/foundation/js/js_engine.dart';
 
 import 'components.dart';
 

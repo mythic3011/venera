@@ -1,12 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/widgets.dart';
 import 'package:venera/foundation/comic_type.dart';
-import 'package:venera/foundation/app_page_route.dart';
+import 'package:venera/foundation/app/app_page_route.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/reader/reader_diagnostics.dart';
 import 'package:venera/features/reader/data/reader_runtime_context.dart';
 import 'package:venera/foundation/reader/reader_trace_recorder.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 import 'package:venera/features/reader/presentation/reader.dart';
 
 void main() {

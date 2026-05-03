@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:sqlite3/sqlite3.dart' as sqlite;
-import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/foundation/sources/identity/source_identity.dart';
 
 import 'unified_comics_store.dart';
 

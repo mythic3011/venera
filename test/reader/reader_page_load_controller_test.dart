@@ -3,7 +3,7 @@ import 'package:venera/features/reader/presentation/reader.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/reader/reader_page_loader.dart';
 import 'package:venera/foundation/res.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 
 ReaderPageLoadRequest _request({

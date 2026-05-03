@@ -10,7 +10,7 @@ import 'dart:isolate';
 import 'dart:ui';
 
 import 'package:flutter/services.dart';
-import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/app/app.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/log.dart';
 import 'package:venera/utils/ext.dart';

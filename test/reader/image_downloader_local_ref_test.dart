@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/foundation/sources/identity/source_identity.dart';
 import 'package:venera/network/images.dart';
 
 void main() {

@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/favorites.dart';
-import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/foundation/sources/identity/source_identity.dart';
 import 'package:venera/network/download.dart';
 
 ComicSource _fakeSource(String key, {SourceIdentity? identity}) {

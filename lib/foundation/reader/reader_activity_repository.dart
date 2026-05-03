@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/reader/reader_activity_models.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 class ReaderActivityRepository {
   const ReaderActivityRepository({required this.store});

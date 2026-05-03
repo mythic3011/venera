@@ -2,8 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:venera/features/reader/data/reader_activity_models.dart';
 import 'package:venera/features/reader_next/bridge/history_route_cutover_controller.dart';
 import 'package:venera/features/reader_next/preflight/history_favorites_route_readiness_gate.dart';
-import 'package:venera/foundation/source_ref.dart';
-import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
+import 'package:venera/foundation/sources/identity/source_identity.dart';
 
 void main() {
   ReaderActivityItem buildRemoteRow({

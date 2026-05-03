@@ -1,4 +1,4 @@
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 enum LibraryState {
   localOnly,

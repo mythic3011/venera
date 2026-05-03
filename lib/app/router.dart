@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:venera/features/reader/presentation/reader.dart';
-import 'package:venera/foundation/app.dart';
-import 'package:venera/foundation/app_page_route.dart';
+import 'package:venera/foundation/app/app.dart';
+import 'package:venera/foundation/app/app_page_route.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 
 class AppRouter {

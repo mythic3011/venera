@@ -20,10 +20,10 @@ import 'package:venera/foundation/ports/comic_detail_store_port.dart';
 import 'package:venera/foundation/repositories/comic_user_tags_repository.dart';
 import 'package:venera/foundation/repositories/local_library_repository.dart';
 
-import 'appdata.dart';
+import 'package:venera/foundation/appdata.dart';
 
-export "widget_utils.dart";
-export "context.dart";
+export 'package:venera/foundation/ui/widget_utils.dart';
+export 'package:venera/foundation/ui/context.dart';
 
 class _App {
   static const MethodChannel _methodChannel = MethodChannel(

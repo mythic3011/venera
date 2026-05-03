@@ -1,7 +1,7 @@
 import 'dart:isolate';
 
 import 'package:uuid/uuid.dart';
-import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/app/app.dart';
 import 'package:venera/foundation/local_comics_legacy_bridge.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/utils/file_type.dart';

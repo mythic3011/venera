@@ -1,4 +1,4 @@
-import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/foundation/sources/identity/source_identity.dart';
 
 enum SourceRefType { local, remote }
 

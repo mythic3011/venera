@@ -1,11 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/app/app.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/log.dart';
-import 'package:venera/foundation/log_diagnostics.dart';
-import 'package:venera/foundation/log_export_bundle.dart';
+import 'package:venera/foundation/diagnostics/log_diagnostics.dart';
+import 'package:venera/foundation/diagnostics/log_export_bundle.dart';
 
 void main() {
   setUp(() {

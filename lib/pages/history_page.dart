@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:venera/components/components.dart';
-import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/app/app.dart';
 import 'package:venera/features/reader_next/bridge/approved_reader_next_navigation_executor.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/features/reader/data/reader_activity_models.dart';
 import 'package:venera/features/reader/data/reader_activity_repository.dart';
 import 'package:venera/features/reader_next/bridge/history_route_cutover_controller.dart';
-import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/foundation/sources/identity/source_identity.dart';
 import 'package:venera/pages/comic_details_page/comic_page.dart';
 import 'package:venera/utils/translations.dart';
 

@@ -5,7 +5,7 @@ import 'package:venera/foundation/db/store_records.dart'
 import 'package:venera/foundation/ports/comic_detail_store_port.dart';
 import 'package:venera/foundation/ports/reader_activity_store_port.dart';
 import 'package:venera/features/reader/data/reader_activity_models.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 class ReaderActivityRepository {
   const ReaderActivityRepository({required this.store, this.comicDetailStore});

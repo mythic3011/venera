@@ -4,7 +4,7 @@ import 'package:venera/features/comic_detail/data/comic_detail_models.dart';
 import 'package:venera/foundation/db/store_records.dart'
     show ReaderSessionRecord, ReaderTabRecord;
 import 'package:venera/foundation/ports/reader_session_store_port.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 class ReaderSessionRepository {
   const ReaderSessionRepository({required this.store});

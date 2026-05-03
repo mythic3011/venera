@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:app_links/app_links.dart';
-import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/app/app.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/pages/comic_details_page/comic_page.dart';
 

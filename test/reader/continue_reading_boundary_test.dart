@@ -15,7 +15,7 @@ import 'package:venera/features/reader/data/reader_session_persistence.dart';
 import 'package:venera/features/reader/data/reader_session_repository.dart';
 import 'package:venera/foundation/reader/source_ref_resolver.dart';
 import 'package:venera/foundation/res.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 import 'package:venera/pages/comic_details_page/comic_page.dart';
 
 class _SpyProvider implements ReadablePageProvider {

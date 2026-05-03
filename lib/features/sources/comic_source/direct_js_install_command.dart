@@ -5,7 +5,7 @@ import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/features/sources/comic_source/direct_js_parser_handoff.dart';
 import 'package:venera/features/sources/comic_source/direct_js_staged_source_writer.dart';
 import 'package:venera/features/sources/comic_source/direct_js_source_validator.dart';
-import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/app/app.dart';
 
 const sourceInstallBlockedCode = 'SOURCE_INSTALL_BLOCKED';
 const sourceInstallKeyCollisionCode = 'SOURCE_KEY_COLLISION';

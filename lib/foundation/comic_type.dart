@@ -1,5 +1,5 @@
 import 'package:venera/features/sources/comic_source/comic_source.dart';
-import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/foundation/sources/identity/source_identity.dart';
 
 class ComicType {
   final int value;

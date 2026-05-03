@@ -5,7 +5,7 @@ import 'package:venera/foundation/reader/remote_page_provider.dart';
 import 'package:venera/foundation/reader/source_ref_diagnostics.dart';
 import 'package:venera/foundation/reader/source_ref_resolver.dart';
 import 'package:venera/foundation/res.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 class ReaderPageLoaderResult {
   const ReaderPageLoaderResult({required this.res, required this.loadMode});

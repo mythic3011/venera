@@ -3,7 +3,7 @@ import 'dart:isolate';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_qjs/flutter_qjs.dart';
-import 'package:venera/foundation/js_compute_engine.dart';
+import 'package:venera/foundation/js/js_compute_engine.dart';
 import 'package:venera/foundation/log.dart';
 
 class JSPool {

@@ -7,7 +7,7 @@ import 'package:venera/features/sources/comic_source/direct_js_parser_handoff.da
     hide sourceInstallBlockedCode, sourceKeyMismatchCode;
 import 'package:venera/features/sources/comic_source/direct_js_source_validator.dart';
 import 'package:venera/features/sources/comic_source/direct_js_staged_source_writer.dart';
-import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/foundation/sources/identity/source_identity.dart';
 
 void main() {
   group('Direct JS install command guards', () {

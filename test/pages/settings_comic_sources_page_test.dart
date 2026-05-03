@@ -7,7 +7,7 @@ import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/features/sources/comic_source/direct_js_install_command.dart';
 import 'package:venera/features/sources/comic_source/direct_js_source_validator.dart'
     as djs;
-import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/foundation/sources/identity/source_identity.dart';
 import 'package:venera/features/sources/comic_source/source_management_controller.dart';
 import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';

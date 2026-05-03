@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
-import '../foundation/app.dart';
+import '../foundation/app/app.dart';
 
 extension AppTranslation on String {
   String _translate() {

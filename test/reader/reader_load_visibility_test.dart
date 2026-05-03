@@ -5,7 +5,7 @@ import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/image_provider/reader_image.dart';
 import 'package:venera/foundation/reader/reader_diagnostics.dart';
 import 'package:venera/features/reader/presentation/reader.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 void main() {
   setUp(() {

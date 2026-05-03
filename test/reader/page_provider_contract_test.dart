@@ -8,8 +8,8 @@ import 'package:venera/foundation/reader/canonical_remote_page_provider.dart';
 import 'package:venera/foundation/reader/local_page_provider.dart';
 import 'package:venera/foundation/reader/remote_page_provider.dart';
 import 'package:venera/foundation/res.dart';
-import 'package:venera/foundation/source_ref.dart';
-import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
+import 'package:venera/foundation/sources/identity/source_identity.dart';
 
 void main() {
   test(

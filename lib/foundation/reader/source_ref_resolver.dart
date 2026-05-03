@@ -1,6 +1,6 @@
 import 'package:venera/foundation/reader/page_provider.dart';
 import 'package:venera/foundation/reader/source_ref_diagnostics.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 class SourceRefResolver {
   const SourceRefResolver({

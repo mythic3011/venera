@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:venera/components/components.dart';
 
-import 'app.dart';
-import 'app_page_route.dart';
+import 'package:venera/foundation/app/app.dart';
+import 'package:venera/foundation/app/app_page_route.dart';
 
 extension Navigation on BuildContext {
   void pop<T>([T? result]) {

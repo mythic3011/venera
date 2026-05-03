@@ -14,15 +14,15 @@ import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/favorite_runtime_authority.dart';
 import 'package:venera/foundation/image_provider/image_favorites_provider.dart';
 import 'package:venera/foundation/log.dart';
-import 'package:venera/foundation/source_ref.dart';
-import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
+import 'package:venera/foundation/sources/identity/source_identity.dart';
 import 'package:venera/foundation/reader/resume_target_store.dart';
 import 'package:venera/utils/channel.dart';
 import 'package:venera/utils/ext.dart';
 import 'package:venera/utils/translations.dart';
 
-import 'app.dart';
-import 'appdata.dart';
+import 'package:venera/foundation/app/app.dart';
+import 'package:venera/foundation/appdata.dart';
 import 'consts.dart';
 
 part "image_favorites.dart";

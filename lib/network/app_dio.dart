@@ -9,7 +9,7 @@ import 'package:venera/foundation/log.dart';
 import 'package:venera/network/cache.dart';
 import 'package:venera/network/proxy.dart';
 
-import '../foundation/app.dart';
+import '../foundation/app/app.dart';
 import 'cloudflare.dart';
 import 'cookie_jar.dart';
 

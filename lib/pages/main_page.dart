@@ -6,7 +6,7 @@ import 'package:venera/pages/settings/settings_page.dart';
 import 'package:venera/utils/translations.dart';
 
 import '../components/components.dart';
-import '../foundation/app.dart';
+import '../foundation/app/app.dart';
 import 'explore_page.dart';
 import 'favorites/favorites_page.dart';
 import 'home_page.dart';

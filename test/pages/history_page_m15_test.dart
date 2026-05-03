@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:venera/features/reader/data/reader_activity_models.dart';
 import 'package:venera/features/reader_next/runtime/models.dart'
     as runtime_models;
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 import 'package:venera/pages/comic_details_page/comic_page.dart';
 import 'package:venera/pages/history_page.dart';
 

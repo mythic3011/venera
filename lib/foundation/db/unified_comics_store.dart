@@ -14,7 +14,7 @@ import 'package:venera/foundation/ports/reader_activity_store_port.dart';
 import 'package:venera/foundation/ports/reader_session_store_port.dart';
 import 'package:venera/foundation/ports/reader_status_store_port.dart';
 import 'package:venera/foundation/ports/remote_match_store_port.dart';
-import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/foundation/sources/identity/source_identity.dart';
 
 part 'unified_comics_store/bootstrap.dart';
 part 'unified_comics_store/migrations.dart';

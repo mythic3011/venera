@@ -1,5 +1,5 @@
 import 'package:venera/features/sources/comic_source/comic_source.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 class ReaderActivityItem implements Comic {
   const ReaderActivityItem({

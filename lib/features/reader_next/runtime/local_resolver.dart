@@ -1,6 +1,6 @@
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/local_comics_legacy_bridge.dart';
-import 'package:venera/foundation/source_identity/constants.dart';
+import 'package:venera/foundation/sources/identity/constants.dart';
 import 'package:venera/utils/io.dart';
 
 import 'models.dart';

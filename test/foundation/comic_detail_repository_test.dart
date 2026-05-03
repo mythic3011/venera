@@ -6,8 +6,8 @@ import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_detail/comic_detail.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/res.dart';
-import 'package:venera/foundation/source_ref.dart';
-import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
+import 'package:venera/foundation/sources/identity/source_identity.dart';
 import 'package:venera/pages/comic_details_page/comic_page.dart';
 
 void main() {

@@ -9,7 +9,7 @@ import 'package:venera/features/reader_next/bridge/history_route_cutover_control
 import 'package:venera/features/reader_next/preflight/downloads_route_readiness_preflight.dart';
 import 'package:venera/features/reader_next/preflight/history_favorites_identity_preflight.dart';
 import 'package:venera/features/reader_next/preflight/history_favorites_route_readiness_gate.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 void main() {
   const historyController = HistoryRouteCutoverController(

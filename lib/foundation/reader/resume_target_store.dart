@@ -1,6 +1,6 @@
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/appdata_authority_audit.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 enum ResumeSnapshotDiagnosticCode {
   malformed,

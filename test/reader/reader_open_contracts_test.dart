@@ -5,7 +5,7 @@ import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/history.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/features/reader/presentation/reader.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 import 'package:venera/pages/comic_details_page/comic_page.dart';
 
 class _TestHistoryModel with HistoryMixin {

@@ -1,6 +1,6 @@
 import 'package:venera/foundation/reader/page_provider.dart';
 import 'package:venera/foundation/res.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 typedef LocalPagesLoader = Future<List<String>> Function({
   required String localType,

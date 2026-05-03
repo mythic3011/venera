@@ -11,7 +11,7 @@ import 'package:venera/features/reader/data/reader_session_repository.dart';
 import 'package:venera/features/reader/data/reader_resume_service.dart';
 import 'package:venera/features/reader/data/reader_runtime_context.dart';
 import 'package:venera/features/reader/data/reader_session_persistence.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 import 'package:venera/features/reader/presentation/reader.dart';
 
 void main() {

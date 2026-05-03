@@ -3,7 +3,7 @@ import 'dart:async';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
-import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/app/app.dart';
 import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/appdata_authority_audit.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';

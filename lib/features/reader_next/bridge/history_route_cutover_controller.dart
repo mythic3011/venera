@@ -5,7 +5,7 @@ import 'package:venera/features/reader_next/preflight/history_favorites_identity
 import 'package:venera/features/reader_next/preflight/history_favorites_route_readiness_gate.dart';
 import 'package:venera/features/reader_next/runtime/models.dart'
     hide SourceRefType;
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 enum HistoryRouteDecision { legacyExplicit, readerNextEligible, blocked }
 

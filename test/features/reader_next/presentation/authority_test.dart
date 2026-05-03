@@ -19,7 +19,7 @@ void main() {
           'package:venera/foundation/reader/',
           'package:venera/foundation/history.dart',
           'package:venera/foundation/favorites.dart',
-          'package:venera/foundation/source_ref.dart',
+          'package:venera/foundation/sources/source_ref.dart',
         ].where(text.contains).toList();
         if (matches.isNotEmpty) {
           violations[file.path] = matches;

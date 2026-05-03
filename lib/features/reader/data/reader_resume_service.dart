@@ -7,7 +7,7 @@ import 'package:venera/foundation/db/remote_comic_sync.dart';
 import 'package:venera/foundation/reader/reader_diagnostics.dart';
 import 'package:venera/features/reader/data/reader_runtime_context.dart';
 import 'package:venera/features/reader/data/reader_session_repository.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 typedef LegacyResumeSourceRefLoader =
     FutureOr<SourceRef?> Function(String comicId, ComicType type);

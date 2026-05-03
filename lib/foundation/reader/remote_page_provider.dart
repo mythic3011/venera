@@ -1,7 +1,7 @@
 import 'package:venera/foundation/reader/canonical_remote_page_provider.dart';
 import 'package:venera/foundation/reader/page_provider.dart';
 import 'package:venera/foundation/res.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 typedef RemotePagesLoader =
     Future<Res<List<String>>> Function({

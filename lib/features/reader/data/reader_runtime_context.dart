@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/db/remote_comic_sync.dart';
-import 'package:venera/foundation/source_ref.dart';
-import 'package:venera/foundation/source_identity/constants.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
+import 'package:venera/foundation/sources/identity/constants.dart';
 
 String _normalizeReaderChapterId(String? chapterId) {
   if (chapterId == null || chapterId.isEmpty) {

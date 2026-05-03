@@ -11,7 +11,7 @@ import 'package:venera/foundation/local.dart';
 import 'package:venera/pages/favorites/favorites_page.dart';
 import 'package:venera/pages/local_comics_page.dart';
 import 'package:venera/foundation/reader/resume_target_store.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 void main() {
   const trackerAuditKeys = <(

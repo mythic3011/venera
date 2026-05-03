@@ -5,11 +5,11 @@ import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/features/sources/comic_source/source_management_controller.dart';
-import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/app/app.dart';
 import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
-import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/foundation/sources/identity/source_identity.dart';
 import 'package:venera/utils/io.dart';
 
 ComicSource _fakeSource(String key, {String version = '1.0.0'}) {

@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:venera/components/components.dart';
-import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/app/app.dart';
 import 'package:venera/features/downloads/data/download_queue_repository.dart';
 import 'package:venera/foundation/image_provider/cached_image.dart';
 import 'package:venera/network/download.dart';

@@ -1,6 +1,6 @@
 import 'package:venera/foundation/comic_detail/comic_detail.dart';
 import 'package:venera/foundation/comic_type.dart';
-import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/app/app.dart';
 import 'package:venera/foundation/db/local_comic_sync.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/download_queue_legacy_bridge.dart';

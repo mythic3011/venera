@@ -5,7 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/utils/io.dart';
 
-import 'app.dart';
+import 'package:venera/foundation/app/app.dart';
 
 class CacheManager {
   static String get cachePath => '${App.cachePath}/cache';

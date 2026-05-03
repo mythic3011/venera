@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/app/app.dart';
 
 /// patched slider.dart with RtL support
 class _SliderDefaultsM3 extends SliderThemeData {

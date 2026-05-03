@@ -23,16 +23,16 @@ import 'package:pointycastle/block/modes/ecb.dart';
 import 'package:pointycastle/block/modes/ofb.dart';
 import 'package:uuid/uuid.dart';
 import 'package:venera/components/js_ui.dart';
-import 'package:venera/foundation/app.dart';
-import 'package:venera/foundation/js_pool.dart';
+import 'package:venera/foundation/app/app.dart';
+import 'package:venera/foundation/js/js_pool.dart';
 import 'package:venera/features/sources/comic_source/runtime/source_capability_policy.dart';
 import 'package:venera/network/app_dio.dart';
 import 'package:venera/network/cookie_jar.dart';
 import 'package:venera/network/proxy.dart';
 import 'package:venera/utils/init.dart';
 
-import 'consts.dart';
-import 'log.dart';
+import 'package:venera/foundation/consts.dart';
+import 'package:venera/foundation/log.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 
 class JavaScriptRuntimeException implements Exception {

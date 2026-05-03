@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:venera/features/reader/data/reader_activity_models.dart';
 import 'package:venera/features/reader_next/bridge/history_route_cutover_controller.dart';
 import 'package:venera/features/reader_next/preflight/history_favorites_route_readiness_gate.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 void main() {
   ReaderActivityItem buildRow({

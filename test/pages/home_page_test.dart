@@ -5,7 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/features/reader/data/reader_activity_repository.dart';
 import 'package:venera/features/reader/data/reader_session_repository.dart';
-import 'package:venera/foundation/source_ref.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 import 'package:venera/pages/home_page.dart';
 
 void main() {

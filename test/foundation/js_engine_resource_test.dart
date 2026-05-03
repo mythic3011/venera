@@ -1,6 +1,6 @@
 import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:venera/foundation/js_engine.dart';
+import 'package:venera/foundation/js/js_engine.dart';
 
 void main() {
   group('JSAutoFreeFunction', () {

@@ -1,5 +1,5 @@
 import 'package:venera/app/router.dart';
-import 'package:venera/foundation/app.dart';
+import 'package:venera/foundation/app/app.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/features/reader/presentation/reader.dart';
 import 'package:venera/features/reader_next/bridge/approved_reader_next_navigation_executor.dart';

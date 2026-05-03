@@ -4,8 +4,8 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:venera/foundation/app.dart';
-import 'package:venera/foundation/debug_diagnostics_service.dart';
+import 'package:venera/foundation/app/app.dart';
+import 'package:venera/foundation/diagnostics/debug_diagnostics_service.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 
 class DebugLogExporter {

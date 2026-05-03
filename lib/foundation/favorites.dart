@@ -13,11 +13,11 @@ import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/image_provider/local_favorite_image.dart';
 import 'package:venera/foundation/local_comics_legacy_bridge.dart';
 import 'package:venera/foundation/log.dart';
-import 'package:venera/foundation/source_identity/source_identity.dart';
+import 'package:venera/foundation/sources/identity/source_identity.dart';
 import 'package:venera/pages/follow_updates_page.dart';
 import 'package:venera/utils/tags_translation.dart';
 
-import 'app.dart';
+import 'package:venera/foundation/app/app.dart';
 import 'comic_type.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 
