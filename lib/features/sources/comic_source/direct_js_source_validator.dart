@@ -25,6 +25,25 @@ class DirectJsValidationMetadata {
   final String? version;
 }
 
+DirectJsValidationMetadata extractDirectJsValidationMetadataFromScript(
+  String script,
+) {
+  final keyMatch = RegExp(
+    r'''['"]?key['"]?\s*:\s*['"]([^'"]+)['"]''',
+  ).firstMatch(script);
+  final nameMatch = RegExp(
+    r'''['"]?name['"]?\s*:\s*['"]([^'"]+)['"]''',
+  ).firstMatch(script);
+  final versionMatch = RegExp(
+    r'''['"]?version['"]?\s*:\s*['"]([^'"]+)['"]''',
+  ).firstMatch(script);
+  return DirectJsValidationMetadata(
+    sourceKey: keyMatch?.group(1)?.trim() ?? '',
+    name: nameMatch?.group(1)?.trim(),
+    version: versionMatch?.group(1)?.trim(),
+  );
+}
+
 sealed class SourceCommandResult {
   const SourceCommandResult();
 }

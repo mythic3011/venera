@@ -116,22 +116,9 @@ class ComicSourcePage extends StatelessWidget {
         );
       },
       isolatedValidationPort: (script) async {
-        return Future<djs.DirectJsValidationMetadata>(() {
-          final keyMatch = RegExp(
-            r'''['"]?key['"]?\s*:\s*['"]([^'"]+)['"]''',
-          ).firstMatch(script);
-          final nameMatch = RegExp(
-            r'''['"]?name['"]?\s*:\s*['"]([^'"]+)['"]''',
-          ).firstMatch(script);
-          final versionMatch = RegExp(
-            r'''['"]?version['"]?\s*:\s*['"]([^'"]+)['"]''',
-          ).firstMatch(script);
-          return djs.DirectJsValidationMetadata(
-            sourceKey: keyMatch?.group(1)?.trim() ?? '',
-            name: nameMatch?.group(1)?.trim(),
-            version: versionMatch?.group(1)?.trim(),
-          );
-        });
+        return Future<djs.DirectJsValidationMetadata>(
+          () => djs.extractDirectJsValidationMetadataFromScript(script),
+        );
       },
     );
     return validator.validate(url);
@@ -157,6 +144,7 @@ class _BodyState extends State<_Body> {
   String? _repositoryCommandError;
   String? _directSourceValidationMessage;
   bool _validatingDirectSource = false;
+  _ValidatedDirectSource? _validatedDirectSource;
   var url = "";
 
   void updateUI() {
@@ -612,6 +600,14 @@ class _BodyState extends State<_Body> {
                       ? null
                       : () => _validateDirectSourceUrl(url),
                 ),
+                if (_sourceManagementController.supportsDirectJsInstall &&
+                    _validatedDirectSource != null)
+                  FilledButton.icon(
+                    key: const ValueKey('install-validated-direct-source'),
+                    icon: const Icon(Icons.download_done_outlined),
+                    label: const Text('Install Source'),
+                    onPressed: _confirmInstallValidatedDirectSource,
+                  ),
               ],
             ).paddingHorizontal(12).paddingVertical(8),
             const SizedBox(height: 8),
@@ -640,41 +636,32 @@ class _BodyState extends State<_Body> {
     if (normalized.isEmpty) {
       setState(() {
         _directSourceValidationMessage = 'Please enter a source URL'.tl;
+        _validatedDirectSource = null;
       });
       return;
     }
     setState(() {
       _validatingDirectSource = true;
       _directSourceValidationMessage = null;
+      _validatedDirectSource = null;
     });
     final result = await widget.validateDirectSourceUrl(normalized);
     if (!mounted) return;
     switch (result) {
       case djs.SourceCommandSuccess(:final metadata):
         setState(() {
-          _directSourceValidationMessage =
-              'Validation passed. Install remains disabled in this lane.'.tl;
+          _validatedDirectSource = _ValidatedDirectSource(
+            sourceUrl: normalized,
+            metadata: metadata,
+          );
+          _directSourceValidationMessage = _sourceManagementController
+                  .supportsDirectJsInstall
+              ? 'Validation passed. Ready to install.'.tl
+              : 'Validation passed. Install unavailable.'.tl;
         });
-        await showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Validation Result'),
-            content: Text(
-              'Source Key: ${metadata.sourceKey}\n'
-              'Name: ${metadata.name ?? '-'}\n'
-              'Version: ${metadata.version ?? '-'}\n\n'
-              'Install/write path is disabled in D2.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: Text('Close'.tl),
-              ),
-            ],
-          ),
-        );
       case djs.SourceCommandFailed(:final code, :final message):
         setState(() {
+          _validatedDirectSource = null;
           _directSourceValidationMessage = '$code: $message';
         });
         context.showMessage(message: '$code: $message');
@@ -685,6 +672,81 @@ class _BodyState extends State<_Body> {
       });
     }
   }
+
+  Future<void> _confirmInstallValidatedDirectSource() async {
+    final validated = _validatedDirectSource;
+    if (validated == null) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Install Source'),
+        content: Text(
+          'Source Key: ${validated.metadata.sourceKey}\n'
+          'Name: ${validated.metadata.name ?? '-'}\n'
+          'Version: ${validated.metadata.version ?? '-'}\n\n'
+          'Overwrite is disabled. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('Cancel'.tl),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Install'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) {
+      return;
+    }
+    final result = await _sourceManagementController.installValidatedDirectSource(
+      sourceUrl: validated.sourceUrl,
+      validatedMetadata: validated.metadata,
+      confirmInstall: true,
+      allowOverwrite: false,
+    );
+    if (!mounted) {
+      return;
+    }
+    switch (result) {
+      case djs.SourceCommandSuccess(:final metadata):
+        setState(() {
+          _validatedDirectSource = null;
+          _directSourceValidationMessage =
+              'Installed source: ${metadata.sourceKey}';
+        });
+        return;
+      case djs.SourceCommandFailed(:final code, :final message):
+        final uiMessage = _directInstallErrorMessage(code, message);
+        setState(() {
+          _directSourceValidationMessage = uiMessage;
+        });
+        return;
+    }
+  }
+
+  String _directInstallErrorMessage(String code, String message) {
+    switch (code) {
+      case 'SOURCE_KEY_COLLISION':
+        return 'SOURCE_KEY_COLLISION: Source already installed';
+      default:
+        return '$code: $message';
+    }
+  }
+}
+
+class _ValidatedDirectSource {
+  const _ValidatedDirectSource({
+    required this.sourceUrl,
+    required this.metadata,
+  });
+
+  final String sourceUrl;
+  final djs.DirectJsValidationMetadata metadata;
 }
 
 class _ComicSourceList extends StatefulWidget {

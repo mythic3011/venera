@@ -8,11 +8,16 @@ import 'package:venera/foundation/appdata_authority_audit.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/direct_js_install_command.dart';
+import 'package:venera/features/sources/comic_source/direct_js_source_validator.dart'
+    as djs;
 import 'package:venera/network/app_dio.dart';
 import 'package:venera/utils/io.dart';
 
 typedef SourceInstallFromJs =
     Future<void> Function(String sourceJs, String fileName);
+typedef DirectJsInstallExecutor =
+    Future<djs.SourceCommandResult> Function(DirectJsInstallRequest request);
 typedef SourceFetchText = Future<String> Function(String url);
 typedef SourceFilePicker = Future<FileSelectResult?> Function();
 typedef SourceRepositoryStoreProvider = UnifiedComicsStore? Function();
@@ -163,17 +168,24 @@ Future<FileSelectResult?> _defaultPickJsConfigFile() {
 class SourceManagementController {
   SourceManagementController({
     SourceInstallFromJs? installSourceFromJs,
+    DirectJsInstallExecutor? directJsInstallExecutor,
     SourceFetchText? fetchText,
     SourceFilePicker? pickJsConfigFile,
     SourceRepositoryStoreProvider? repositoryStoreProvider,
   }) : _installSourceFromJs =
            installSourceFromJs ?? _defaultInstallSourceFromJs,
+       _directJsInstallExecutor =
+           directJsInstallExecutor ??
+           ((request) => DirectJsInstallCommand(
+             adapter: ProductionDirectJsSourceWriteAdapter(),
+           ).execute(request)),
        _fetchText = fetchText ?? _defaultSourceFetchText,
        _pickJsConfigFile = pickJsConfigFile ?? _defaultPickJsConfigFile,
        _repositoryStoreProvider =
            repositoryStoreProvider ?? (() => App.unifiedComicsStoreOrNull);
 
   final SourceInstallFromJs _installSourceFromJs;
+  final DirectJsInstallExecutor _directJsInstallExecutor;
   final SourceFetchText _fetchText;
   final SourceFilePicker _pickJsConfigFile;
   final SourceRepositoryStoreProvider _repositoryStoreProvider;
@@ -199,6 +211,62 @@ class SourceManagementController {
     final bytes = await file.readAsBytes();
     final sourceJs = utf8.decode(bytes);
     await _installSourceFromJs(sourceJs, file.name);
+  }
+
+  bool get supportsDirectJsInstall => true;
+
+  Future<djs.SourceCommandResult> installValidatedDirectSource({
+    required String sourceUrl,
+    required djs.DirectJsValidationMetadata validatedMetadata,
+    required bool confirmInstall,
+    bool allowOverwrite = false,
+  }) async {
+    final normalizedUrl = sourceUrl.trim();
+    if (normalizedUrl.isEmpty) {
+      return const djs.SourceCommandFailed(
+        code: djs.sourceScriptUrlInvalidCode,
+        message: 'Source script URL is invalid',
+      );
+    }
+    final String sourceJs;
+    try {
+      sourceJs = await _fetchText(normalizedUrl);
+    } catch (_) {
+      return const djs.SourceCommandFailed(
+        code: djs.sourceScriptFetchFailedCode,
+        message: 'Failed to fetch direct JavaScript source',
+      );
+    }
+    final parsedMetadata = djs.extractDirectJsValidationMetadataFromScript(
+      sourceJs,
+    );
+    final djs.SourceCommandResult result;
+    try {
+      result = await _directJsInstallExecutor(
+        DirectJsInstallRequest(
+          sourceUrl: normalizedUrl,
+          sourceScript: sourceJs,
+          validatedMetadata: validatedMetadata,
+          parsedSourceKey: parsedMetadata.sourceKey,
+          confirmInstall: confirmInstall,
+          allowOverwrite: allowOverwrite,
+        ),
+      );
+    } catch (_) {
+      return const djs.SourceCommandFailed(
+        code: sourceInstallBlockedCode,
+        message: 'Direct JS install failed',
+      );
+    }
+    if (result is djs.SourceCommandSuccess) {
+      final source = ComicSource.find(result.metadata.sourceKey);
+      if (source != null) {
+        _addAllPagesWithComicSource(source);
+      }
+      appdata.saveData();
+      App.forceRebuild();
+    }
+    return result;
   }
 
   Future<int> checkUpdates() async {

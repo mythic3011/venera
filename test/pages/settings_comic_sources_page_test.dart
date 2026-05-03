@@ -3,7 +3,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
-import 'package:venera/features/sources/comic_source/direct_js_source_validator.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
+import 'package:venera/features/sources/comic_source/direct_js_install_command.dart';
+import 'package:venera/features/sources/comic_source/direct_js_source_validator.dart'
+    as djs;
+import 'package:venera/foundation/source_identity/source_identity.dart';
 import 'package:venera/features/sources/comic_source/source_management_controller.dart';
 import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
@@ -15,6 +19,7 @@ class _FakeSourceManagementController extends SourceManagementController {
     List<SourceRepositoryView> repositories = const <SourceRepositoryView>[],
     List<SourcePackageView> packages = const <SourcePackageView>[],
     this.packagesAfterRefresh = const <SourcePackageView>[],
+    this.supportsDirectInstall = true,
   }) : repositories = List<SourceRepositoryView>.of(repositories),
        packages = List<SourcePackageView>.of(packages);
 
@@ -25,8 +30,20 @@ class _FakeSourceManagementController extends SourceManagementController {
   int refreshRepositoryCalls = 0;
   int refreshRepositoriesCalls = 0;
   int addSourceFromUrlCalls = 0;
+  int installValidatedDirectSourceCalls = 0;
   String primaryRepositoryUrl = '';
   int setPrimaryRepositoryUrlCalls = 0;
+  bool supportsDirectInstall;
+  djs.SourceCommandResult installResult = const djs.SourceCommandSuccess(
+    metadata: djs.DirectJsValidationMetadata(sourceKey: 'demo-source'),
+  );
+  String? lastInstalledUrl;
+  djs.DirectJsValidationMetadata? lastInstalledMetadata;
+  bool? lastConfirmInstall;
+  bool? lastAllowOverwrite;
+
+  @override
+  bool get supportsDirectJsInstall => supportsDirectInstall;
 
   @override
   Future<List<SourceRepositoryView>> listRepositories() async => repositories;
@@ -82,6 +99,29 @@ class _FakeSourceManagementController extends SourceManagementController {
   Future<void> addSourceFromUrl(String url) async {
     addSourceFromUrlCalls++;
   }
+
+  @override
+  Future<djs.SourceCommandResult> installValidatedDirectSource({
+    required String sourceUrl,
+    required djs.DirectJsValidationMetadata validatedMetadata,
+    required bool confirmInstall,
+    bool allowOverwrite = false,
+  }) async {
+    installValidatedDirectSourceCalls++;
+    lastInstalledUrl = sourceUrl;
+    lastInstalledMetadata = validatedMetadata;
+    lastConfirmInstall = confirmInstall;
+    lastAllowOverwrite = allowOverwrite;
+    if (installResult case djs.SourceCommandSuccess(:final metadata)) {
+      ComicSourceManager().add(
+        _buildTestSource(
+          key: metadata.sourceKey,
+          name: metadata.name ?? 'Installed Source',
+        ),
+      );
+    }
+    return installResult;
+  }
 }
 
 void main() {
@@ -95,8 +135,13 @@ void main() {
   Future<void> pumpPage(
     WidgetTester tester,
     _FakeSourceManagementController controller, {
-    Future<SourceCommandResult> Function(String url)? validateDirectSourceUrl,
+    Future<djs.SourceCommandResult> Function(String url)? validateDirectSourceUrl,
   }) async {
+    addTearDown(() {
+      for (final source in ComicSource.all()) {
+        ComicSourceManager().remove(source.key);
+      }
+    });
     await tester.pumpWidget(
       MaterialApp(
         home: ComicSourcePage(
@@ -238,23 +283,21 @@ void main() {
       controller,
       validateDirectSourceUrl: (url) async {
         validateCalls++;
-        return const SourceCommandSuccess(
-          metadata: DirectJsValidationMetadata(sourceKey: 'demo-source'),
+        return const djs.SourceCommandSuccess(
+          metadata: djs.DirectJsValidationMetadata(sourceKey: 'demo-source'),
         );
       },
     );
 
     await tester.enterText(find.byType(TextField).first, 'https://example.com/source.js');
     await tester.tap(find.text('Validate Direct URL'));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(validateCalls, 1);
-    expect(find.text('Validation Result'), findsOneWidget);
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
+    expect(find.text('Validation passed. Ready to install.'), findsOneWidget);
   });
 
-  testWidgets('direct url validation success shows disabled install state', (
+  testWidgets('source page shows install action only for installable direct js package', (
     tester,
   ) async {
     final controller = _FakeSourceManagementController();
@@ -262,8 +305,8 @@ void main() {
       tester,
       controller,
       validateDirectSourceUrl: (url) async {
-        return const SourceCommandSuccess(
-          metadata: DirectJsValidationMetadata(
+        return const djs.SourceCommandSuccess(
+          metadata: djs.DirectJsValidationMetadata(
             sourceKey: 'demo-source',
             name: 'Demo Source',
             version: '1.0.0',
@@ -274,15 +317,39 @@ void main() {
 
     await tester.enterText(find.byType(TextField).first, 'https://example.com/source.js');
     await tester.tap(find.text('Validate Direct URL'));
-    await tester.pump();
-
-    expect(find.text('Validation Result'), findsOneWidget);
-    expect(find.textContaining('Install/write path is disabled in D2.'), findsOneWidget);
-    await tester.tap(find.text('Close'));
     await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('install-validated-direct-source')), findsOneWidget);
   });
 
-  testWidgets('direct url validation does not mutate installed sources', (
+  testWidgets('source install button remains hidden when write adapter is unavailable', (
+    tester,
+  ) async {
+    final controller = _FakeSourceManagementController(
+      supportsDirectInstall: false,
+    );
+    await pumpPage(
+      tester,
+      controller,
+      validateDirectSourceUrl: (url) async {
+        return const djs.SourceCommandSuccess(
+          metadata: djs.DirectJsValidationMetadata(
+            sourceKey: 'demo-source',
+            name: 'Demo Source',
+            version: '1.0.0',
+          ),
+        );
+      },
+    );
+
+    await tester.enterText(find.byType(TextField).first, 'https://example.com/source.js');
+    await tester.tap(find.text('Validate Direct URL'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('install-validated-direct-source')), findsNothing);
+  });
+
+  testWidgets('source install requires explicit confirmation', (
     tester,
   ) async {
     final controller = _FakeSourceManagementController();
@@ -290,19 +357,87 @@ void main() {
       tester,
       controller,
       validateDirectSourceUrl: (url) async {
-        return const SourceCommandSuccess(
-          metadata: DirectJsValidationMetadata(sourceKey: 'demo-source'),
+        return const djs.SourceCommandSuccess(
+          metadata: djs.DirectJsValidationMetadata(sourceKey: 'demo-source'),
         );
       },
     );
 
     await tester.enterText(find.byType(TextField).first, 'https://example.com/source.js');
     await tester.tap(find.text('Validate Direct URL'));
-    await tester.pump();
-    await tester.tap(find.text('Close'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('install-validated-direct-source')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 
-    expect(controller.addSourceFromUrlCalls, 0);
+    expect(controller.installValidatedDirectSourceCalls, 0);
+  });
+
+  testWidgets('source install success reloads installed source list', (
+    tester,
+  ) async {
+    final controller = _FakeSourceManagementController();
+    await pumpPage(
+      tester,
+      controller,
+      validateDirectSourceUrl: (url) async {
+        return const djs.SourceCommandSuccess(
+          metadata: djs.DirectJsValidationMetadata(
+            sourceKey: 'demo-source',
+            name: 'Demo Source',
+            version: '1.0.0',
+          ),
+        );
+      },
+    );
+
+    await tester.enterText(find.byType(TextField).first, 'https://example.com/source.js');
+    await tester.tap(find.text('Validate Direct URL'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('install-validated-direct-source')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Install'));
+    await tester.pumpAndSettle();
+
+    expect(controller.installValidatedDirectSourceCalls, 1);
+    expect(ComicSource.find('demo-source'), isNotNull);
+    expect(find.textContaining('Installed source: demo-source'), findsOneWidget);
+  });
+
+  testWidgets('source install collision shows typed error and does not overwrite', (
+    tester,
+  ) async {
+    final controller = _FakeSourceManagementController()
+      ..installResult = const djs.SourceCommandFailed(
+        code: sourceInstallKeyCollisionCode,
+        message: 'Source key collision: demo-source',
+      );
+    await pumpPage(
+      tester,
+      controller,
+      validateDirectSourceUrl: (url) async {
+        return const djs.SourceCommandSuccess(
+          metadata: djs.DirectJsValidationMetadata(
+            sourceKey: 'demo-source',
+            name: 'Demo Source',
+            version: '1.0.0',
+          ),
+        );
+      },
+    );
+
+    await tester.enterText(find.byType(TextField).first, 'https://example.com/source.js');
+    await tester.tap(find.text('Validate Direct URL'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('install-validated-direct-source')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Install'));
+    await tester.pumpAndSettle();
+
+    expect(controller.installValidatedDirectSourceCalls, 1);
+    expect(controller.lastAllowOverwrite, isFalse);
+    expect(find.text('SOURCE_KEY_COLLISION: Source already installed'), findsWidgets);
   });
 
   test('source page loads primary repository url from canonical registry', () async {
@@ -393,4 +528,46 @@ void main() {
       }
     }
   });
+}
+
+ComicSource _buildTestSource({
+  required String key,
+  required String name,
+}) {
+  return ComicSource(
+    name,
+    key,
+    null,
+    null,
+    null,
+    null,
+    const [],
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    '/tmp/$key.js',
+    'https://example.com/$key.js',
+    '1.0.0',
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    false,
+    false,
+    null,
+    null,
+    identity: sourceIdentityFromKey(key, names: [name]),
+  );
 }
