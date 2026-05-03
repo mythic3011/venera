@@ -176,9 +176,7 @@ class DebugPageState extends State<DebugPage> {
           return;
         }
         if (exporter.isRunning && exporter.healthUri() != null) {
-          context.showMessage(
-            message: "Diagnostics API is still running".tl,
-          );
+          context.showMessage(message: "Diagnostics API is still running".tl);
         }
       },
       child: SmoothCustomScrollView(
@@ -258,6 +256,11 @@ class DebugPageState extends State<DebugPage> {
                     ],
                   ).paddingHorizontal(8),
                 ],
+                const SizedBox(height: 4),
+                Text(
+                  "Diagnostics API `logs.newestErrors` mixes current-session and persisted-file entries; use `source` or `logs.newestErrorsBySource` to distinguish."
+                      .tl,
+                ).paddingHorizontal(16),
                 const SizedBox(height: 8),
                 TextButton(
                   onPressed: _openAppDataDirectory,

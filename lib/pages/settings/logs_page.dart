@@ -2,7 +2,7 @@ part of 'settings_page.dart';
 
 abstract final class LogsPageStrings {
   static const sourceStructured = "Structured diagnostics";
-  static const sourceLegacy = "Legacy logs";
+  static const sourceLegacy = "Legacy logs (session)";
 
   static const all = "all";
   static const trace = "trace";
@@ -103,8 +103,9 @@ class _LogsPageState extends State<LogsPage> {
                     ? [
                         PopupMenuItem(
                           child: Text(LogsPageStrings.all.tl),
-                          onTap: () =>
-                              setState(() => logLevelToShow = LogsPageStrings.all),
+                          onTap: () => setState(
+                            () => logLevelToShow = LogsPageStrings.all,
+                          ),
                         ),
                         PopupMenuItem(
                           child: Text(LogsPageStrings.trace.tl),
@@ -134,8 +135,9 @@ class _LogsPageState extends State<LogsPage> {
                     : [
                         PopupMenuItem(
                           child: Text(LogsPageStrings.all.tl),
-                          onTap: () =>
-                              setState(() => logLevelToShow = LogsPageStrings.all),
+                          onTap: () => setState(
+                            () => logLevelToShow = LogsPageStrings.all,
+                          ),
                         ),
                         PopupMenuItem(
                           child: Text(LogsPageStrings.info.tl),

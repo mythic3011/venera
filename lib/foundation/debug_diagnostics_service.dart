@@ -66,6 +66,12 @@ class DebugDiagnosticsService {
     final readerDebugSnapshot = await _readerDebugSnapshotPayload(
       readerDiagnostics,
     );
+    final sessionNewestErrors = errorSnapshot.logs
+        .where((entry) => entry['source'] == 'session')
+        .toList(growable: false);
+    final persistedNewestErrors = errorSnapshot.logs
+        .where((entry) => entry['source'] == 'persisted')
+        .toList(growable: false);
     return {
       'platform': {'os': platform, 'isDesktop': App.isDesktop},
       'runtime': {
@@ -104,7 +110,13 @@ class DebugDiagnosticsService {
         'persistedTotalCount': errorSnapshot.persistedTotalCount,
         'recentErrorCount': errorSnapshot.sessionErrorCount,
         'persistedErrorCount': errorSnapshot.persistedErrorCount,
+        'newestErrorsSourceHint':
+            'newestErrors is mixed session+persisted; check source field',
         'newestErrors': errorSnapshot.logs,
+        'newestErrorsBySource': {
+          'session': sessionNewestErrors,
+          'persisted': persistedNewestErrors,
+        },
       },
       ...readerDiagnostics,
       if (readerDebugSnapshot != null)

@@ -81,7 +81,7 @@ void main() {
   });
 
   test(
-    'cbz import marks legacy path as policy-skip while canonical storage is available',
+    'cbz import marks legacy mirror as policy-skip while canonical storage is available',
     () async {
       final storage = CanonicalLocalImportStorage(
         loadBrowseRecords: () async => <LocalLibraryBrowseRecord>[],
@@ -94,7 +94,9 @@ void main() {
 
       final events = DevDiagnosticsApi.recent(channel: 'import.local');
       expect(
-        events.any((event) => event.message == 'import.local.legacyBlocked'),
+        events.any(
+          (event) => event.message == 'import.local.legacyMirrorSkipped',
+        ),
         isTrue,
       );
       expect(
@@ -120,7 +122,7 @@ void main() {
   });
 
   test(
-    'legacyBlocked is diagnostic-only and does not block canonical duplicate check',
+    'legacy mirror skipped diagnostic does not block canonical duplicate check',
     () async {
       final storage = CanonicalLocalImportStorage(
         loadBrowseRecords: () async => const <LocalLibraryBrowseRecord>[

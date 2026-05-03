@@ -70,9 +70,9 @@ class CanonicalLocalImportStorage implements LocalImportStoragePort {
 
   @override
   Future<void> assertStorageReadyForImport(String comicTitle) async {
-    AppDiagnostics.warn(
+    AppDiagnostics.info(
       'import.local',
-      'import.local.legacyBlocked',
+      'import.local.legacyMirrorSkipped',
       data: {
         'comicTitle': comicTitle,
         'code': 'LEGACY_MIRROR_DISABLED',
