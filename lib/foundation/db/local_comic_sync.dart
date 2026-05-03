@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/utils/import_sort.dart';
 
@@ -10,13 +11,26 @@ const String canonicalLocalFallbackChapterId = '__imported__';
 const String canonicalLocalDefaultPageOrderName = 'Source Default';
 
 class LocalComicCanonicalSyncService {
-  const LocalComicCanonicalSyncService({required this.store});
+  const LocalComicCanonicalSyncService({
+    required this.store,
+    this.resolveCanonicalLocalRootPath,
+  });
 
   final UnifiedComicsStore store;
+  final Future<String> Function()? resolveCanonicalLocalRootPath;
 
   Future<void> syncComic(LocalComic comic) async {
+    final canonicalLocalRootPath = await _requireCanonicalLocalRootPath();
+    final comicRootPath = resolveImportedComicRootPath(
+      canonicalLocalRootPath: canonicalLocalRootPath,
+      comic: comic,
+    );
+    final coverLocalPath = resolveImportedComicCoverPath(
+      comicRootPath: comicRootPath,
+      cover: comic.cover,
+    );
     final importedAt = comic.createdAt.toIso8601String();
-    final chapterInputs = await _buildChapterInputs(comic);
+    final chapterInputs = await _buildChapterInputs(comic, comicRootPath);
     final sourceLinkId = _localComicSourceLinkId(comic.id);
     final fileCount = chapterInputs.fold<int>(
       0,
@@ -34,8 +48,9 @@ class LocalComicCanonicalSyncService {
           id: comic.id,
           title: comic.title,
           normalizedTitle: _normalizeText(comic.title),
-          coverLocalPath: comic.coverFile.existsSync()
-              ? comic.coverFile.path
+          coverLocalPath:
+              coverLocalPath != null && File(coverLocalPath).existsSync()
+              ? coverLocalPath
               : null,
           createdAt: importedAt,
           updatedAt: importedAt,
@@ -56,8 +71,8 @@ class LocalComicCanonicalSyncService {
           id: _localLibraryItemId(comic.id),
           comicId: comic.id,
           storageType: 'user_imported',
-          localRootPath: comic.baseDir,
-          importedFromPath: comic.baseDir,
+          localRootPath: comicRootPath,
+          importedFromPath: comicRootPath,
           fileCount: fileCount,
           totalBytes: totalBytes,
           importedAt: importedAt,
@@ -69,10 +84,10 @@ class LocalComicCanonicalSyncService {
           id: sourceLinkId,
           comicId: comic.id,
           sourcePlatformId: 'local',
-          sourceComicId: comic.baseDir,
+          sourceComicId: comicRootPath,
           linkStatus: 'candidate',
           isPrimary: false,
-          sourceUrl: Directory(comic.baseDir).uri.toString(),
+          sourceUrl: Directory(comicRootPath).uri.toString(),
           sourceTitle: comic.title,
           linkedAt: importedAt,
           updatedAt: importedAt,
@@ -177,6 +192,7 @@ class LocalComicCanonicalSyncService {
 
   Future<List<_ImportedChapterInput>> _buildChapterInputs(
     LocalComic comic,
+    String comicRootPath,
   ) async {
     if (comic.chapters == null || comic.downloadedChapters.isEmpty) {
       return [
@@ -184,8 +200,8 @@ class LocalComicCanonicalSyncService {
           sourceChapterId: canonicalLocalFallbackChapterId,
           chapterId: '${comic.id}:$canonicalLocalFallbackChapterId',
           title: comic.title,
-          directory: Directory(comic.baseDir),
-          pages: await _listPages(Directory(comic.baseDir)),
+          directory: Directory(comicRootPath),
+          pages: await _listPages(Directory(comicRootPath)),
         ),
       ];
     }
@@ -193,11 +209,11 @@ class LocalComicCanonicalSyncService {
     final inputs = <_ImportedChapterInput>[];
     final chapterMap = comic.chapters!.allChapters;
     for (final sourceChapterId in comic.downloadedChapters) {
-      final chapterDirectoryName = LocalManager.getChapterDirectoryName(
+      final chapterDirectoryName = _sanitizeChapterDirectoryName(
         sourceChapterId,
       );
       final chapterDirectory = Directory(
-        p.join(comic.baseDir, chapterDirectoryName),
+        p.join(comicRootPath, chapterDirectoryName),
       );
       if (!chapterDirectory.existsSync()) {
         continue;
@@ -237,6 +253,26 @@ class LocalComicCanonicalSyncService {
       (a, b) => naturalCompare(pathBasename(a.path), pathBasename(b.path)),
     );
     return pages;
+  }
+
+  Future<String> _requireCanonicalLocalRootPath() async {
+    final injectedPath = await resolveCanonicalLocalRootPath?.call();
+    if (injectedPath != null && injectedPath.trim().isNotEmpty) {
+      return injectedPath.trim();
+    }
+    final configuredPath = _readPersistedCanonicalLocalRootPath();
+    if (configuredPath != null && configuredPath.trim().isNotEmpty) {
+      return configuredPath.trim();
+    }
+    final trimmedFallbackPath = '${App.dataPath}${Platform.pathSeparator}local'
+        .trim();
+    if (trimmedFallbackPath.isEmpty) {
+      throw Exception(
+        'Canonical local storage unavailable (fail closed): '
+        'CANONICAL_ROOT_UNAVAILABLE',
+      );
+    }
+    return trimmedFallbackPath;
   }
 }
 
@@ -278,4 +314,59 @@ bool _isSupportedImagePath(String path) {
     'jpg' || 'jpeg' || 'png' || 'webp' || 'gif' || 'jpe' => true,
     _ => false,
   };
+}
+
+String _sanitizeChapterDirectoryName(String name) {
+  final builder = StringBuffer();
+  for (var i = 0; i < name.length; i++) {
+    final char = name[i];
+    if (char == '/' ||
+        char == '\\' ||
+        char == ':' ||
+        char == '*' ||
+        char == '?' ||
+        char == '"' ||
+        char == '<' ||
+        char == '>' ||
+        char == '|') {
+      builder.write('_');
+    } else {
+      builder.write(char);
+    }
+  }
+  return builder.toString();
+}
+
+String? _readPersistedCanonicalLocalRootPath() {
+  final file = File('${App.dataPath}${Platform.pathSeparator}local_path');
+  if (!file.existsSync()) {
+    return null;
+  }
+  final value = file.readAsStringSync().trim();
+  return value.isEmpty ? null : value;
+}
+
+String resolveImportedComicRootPath({
+  required String canonicalLocalRootPath,
+  required LocalComic comic,
+}) {
+  final directory = comic.directory;
+  if (p.isAbsolute(directory)) {
+    return directory;
+  }
+  return p.join(canonicalLocalRootPath, directory);
+}
+
+String? resolveImportedComicCoverPath({
+  required String comicRootPath,
+  required String? cover,
+}) {
+  final coverPath = cover?.trim();
+  if (coverPath == null || coverPath.isEmpty) {
+    return null;
+  }
+  if (p.isAbsolute(coverPath)) {
+    return coverPath;
+  }
+  return p.join(comicRootPath, coverPath);
 }

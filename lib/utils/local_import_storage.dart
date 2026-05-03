@@ -1,11 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:venera/foundation/app.dart';
 import 'package:venera/foundation/db/local_comic_sync.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/local.dart';
-import 'package:venera/foundation/local_comics_legacy_bridge.dart';
-import 'package:venera/foundation/local_storage_legacy_bridge.dart';
 
 abstract class LocalImportStoragePort {
   Future<void> assertStorageReadyForImport(String comicTitle);
@@ -17,21 +16,22 @@ abstract class LocalImportStoragePort {
 class CanonicalLocalImportStorage implements LocalImportStoragePort {
   const CanonicalLocalImportStorage({
     this.loadBrowseRecords,
-    this.tryReadRootPath,
-    this.findDefaultRootPath,
-    this.legacyLookup,
-    this.legacyRegister,
+    this.resolveRootPath,
+    this.legacyMigrationMirror,
+    this.enableLegacyMigrationMirror = false,
     this.syncComic,
     this.idSeed,
+    this.hasCanonicalComicId,
   });
 
   final Future<List<dynamic>> Function()? loadBrowseRecords;
-  final String? Function()? tryReadRootPath;
-  final Future<String> Function()? findDefaultRootPath;
-  final LegacyLocalComicLookupResult Function(String title)? legacyLookup;
-  final Future<void> Function(LocalComic comic, String id)? legacyRegister;
+  final Future<String> Function()? resolveRootPath;
+  final Future<void> Function(LocalComic comic, String rootPath)?
+  legacyMigrationMirror;
+  final bool enableLegacyMigrationMirror;
   final Future<void> Function(LocalComic comic)? syncComic;
   final String Function()? idSeed;
+  final Future<bool> Function(String comicId)? hasCanonicalComicId;
 
   Future<List<dynamic>> _loadCanonicalBrowseRecords(String comicTitle) async {
     AppDiagnostics.trace(
@@ -66,28 +66,20 @@ class CanonicalLocalImportStorage implements LocalImportStoragePort {
     }
   }
 
-  void _probeLegacyAvailability(String comicTitle) {
-    final result = (legacyLookup ?? legacyLookupLocalComicByName).call(
-      comicTitle,
-    );
-    if (result is LegacyLocalComicLookupUnavailable) {
-      AppDiagnostics.warn(
-        'import.local',
-        'import.local.legacyBlocked',
-        data: {
-          'comicTitle': comicTitle,
-          'code': result.code,
-          'authority': 'legacy_local_db',
-        },
-      );
-    }
-  }
-
   String _normalizeTitle(String title) => title.trim().toLowerCase();
 
   @override
   Future<void> assertStorageReadyForImport(String comicTitle) async {
-    _probeLegacyAvailability(comicTitle);
+    AppDiagnostics.warn(
+      'import.local',
+      'import.local.legacyBlocked',
+      data: {
+        'comicTitle': comicTitle,
+        'code': 'LEGACY_MIRROR_DISABLED',
+        'authority': 'legacy_local_db',
+        'reason': 'policy_skip',
+      },
+    );
     await _loadCanonicalBrowseRecords(comicTitle);
   }
 
@@ -109,19 +101,12 @@ class CanonicalLocalImportStorage implements LocalImportStoragePort {
 
   @override
   Future<String> requireRootPath() async {
-    final configuredPath = (tryReadRootPath ?? tryReadLocalComicsStoragePath)
-        .call();
-    if (configuredPath != null && configuredPath.trim().isNotEmpty) {
-      return configuredPath.trim();
-    }
     try {
-      final fallbackPath =
-          await (findDefaultRootPath ??
-              () => LocalManager().findDefaultPath())();
-      if (fallbackPath.trim().isEmpty) {
+      final rootPath = await (resolveRootPath ?? _resolveCanonicalRootPath)();
+      if (rootPath.trim().isEmpty) {
         throw Exception('empty path');
       }
-      return fallbackPath.trim();
+      return rootPath.trim();
     } catch (_) {
       throw Exception(
         'Canonical local storage unavailable (fail closed): '
@@ -133,12 +118,15 @@ class CanonicalLocalImportStorage implements LocalImportStoragePort {
   Future<String> _allocateComicId() async {
     final baseSeed =
         (idSeed ?? () => DateTime.now().microsecondsSinceEpoch.toString())();
-    final store = App.unifiedComicsStore;
     var suffix = 0;
     while (true) {
       final candidate = suffix == 0 ? baseSeed : '$baseSeed-$suffix';
-      final existing = await store.loadComicSnapshot(candidate);
-      if (existing == null) {
+      final exists =
+          await (hasCanonicalComicId ??
+              (String comicId) async =>
+                  (await App.unifiedComicsStore.loadComicSnapshot(comicId)) !=
+                  null)(candidate);
+      if (!exists) {
         return candidate;
       }
       suffix++;
@@ -164,29 +152,35 @@ class CanonicalLocalImportStorage implements LocalImportStoragePort {
         (LocalComic comic) => LocalComicCanonicalSyncService(
           store: App.unifiedComicsStore,
         ).syncComic(comic))(registeredComic);
-    try {
-      await (legacyRegister ??
-          (LocalComic comic, String id) => Future<void>.sync(
-            () => legacyRegisterLocalComic(comic, id),
-          ))(registeredComic, id);
-    } catch (error) {
-      final text = error.toString();
-      if (text.contains('LateInitializationError') ||
-          text.contains('late initialization')) {
+    if (enableLegacyMigrationMirror) {
+      try {
+        final rootPath = await requireRootPath();
+        await legacyMigrationMirror?.call(registeredComic, rootPath);
+      } catch (error) {
         AppDiagnostics.warn(
           'import.local',
-          'import.local.legacyBlocked',
+          'import.local.legacyMirrorFailed',
           data: {
             'comicTitle': registeredComic.title,
-            'code': 'LEGACY_UNAVAILABLE',
             'authority': 'legacy_local_db',
-            'stage': 'register_mirror',
+            'error': error.toString(),
           },
         );
-      } else {
-        rethrow;
       }
     }
     return registeredComic;
   }
+}
+
+Future<String> _resolveCanonicalRootPath() async {
+  final persistedPathFile = File(
+    '${App.dataPath}${Platform.pathSeparator}local_path',
+  );
+  if (persistedPathFile.existsSync()) {
+    final persistedPath = persistedPathFile.readAsStringSync().trim();
+    if (persistedPath.isNotEmpty) {
+      return persistedPath;
+    }
+  }
+  return '${App.dataPath}${Platform.pathSeparator}local';
 }

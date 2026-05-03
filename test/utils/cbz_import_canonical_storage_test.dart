@@ -7,7 +7,6 @@ import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/favorites.dart';
 import 'package:venera/foundation/local.dart';
-import 'package:venera/foundation/local_comics_legacy_bridge.dart';
 import 'package:venera/utils/cbz.dart';
 import 'package:venera/utils/import_comic.dart';
 import 'package:venera/utils/local_import_storage.dart';
@@ -73,10 +72,9 @@ void main() {
   });
 
   test(
-    'cbz import does not require legacy local comics db when canonical storage is available',
+    'cbz import marks legacy path as policy-skip while canonical storage is available',
     () async {
       final storage = CanonicalLocalImportStorage(
-        legacyLookup: (_) => const LegacyLocalComicLookupUnavailable(),
         loadBrowseRecords: () async => <LocalLibraryBrowseRecord>[],
       );
 
@@ -113,10 +111,9 @@ void main() {
   });
 
   test(
-    'legacy lookup unavailable does not fail import before canonical duplicate check',
+    'legacyBlocked is diagnostic-only and does not block canonical duplicate check',
     () async {
       final storage = CanonicalLocalImportStorage(
-        legacyLookup: (_) => const LegacyLocalComicLookupUnavailable(),
         loadBrowseRecords: () async => const <LocalLibraryBrowseRecord>[
           LocalLibraryBrowseRecord(
             comicId: 'comic-1',
@@ -137,6 +134,162 @@ void main() {
       expect(isDuplicate, isTrue);
     },
   );
+
+  test(
+    'default canonical storage does not call legacy migration mirror',
+    () async {
+      var legacyMirrorCalls = 0;
+      final storage = CanonicalLocalImportStorage(
+        loadBrowseRecords: () async => <LocalLibraryBrowseRecord>[],
+        resolveRootPath: () async => '/library/local',
+        hasCanonicalComicId: (_) async => false,
+        syncComic: (_) async {},
+        legacyMigrationMirror: (_, __) async {
+          legacyMirrorCalls++;
+        },
+      );
+
+      await storage.registerImportedComic(
+        LocalComic(
+          id: 'input-id',
+          title: 'Comic A',
+          subtitle: '',
+          tags: const [],
+          directory: 'comic-a',
+          chapters: null,
+          cover: 'cover.png',
+          comicType: ComicType.local,
+          downloadedChapters: const [],
+          createdAt: DateTime.utc(2026, 5, 3),
+        ),
+      );
+
+      expect(legacyMirrorCalls, 0);
+    },
+  );
+
+  test(
+    'canonical registration works when LocalManager storage is uninitialized',
+    () async {
+      final storage = CanonicalLocalImportStorage(
+        loadBrowseRecords: () async => <LocalLibraryBrowseRecord>[],
+        resolveRootPath: () async => '/library/local',
+        hasCanonicalComicId: (_) async => false,
+        syncComic: (_) async {},
+      );
+
+      await expectLater(
+        storage.registerImportedComic(
+          LocalComic(
+            id: 'input-id',
+            title: 'Comic A',
+            subtitle: '',
+            tags: const [],
+            directory: 'comic-a',
+            chapters: null,
+            cover: 'cover.png',
+            comicType: ComicType.local,
+            downloadedChapters: const [],
+            createdAt: DateTime.utc(2026, 5, 3),
+          ),
+        ),
+        completes,
+      );
+    },
+  );
+
+  test('explicit legacy migration mirror is invoked when enabled', () async {
+    var legacyMirrorCalls = 0;
+    final storage = CanonicalLocalImportStorage(
+      loadBrowseRecords: () async => <LocalLibraryBrowseRecord>[],
+      resolveRootPath: () async => '/library/local',
+      hasCanonicalComicId: (_) async => false,
+      syncComic: (_) async {},
+      enableLegacyMigrationMirror: true,
+      legacyMigrationMirror: (comic, rootPath) async {
+        legacyMirrorCalls++;
+        expect(comic.title, 'Comic A');
+        expect(rootPath, '/library/local');
+      },
+    );
+
+    await storage.registerImportedComic(
+      LocalComic(
+        id: 'input-id',
+        title: 'Comic A',
+        subtitle: '',
+        tags: const [],
+        directory: 'comic-a',
+        chapters: null,
+        cover: 'cover.png',
+        comicType: ComicType.local,
+        downloadedChapters: const [],
+        createdAt: DateTime.utc(2026, 5, 3),
+      ),
+    );
+
+    expect(legacyMirrorCalls, 1);
+  });
+
+  test(
+    'explicit legacy migration mirror failure emits legacyMirrorFailed',
+    () async {
+      final storage = CanonicalLocalImportStorage(
+        loadBrowseRecords: () async => <LocalLibraryBrowseRecord>[],
+        resolveRootPath: () async => '/library/local',
+        hasCanonicalComicId: (_) async => false,
+        syncComic: (_) async {},
+        enableLegacyMigrationMirror: true,
+        legacyMigrationMirror: (_, __) async {
+          throw StateError('mirror failed');
+        },
+      );
+
+      await storage.registerImportedComic(
+        LocalComic(
+          id: 'input-id',
+          title: 'Comic A',
+          subtitle: '',
+          tags: const [],
+          directory: 'comic-a',
+          chapters: null,
+          cover: 'cover.png',
+          comicType: ComicType.local,
+          downloadedChapters: const [],
+          createdAt: DateTime.utc(2026, 5, 3),
+        ),
+      );
+
+      final events = DevDiagnosticsApi.recent(channel: 'import.local');
+      expect(
+        events.any(
+          (event) => event.message == 'import.local.legacyMirrorFailed',
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test('import_comic does not reference legacyRegisterLocalComic', () async {
+    final content = await File('lib/utils/import_comic.dart').readAsString();
+    expect(content.contains('legacyRegisterLocalComic'), isFalse);
+  });
+
+  test(
+    'import_comic does not enable legacy migration mirror by default',
+    () async {
+      final content = await File('lib/utils/import_comic.dart').readAsString();
+      expect(content.contains('enableLegacyMigrationMirror: true'), isFalse);
+    },
+  );
+
+  test('local_import_storage default path has no LocalManager usage', () async {
+    final content = await File(
+      'lib/utils/local_import_storage.dart',
+    ).readAsString();
+    expect(content.contains('LocalManager('), isFalse);
+    expect(content.contains('legacyRegisterLocalComic'), isFalse);
+  });
 
   test(
     'registerComics writes through canonical local import storage',
@@ -221,7 +374,10 @@ void main() {
         Directory('${localRoot.path}/${comic.directory}').existsSync(),
         isTrue,
       );
-      expect(File('${existingDir.path}/old.txt').readAsStringSync(), 'existing');
+      expect(
+        File('${existingDir.path}/old.txt').readAsStringSync(),
+        'existing',
+      );
     },
   );
 
