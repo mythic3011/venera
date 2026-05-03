@@ -1,6 +1,6 @@
 # F-favorite-authority-inventory-1
 
-Date: 2026-05-04  
+Date: 2026-05-04
 Scope: Inventory only. No runtime/storage authority change.
 
 ## Goal

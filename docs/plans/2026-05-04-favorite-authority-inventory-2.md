@@ -1,6 +1,6 @@
 # F-favorite-authority-inventory-2
 
-Date: 2026-05-04  
+Date: 2026-05-04
 Scope: Favorite-related legacy authority stratification only (no runtime behavior changes).
 
 ## Goal
