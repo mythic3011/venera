@@ -19,22 +19,7 @@ class _CallsiteMeta {
 void main() {
   test('global context callsites are fully classified', () {
     const baselineByCallsite = <String, _CallsiteMeta>{};
-    const searchPattern =
-        r'App\.rootContext|App\.rootNavigatorKey\.currentContext|App\.mainNavigatorKey\?\.currentContext';
-
-    final rg = Process.runSync(
-      'rg',
-      ['-n', searchPattern, 'lib'],
-      runInShell: false,
-    );
-
-    expect(
-      rg.exitCode == 0 || rg.exitCode == 1,
-      isTrue,
-      reason: 'rg failed: ${rg.stderr}',
-    );
-
-    final stdout = (rg.stdout as String).trim();
+    final stdout = _collectCallsiteMatches().trim();
     final foundCallsites = <String, _CallsiteMeta>{};
     if (stdout.isNotEmpty) {
       for (final line in stdout.split('\n')) {
@@ -144,6 +129,43 @@ void main() {
           'Every callsite must have owner + migration lane; non-allowed callsites must have a real lane:\n${missingMetadata.join('\n')}',
     );
   });
+}
+
+String _collectCallsiteMatches() {
+  const searchPattern =
+      r'App\.rootContext|App\.rootNavigatorKey\.currentContext|App\.mainNavigatorKey\?\.currentContext';
+  final rg = Process.runSync(
+    'rg',
+    ['-n', searchPattern, 'lib'],
+    runInShell: false,
+  );
+
+  if (rg.exitCode == 0 || rg.exitCode == 1) {
+    return rg.stdout as String;
+  }
+
+  final regex = RegExp(searchPattern);
+  final lines = <String>[];
+  final libDir = Directory('lib');
+  if (!libDir.existsSync()) {
+    return '';
+  }
+
+  for (final entity in libDir.listSync(recursive: true, followLinks: false)) {
+    if (entity is! File || !entity.path.endsWith('.dart')) {
+      continue;
+    }
+    final relativePath = entity.path.replaceAll('\\', '/');
+    final content = entity.readAsLinesSync();
+    for (var i = 0; i < content.length; i++) {
+      final line = content[i];
+      if (regex.hasMatch(line)) {
+        lines.add('$relativePath:${i + 1}:$line');
+      }
+    }
+  }
+
+  return lines.join('\n');
 }
 
 String? _detectPattern(String sourceLine) {
