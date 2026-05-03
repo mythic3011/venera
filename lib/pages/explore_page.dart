@@ -383,7 +383,7 @@ class _MixedExplorePageState
           yield const SliverToBoxAdapter(child: Divider());
           cache.clear();
         }
-        yield* _buildExplorePagePart(part, widget.sourceKey);
+        yield* _buildExplorePagePart(context, part, widget.sourceKey);
         yield const SliverToBoxAdapter(child: Divider());
       } else {
         cache.addAll(part as List<Comic>);
@@ -423,7 +423,7 @@ class _MixedExplorePageState
 }
 
 Iterable<Widget> _buildExplorePagePart(
-    ExplorePagePart part, String sourceKey) sync* {
+    BuildContext context, ExplorePagePart part, String sourceKey) sync* {
   Widget buildTitle(ExplorePagePart part) {
     return SliverToBoxAdapter(
       child: SizedBox(
@@ -441,7 +441,6 @@ Iterable<Widget> _buildExplorePagePart(
               if (part.viewMore != null)
                 TextButton(
                   onPressed: () {
-                    var context = App.mainNavigatorKey!.currentContext!;
                     part.viewMore!.jump(context);
                   },
                   child: Text("View more".tl),
@@ -564,21 +563,21 @@ class _MultiPartExplorePageState extends State<_MultiPartExplorePage> {
         withAppbar: false,
       );
     } else {
-      return buildPage();
+      return buildPage(context);
     }
   }
 
-  Widget buildPage() {
+  Widget buildPage(BuildContext context) {
     return SmoothCustomScrollView(
       key: const PageStorageKey('scroll'),
       controller: widget.controller,
-      slivers: _buildPage().toList(),
+      slivers: _buildPage(context).toList(),
     );
   }
 
-  Iterable<Widget> _buildPage() sync* {
+  Iterable<Widget> _buildPage(BuildContext context) sync* {
     for (var part in parts!) {
-      yield* _buildExplorePagePart(part, widget.comicSourceKey);
+      yield* _buildExplorePagePart(context, part, widget.comicSourceKey);
     }
   }
 }

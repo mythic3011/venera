@@ -25,40 +25,33 @@ class _CategoriesPageState extends State<CategoriesPage>
 
   late TabController controller;
 
-  void onSettingsChanged() {
-    var categories = List.from(
-      appdata.settings["categories"],
-    ).whereType<String>().toList();
-    var allCategories = ComicSource.all()
+  List<String> _readEnabledCategories() {
+    final raw = appdata.settings["categories"];
+    final configured = raw is Iterable ? raw.whereType<String>().toList() : <String>[];
+    final allCategories = ComicSource.all()
         .map((e) => e.categoryData?.key)
-        .where((element) => element != null)
-        .map((e) => e!)
-        .toList();
-    categories = categories
-        .where((element) => allCategories.contains(element))
-        .toList();
+        .whereType<String>()
+        .toSet();
+    return configured.where(allCategories.contains).toList();
+  }
+
+  void onSettingsChanged() {
+    final categories = _readEnabledCategories();
     if (!categories.isEqualTo(this.categories)) {
+      final oldController = controller;
+      final newController = TabController(length: categories.length, vsync: this);
       setState(() {
         this.categories = categories;
+        controller = newController;
       });
-      controller = TabController(length: categories.length, vsync: this);
+      oldController.dispose();
     }
   }
 
   @override
   void initState() {
     super.initState();
-    var categories = List.from(
-      appdata.settings["categories"],
-    ).whereType<String>().toList();
-    var allCategories = ComicSource.all()
-        .map((e) => e.categoryData?.key)
-        .where((element) => element != null)
-        .map((e) => e!)
-        .toList();
-    this.categories = categories
-        .where((element) => allCategories.contains(element))
-        .toList();
+    categories = _readEnabledCategories();
     appdata.settings.addListener(onSettingsChanged);
     controller = TabController(length: categories.length, vsync: this);
   }
@@ -167,11 +160,13 @@ class _CategoryPage extends StatelessWidget {
           child: Wrap(
             children: [
               if (data.enableRankingPage)
-                buildTag("Ranking".tl, () {
+                buildTag("Ranking".tl, (context) {
                   context.to(() => RankingPage(categoryKey: data.key));
                 }),
               for (var buttonData in data.buttons)
-                buildTag(buttonData.label.tl, buttonData.onTap),
+                buildTag(buttonData.label.tl, (context) {
+                  buttonData.onTap();
+                }),
             ],
           ),
         ),
@@ -246,13 +241,12 @@ class _CategoryPage extends StatelessWidget {
   }
 
   Widget buildCategory(CategoryItem c) {
-    return buildTag(c.label, () {
-      var context = App.mainNavigatorKey!.currentContext!;
+    return buildTag(c.label, (context) {
       c.target.jump(context);
     });
   }
 
-  Widget buildTag(String label, VoidCallback onClick) {
+  Widget buildTag(String label, void Function(BuildContext context) onClick) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
       child: Builder(
@@ -262,7 +256,7 @@ class _CategoryPage extends StatelessWidget {
             color: context.colorScheme.primaryContainer.toOpacity(0.72),
             child: InkWell(
               borderRadius: const BorderRadius.all(Radius.circular(8)),
-              onTap: onClick,
+              onTap: () => onClick(context),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                 child: Text(label),

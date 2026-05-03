@@ -100,16 +100,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.inactive && hideContentOverlay == null) {
       hideContentOverlay = OverlayEntry(
         builder: (context) {
+          final surfaceColor = Theme.of(context).colorScheme.surface;
           return Positioned.fill(
             child: Container(
               width: double.infinity,
               height: double.infinity,
-              color: App.rootContext.colorScheme.surface,
+              color: surfaceColor,
             ),
           );
         },
       );
-      Overlay.of(App.rootContext).insert(hideContentOverlay!);
+      Overlay.of(context, rootOverlay: true).insert(hideContentOverlay!);
     } else if (hideContentOverlay != null &&
         state == AppLifecycleState.resumed) {
       hideContentOverlay!.remove();
@@ -119,10 +120,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         !isAuthPageActive &&
         !IO.isSelectingFiles) {
       isAuthPageActive = true;
-      App.rootContext.to(
+      context.to(
         () => AuthPage(
           onSuccessfulAuth: () {
-            App.rootContext.pop();
+            if (!mounted) return;
+            context.pop();
             isAuthPageActive = false;
           },
         ),
@@ -195,7 +197,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (appdata.settings['authorizationRequired']) {
       home = AuthPage(
         onSuccessfulAuth: () {
-          App.rootContext.toReplacement(() => const MainPage());
+          if (!mounted) return;
+          context.toReplacement(() => const MainPage());
         },
       );
     } else {

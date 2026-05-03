@@ -18,38 +18,7 @@ class _CallsiteMeta {
 
 void main() {
   test('global context callsites are fully classified', () {
-    const baselineByCallsite = <String, _CallsiteMeta>{
-      'lib/main.dart:107': _CallsiteMeta(
-        pattern: 'App.rootContext',
-        category: 'allowed_bootstrap',
-        owner: 'bootstrap',
-        migrationLane: 'none',
-      ),
-      'lib/main.dart:112': _CallsiteMeta(
-        pattern: 'App.rootContext',
-        category: 'allowed_bootstrap',
-        owner: 'bootstrap',
-        migrationLane: 'none',
-      ),
-      'lib/main.dart:122': _CallsiteMeta(
-        pattern: 'App.rootContext',
-        category: 'allowed_bootstrap',
-        owner: 'bootstrap',
-        migrationLane: 'none',
-      ),
-      'lib/main.dart:125': _CallsiteMeta(
-        pattern: 'App.rootContext',
-        category: 'allowed_bootstrap',
-        owner: 'bootstrap',
-        migrationLane: 'none',
-      ),
-      'lib/main.dart:198': _CallsiteMeta(
-        pattern: 'App.rootContext',
-        category: 'allowed_bootstrap',
-        owner: 'bootstrap',
-        migrationLane: 'none',
-      ),
-    };
+    const baselineByCallsite = <String, _CallsiteMeta>{};
     const searchPattern =
         r'App\.rootContext|App\.rootNavigatorKey\.currentContext|App\.mainNavigatorKey\?\.currentContext';
 
@@ -59,7 +28,11 @@ void main() {
       runInShell: false,
     );
 
-    expect(rg.exitCode, 0, reason: 'rg failed: ${rg.stderr}');
+    expect(
+      rg.exitCode == 0 || rg.exitCode == 1,
+      isTrue,
+      reason: 'rg failed: ${rg.stderr}',
+    );
 
     final stdout = (rg.stdout as String).trim();
     final foundCallsites = <String, _CallsiteMeta>{};
