@@ -36,7 +36,7 @@ Scope pattern:
 - `App.rootNavigatorKey.currentContext`
 - `App.mainNavigatorKey?.currentContext`
 
-Total files with global-context access: **5**
+Total files with global-context access: **3**
 
 ### allowed_bootstrap
 
@@ -61,8 +61,6 @@ Total files with global-context access: **5**
 ### background_service
 
 - `lib/foundation/local/local_comic.dart`
-- `lib/init.dart`
-- `lib/network/cloudflare.dart`
 - `lib/utils/data_sync.dart`
 
 ### unknown

@@ -7,23 +7,15 @@ void main() {
     const classifiedByFile = <String, String>{
       'lib/main.dart': 'allowed_bootstrap',
       'lib/foundation/local/local_comic.dart': 'background_service',
-      'lib/init.dart': 'background_service',
-      'lib/network/cloudflare.dart': 'background_service',
       'lib/utils/data_sync.dart': 'background_service',
     };
     const migrationOwnerByFile = <String, String>{
       'lib/foundation/local/local_comic.dart': 'local-foundation',
-      'lib/init.dart': 'bootstrap',
-      'lib/network/cloudflare.dart': 'network',
       'lib/utils/data_sync.dart': 'data-sync',
     };
     const migrationNoteByFile = <String, String>{
       'lib/foundation/local/local_comic.dart':
           'Emit typed result/events and let UI layer own dialog/navigation rendering.',
-      'lib/init.dart':
-          'Move startup update prompt dispatch to UI lifecycle owner instead of init global context.',
-      'lib/network/cloudflare.dart':
-          'Stop direct UI on network layer; emit diagnostics + typed status only.',
       'lib/utils/data_sync.dart':
           'Return sync result to UI layer; avoid global context resolution in utility layer.',
     };

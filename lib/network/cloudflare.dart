@@ -195,7 +195,8 @@ void passCloudflare(CloudflareException e, void Function() onFinished) async {
   }
 
     final navigationContext =
-        App.rootNavigatorKey.currentContext ?? App.mainNavigatorKey?.currentContext;
+        App.rootNavigatorKey.currentState?.context ??
+        App.mainNavigatorKey?.currentState?.context;
     if (navigationContext == null) {
       return;
     }

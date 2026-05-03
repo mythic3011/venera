@@ -122,7 +122,8 @@ Future<void> _checkAppUpdates() async {
   ComicSourcePage.checkComicSourceUpdate();
   if (appdata.settings['checkUpdateOnStart']) {
     final updateContext =
-        App.rootNavigatorKey.currentContext ?? App.mainNavigatorKey?.currentContext;
+        App.rootNavigatorKey.currentState?.context ??
+        App.mainNavigatorKey?.currentState?.context;
     if (updateContext == null) {
       return;
     }
