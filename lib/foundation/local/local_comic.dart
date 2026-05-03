@@ -89,11 +89,18 @@ class LocalComic with HistoryMixin implements Comic {
       downloadedChapters = List.from(jsonDecode(row[8] as String)),
       createdAt = DateTime.fromMillisecondsSinceEpoch(row[9] as int);
 
+  /// Legacy runtime access only. Canonical import/sync paths must not use this.
   File get coverFile => File(FilePath.join(baseDir, cover));
 
+  /// Legacy runtime access only. Canonical import/sync paths must not use this.
   String get baseDir => (directory.contains('/') || directory.contains('\\'))
       ? directory
-      : FilePath.join(LocalManager().path, directory);
+      : FilePath.join(
+          LocalManager().requireLegacyPathForModelAccess(
+            operation: 'LocalComic.baseDir',
+          ),
+          directory,
+        );
 
   @override
   String get description => "";

@@ -69,6 +69,23 @@ class LocalManager with ChangeNotifier {
   /// path to the directory where all the comics are stored
   late String path;
 
+  Never _throwLegacyUnavailable(String operation) {
+    throw StateError(
+      'Legacy local manager unavailable for $operation. '
+      'This access is legacy-only; canonical import/sync must not depend on LocalManager.',
+    );
+  }
+
+  String requireLegacyPathForModelAccess({required String operation}) {
+    if (!_isInitialized) {
+      _throwLegacyUnavailable(operation);
+    }
+    if (!_hasResolvedPath()) {
+      _throwLegacyUnavailable(operation);
+    }
+    return path;
+  }
+
   Directory get directory => Directory(path);
 
   void _checkNoMedia() {
@@ -631,10 +648,10 @@ class LocalManager with ChangeNotifier {
   }
 
   void remove(String id, ComicType comicType) async {
-    _db.execute('DELETE FROM $_localComicsTable WHERE id = ? AND comic_type = ?;', [
-      id,
-      comicType.value,
-    ]);
+    _db.execute(
+      'DELETE FROM $_localComicsTable WHERE id = ? AND comic_type = ?;',
+      [id, comicType.value],
+    );
     notifyListeners();
   }
 
@@ -1029,10 +1046,10 @@ class LocalManager with ChangeNotifier {
       );
       _removeChapterMetadata(c, chapters);
     } else {
-      _db.execute('DELETE FROM $_localComicsTable WHERE id = ? AND comic_type = ?;', [
-        c.id,
-        c.comicType.value,
-      ]);
+      _db.execute(
+        'DELETE FROM $_localComicsTable WHERE id = ? AND comic_type = ?;',
+        [c.id, c.comicType.value],
+      );
       _metadataRepository.removeSeries(_metadataSeriesKey(c));
     }
     var shouldRemovedDirs = <Directory>[];
@@ -1271,10 +1288,10 @@ class LocalManager with ChangeNotifier {
             shouldRemovedDirs.add(dir);
           }
         }
-        _db.execute('DELETE FROM $_localComicsTable WHERE id = ? AND comic_type = ?;', [
-          c.id,
-          c.comicType.value,
-        ]);
+        _db.execute(
+          'DELETE FROM $_localComicsTable WHERE id = ? AND comic_type = ?;',
+          [c.id, c.comicType.value],
+        );
       }
     } catch (e, s) {
       Log.error("LocalManager", "Failed to batch delete comics: $e", s);
