@@ -7,6 +7,8 @@ import 'package:venera/foundation/app/app.dart';
 import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/appdata_authority_audit.dart';
 import 'package:venera/foundation/comic_type.dart';
+import 'package:venera/foundation/db/local_comic_sync.dart';
+import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/foundation/local/local_library_reconciler.dart';
@@ -18,6 +20,7 @@ import 'package:venera/pages/favorites/favorites_page.dart';
 import 'package:venera/utils/cbz.dart';
 import 'package:venera/utils/epub.dart';
 import 'package:venera/utils/io.dart';
+import 'package:venera/utils/import_sort.dart';
 import 'package:venera/utils/pdf.dart';
 import 'package:venera/utils/translations.dart';
 import 'package:url_launcher/url_launcher_string.dart';
@@ -97,6 +100,118 @@ String formatLocalChapterDisplayLabel({
 
 String localImageUriToPath(String imageUri) {
   return imageUri.replaceFirst('file://', '');
+}
+
+const Set<String> _localComicImageExtensions = {
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'gif',
+  'jpe',
+};
+
+bool _isLocalComicImageFile(File file) {
+  final extension = file.extension.toLowerCase();
+  return _localComicImageExtensions.contains(extension);
+}
+
+Map<String, List<String>> _discoverChapterImages(
+  Directory comicDirectory,
+  List<String> chapters,
+) {
+  final chapterImages = <String, List<String>>{};
+  for (final chapter in chapters) {
+    final chapterDirectory = Directory(
+      FilePath.join(comicDirectory.path, chapter),
+    );
+    if (!chapterDirectory.existsSync()) {
+      continue;
+    }
+    final images = chapterDirectory
+        .listSync(recursive: false, followLinks: false)
+        .whereType<File>()
+        .where(_isLocalComicImageFile)
+        .map((file) => file.name)
+        .toList(growable: false);
+    chapterImages[chapter] = images;
+  }
+  return chapterImages;
+}
+
+String? _selectDiscoveredCoverPath({
+  required List<String> rootFiles,
+  required Map<String, List<String>> chapterFiles,
+}) {
+  final sortedRoot = [...rootFiles]..sort(naturalCompare);
+  for (final name in sortedRoot) {
+    if (name.toLowerCase().startsWith('cover')) {
+      return name;
+    }
+  }
+  if (sortedRoot.isNotEmpty) {
+    return sortedRoot.first;
+  }
+  if (chapterFiles.isEmpty) {
+    return null;
+  }
+  final sortedChapters = chapterFiles.keys.toList()..sort(naturalCompare);
+  for (final chapter in sortedChapters) {
+    final files = [...(chapterFiles[chapter] ?? const <String>[])]
+      ..sort(naturalCompare);
+    if (files.isNotEmpty) {
+      return '$chapter/${files.first}';
+    }
+  }
+  return null;
+}
+
+LocalComic? buildDiscoveredLocalComicFromDirectory(
+  Directory comicDirectory, {
+  required String comicId,
+  DateTime? createdAt,
+}) {
+  final rootFiles = comicDirectory
+      .listSync(recursive: false, followLinks: false)
+      .whereType<File>()
+      .where(_isLocalComicImageFile)
+      .map((file) => file.name)
+      .toList(growable: false);
+  final chapters = comicDirectory
+      .listSync(recursive: false, followLinks: false)
+      .whereType<Directory>()
+      .map((dir) => dir.name)
+      .toList(growable: false);
+  final chapterImages = _discoverChapterImages(comicDirectory, chapters);
+  final hasAnyChapterImages = chapterImages.values.any(
+    (files) => files.isNotEmpty,
+  );
+  if (rootFiles.isEmpty && !hasAnyChapterImages) {
+    return null;
+  }
+  chapters.sort(naturalCompare);
+  final cover = _selectDiscoveredCoverPath(
+    rootFiles: rootFiles,
+    chapterFiles: chapterImages,
+  );
+  if (cover == null || cover.isEmpty) {
+    return null;
+  }
+  final hasChapters = chapters.isNotEmpty;
+  return LocalComic(
+    id: comicId,
+    title: comicDirectory.name,
+    subtitle: '',
+    tags: const [],
+    directory: comicDirectory.name,
+    chapters: hasChapters
+        ? ComicChapters(Map.fromIterables(chapters, chapters))
+        : null,
+    cover: cover,
+    comicType: ComicType.local,
+    downloadedChapters: chapters,
+    createdAt: createdAt ?? DateTime.now(),
+  );
 }
 
 List<LocalComic> applyCanonicalLocalLibraryView({
@@ -257,6 +372,61 @@ class _LocalComicsGateway {
       legacyReorderLocalComicChapters(comic, chapterIds);
 
   String get localRootPath => legacyLocalComicsRootPath();
+
+  Future<int> recheckAppDataLocalDirectory() async {
+    final rootPath = legacyLocalComicsRootPath();
+    final rootType = FileSystemEntity.typeSync(rootPath, followLinks: false);
+    if (rootType != FileSystemEntityType.directory) {
+      AppDiagnostics.info(
+        'local.library',
+        'local.library.recheckSkipped',
+        data: <String, Object?>{'rootPath': rootPath, 'reason': 'missing_root'},
+      );
+      return 0;
+    }
+    final existing = legacyGetLocalComics(LocalSortType.name);
+    final existingDirectoryNames = existing
+        .where(
+          (comic) =>
+              !comic.directory.contains('/') && !comic.directory.contains('\\'),
+        )
+        .map((comic) => comic.directory)
+        .toSet();
+    var added = 0;
+    final candidates = Directory(rootPath)
+        .listSync(recursive: false, followLinks: false)
+        .whereType<Directory>()
+        .toList(growable: false);
+    for (final directory in candidates) {
+      if (existingDirectoryNames.contains(directory.name)) {
+        continue;
+      }
+      final discovered = buildDiscoveredLocalComicFromDirectory(
+        directory,
+        comicId: legacyFindValidLocalComicId(ComicType.local),
+        createdAt: directory.statSync().modified,
+      );
+      if (discovered == null) {
+        AppDiagnostics.info(
+          'local.library',
+          'local.library.missingFiles',
+          data: <String, Object?>{
+            'comicId': directory.name,
+            'status': 'noReadablePages',
+            'expectedDirectory': directory.path,
+            'action': 'hide',
+          },
+        );
+        continue;
+      }
+      legacyRegisterLocalComic(discovered, discovered.id);
+      await LocalComicCanonicalSyncService(
+        store: App.unifiedComicsStore,
+      ).syncComic(discovered);
+      added++;
+    }
+    return added;
+  }
 }
 
 class LocalComicsPage extends StatefulWidget {
@@ -304,7 +474,21 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
   }
 
   Future<void> _recheckLocalComics() async {
+    AppDiagnostics.info(
+      'local.library',
+      'local.library.recheckStarted',
+      data: <String, Object?>{'keyword': keyword, 'sortType': sortType.value},
+    );
+    final added = await _gateway.recheckAppDataLocalDirectory();
     await update();
+    AppDiagnostics.info(
+      'local.library',
+      'local.library.recheckCompleted',
+      data: <String, Object?>{
+        'addedCount': added,
+        'visibleCount': comics.length,
+      },
+    );
   }
 
   @override

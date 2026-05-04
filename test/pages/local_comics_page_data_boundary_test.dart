@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/pages/local_comics_page.dart';
+import 'dart:io';
 
 LocalComic _localComic({required String id, required ComicType type}) {
   return LocalComic(
@@ -97,4 +98,44 @@ void main() {
     );
     expect(result.map((comic) => comic.id).toList(), ['show']);
   });
+
+  test(
+    'buildDiscoveredLocalComicFromDirectory returns null for empty dir',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'local-discover-empty-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final comicDir = Directory('${root.path}/comic-a')..createSync();
+
+      final discovered = buildDiscoveredLocalComicFromDirectory(
+        comicDir,
+        comicId: '1',
+      );
+
+      expect(discovered, isNull);
+    },
+  );
+
+  test(
+    'buildDiscoveredLocalComicFromDirectory discovers flat image comic',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'local-discover-flat-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final comicDir = Directory('${root.path}/comic-a')..createSync();
+      File('${comicDir.path}/1.jpg').writeAsStringSync('x');
+
+      final discovered = buildDiscoveredLocalComicFromDirectory(
+        comicDir,
+        comicId: '1',
+      );
+
+      expect(discovered, isNotNull);
+      expect(discovered!.directory, 'comic-a');
+      expect(discovered.cover, '1.jpg');
+      expect(discovered.chapters, isNull);
+    },
+  );
 }
