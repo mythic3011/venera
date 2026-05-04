@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 
@@ -5,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:talker_flutter/talker_flutter.dart' as talker;
 import 'package:venera/foundation/app/app.dart';
 import 'package:venera/foundation/appdata.dart';
+import 'package:venera/foundation/diagnostics/log_storage_writer.dart';
 import 'package:venera/foundation/log.dart' as legacy_log;
 
 const bool _envDiagnosticsEnabled = bool.fromEnvironment(
@@ -244,6 +246,20 @@ class _LegacyLogDiagnosticSink implements DiagnosticSink {
   }
 }
 
+class _StructuredFileDiagnosticSink implements DiagnosticSink {
+  const _StructuredFileDiagnosticSink();
+
+  @override
+  void record(DiagnosticEvent event) {
+    if (!event.level.allows(AppDiagnostics.persistedLevel)) {
+      return;
+    }
+    unawaited(_structuredLogWriter.appendJson(event.toJson()));
+  }
+}
+
+final LogStorageWriter _structuredLogWriter = LogStorageWriter();
+
 String _format(DiagnosticEvent event) {
   final data = event.data.isEmpty ? '' : ' ${jsonEncode(event.data)}';
   final error = event.errorType == null ? '' : ' errorType=${event.errorType}';
@@ -291,7 +307,9 @@ void _bridgeLegacyLogToDiagnostics(
         error ?? content,
         stackTrace: stackTrace is StackTrace
             ? stackTrace
-            : (stackTrace == null ? null : StackTrace.fromString('$stackTrace')),
+            : (stackTrace == null
+                  ? null
+                  : StackTrace.fromString('$stackTrace')),
         message: content,
         data: {'legacyOrigin': true, 'legacyTitle': title},
       );
@@ -301,6 +319,7 @@ void _bridgeLegacyLogToDiagnostics(
 abstract final class AppDiagnostics {
   static final DiagnosticRingBuffer _ringBuffer = DiagnosticRingBuffer();
   static DiagnosticLevel _runtimeLevel = DiagnosticLevel.trace;
+  static DiagnosticLevel _persistedLevel = DiagnosticLevel.warn;
   static List<DiagnosticSink> _sinks = _defaultSinks();
 
   static void trace(
@@ -379,6 +398,12 @@ abstract final class AppDiagnostics {
 
   static DiagnosticLevel get runtimeLevel => _runtimeLevel;
 
+  static void setPersistedLevel(DiagnosticLevel level) {
+    _persistedLevel = level;
+  }
+
+  static DiagnosticLevel get persistedLevel => _persistedLevel;
+
   static void clear() {
     _ringBuffer.clear();
     appTalker.cleanHistory();
@@ -392,9 +417,11 @@ abstract final class AppDiagnostics {
   @visibleForTesting
   static void resetForTesting() {
     _runtimeLevel = DiagnosticLevel.trace;
+    _persistedLevel = DiagnosticLevel.warn;
     _ringBuffer.clear();
     _sinks = _defaultSinks();
     appTalker.cleanHistory();
+    unawaited(_structuredLogWriter.closeForTesting());
   }
 
   static void _record({
@@ -428,6 +455,7 @@ abstract final class AppDiagnostics {
     legacy_log.Log.configureStructuredEmitter(_bridgeLegacyLogToDiagnostics);
     return [
       _ringBuffer,
+      const _StructuredFileDiagnosticSink(),
       _TalkerDiagnosticSink(appTalker),
       const _DeveloperLogDiagnosticSink(),
       const _LegacyLogDiagnosticSink(),
@@ -465,6 +493,10 @@ abstract final class DevDiagnosticsApi {
 
   static void setRuntimeLevel(DiagnosticLevel level) {
     AppDiagnostics.setRuntimeLevel(level);
+  }
+
+  static void setPersistedLevel(DiagnosticLevel level) {
+    AppDiagnostics.setPersistedLevel(level);
   }
 
   static void clear() {

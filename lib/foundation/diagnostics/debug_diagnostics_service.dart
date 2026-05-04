@@ -72,6 +72,14 @@ class DebugDiagnosticsService {
     final persistedNewestErrors = errorSnapshot.logs
         .where((entry) => entry['source'] == 'persisted')
         .toList(growable: false);
+    final structuredNewestErrors =
+        DevDiagnosticsApi.recent(minLevel: DiagnosticLevel.error).reversed
+            .take(20)
+            .map((event) {
+              final json = event.toJson();
+              return <String, Object?>{...json, 'source': 'structured'};
+            })
+            .toList(growable: false);
     return {
       'platform': {'os': platform, 'isDesktop': App.isDesktop},
       'runtime': {
@@ -86,6 +94,7 @@ class DebugDiagnosticsService {
         'enabled': DevDiagnosticsApi.isEnabled,
         'eventCount': structuredEvents.length,
         'runtimeLevel': AppDiagnostics.runtimeLevel.name,
+        'persistedLevel': AppDiagnostics.persistedLevel.name,
         'channels': structuredEvents
             .map((event) => event.channel)
             .toSet()
@@ -111,11 +120,12 @@ class DebugDiagnosticsService {
         'recentErrorCount': errorSnapshot.sessionErrorCount,
         'persistedErrorCount': errorSnapshot.persistedErrorCount,
         'newestErrorsSourceHint':
-            'newestErrors is mixed session+persisted; check source field',
+            'newestErrors is mixed session+persisted; check source field. newestErrorsBySource includes structured bucket.',
         'newestErrors': errorSnapshot.logs,
         'newestErrorsBySource': {
           'session': sessionNewestErrors,
           'persisted': persistedNewestErrors,
+          'structured': structuredNewestErrors,
         },
       },
       ...readerDiagnostics,

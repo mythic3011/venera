@@ -197,12 +197,11 @@ void main() {
     final logs = (json['logs'] as Map).cast<String, dynamic>();
     expect(logs['newestErrorsSourceHint'], isA<String>());
     expect(logs['newestErrorsBySource'], isA<Map>());
-    final newestErrorsBySource = (logs['newestErrorsBySource'] as Map).cast<
-      String,
-      dynamic
-    >();
+    final newestErrorsBySource = (logs['newestErrorsBySource'] as Map)
+        .cast<String, dynamic>();
     expect(newestErrorsBySource.containsKey('session'), isTrue);
     expect(newestErrorsBySource.containsKey('persisted'), isTrue);
+    expect(newestErrorsBySource.containsKey('structured'), isTrue);
     final sessionBucket = newestErrorsBySource['session'];
     if (sessionBucket is List) {
       final sessionEntries = sessionBucket.cast<Map<String, dynamic>>();
@@ -214,8 +213,22 @@ void main() {
     } else {
       expect(sessionBucket, isA<String>());
     }
+    final structuredBucket = newestErrorsBySource['structured'];
+    if (structuredBucket is List) {
+      final structuredEntries = structuredBucket.cast<Map<String, dynamic>>();
+      expect(
+        structuredEntries.isEmpty ||
+            structuredEntries.any((entry) => entry['source'] == 'structured'),
+        isTrue,
+      );
+    } else {
+      expect(structuredBucket, isA<String>());
+    }
     final runtime = (json['runtime'] as Map).cast<String, dynamic>();
     final paths = (json['paths'] as Map).cast<String, dynamic>();
+    final structuredDiagnostics = (json['structuredDiagnostics'] as Map)
+        .cast<String, dynamic>();
+    expect(structuredDiagnostics['persistedLevel'], isA<String>());
     expect(runtime['runtimeRoot'], isA<String?>());
     expect(runtime['runtimeRootOverrideActive'], isA<bool>());
     expect(paths['runtimeRoot'], isA<String?>());

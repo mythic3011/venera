@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -261,6 +262,95 @@ void main() {
       );
       expect(exportText.contains('"channel":"ui.error"'), isTrue);
       expect(exportText.contains('=== Current Session Logs ==='), isTrue);
+
+      await dir.delete(recursive: true);
+      if (oldInitialized && oldDataPath != null) {
+        App.dataPath = oldDataPath;
+      }
+      App.externalStoragePath = oldExternal;
+      App.isInitialized = oldInitialized;
+    },
+  );
+
+  test('persistedLevel filters structured file writes independently', () async {
+    final oldInitialized = App.isInitialized;
+    final oldDataPath = oldInitialized ? App.dataPath : null;
+    final oldExternal = App.externalStoragePath;
+
+    final dir = await Directory.systemTemp.createTemp(
+      'venera_persisted_level_filter_test_',
+    );
+    App.dataPath = dir.path;
+    App.externalStoragePath = dir.path;
+    App.isInitialized = true;
+
+    AppDiagnostics.resetForTesting();
+    AppDiagnostics.setRuntimeLevel(DiagnosticLevel.trace);
+    AppDiagnostics.setPersistedLevel(DiagnosticLevel.warn);
+
+    AppDiagnostics.info('storage.filter', 'info-not-persisted');
+    AppDiagnostics.warn('storage.filter', 'warn-persisted');
+    AppDiagnostics.error(
+      'storage.filter',
+      StateError('error-persisted'),
+      message: 'error-persisted',
+    );
+
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    await Log.closeFileSink();
+    AppDiagnostics.resetForTesting();
+
+    final structuredFile = File('${App.dataPath}/logs/diagnostics.ndjson');
+    expect(await structuredFile.exists(), isTrue);
+    final text = await structuredFile.readAsString();
+    expect(text.contains('info-not-persisted'), isFalse);
+    expect(text.contains('warn-persisted'), isTrue);
+    expect(text.contains('error-persisted'), isTrue);
+
+    await dir.delete(recursive: true);
+    if (oldInitialized && oldDataPath != null) {
+      App.dataPath = oldDataPath;
+    }
+    App.externalStoragePath = oldExternal;
+    App.isInitialized = oldInitialized;
+  });
+
+  test(
+    'buildDiagnosticsExportText includes manifest and structured archives',
+    () async {
+      final oldInitialized = App.isInitialized;
+      final oldDataPath = oldInitialized ? App.dataPath : null;
+      final oldExternal = App.externalStoragePath;
+
+      final dir = await Directory.systemTemp.createTemp(
+        'venera_diagnostics_manifest_archive_test_',
+      );
+      App.dataPath = dir.path;
+      App.externalStoragePath = dir.path;
+      App.isInitialized = true;
+
+      final logsDir = Directory('${App.dataPath}/logs');
+      await logsDir.create(recursive: true);
+      await File(
+        '${logsDir.path}/diagnostics.ndjson',
+      ).writeAsString('{"level":"error","message":"current"}\n');
+      final archivedBytes = gzip.encode(
+        utf8.encode('{"level":"warn","message":"archived"}\n'),
+      );
+      await File(
+        '${logsDir.path}/diagnostics.ndjson.1.gz',
+      ).writeAsBytes(archivedBytes);
+
+      final exportText = await buildDiagnosticsExportText();
+      expect(
+        exportText.contains('=== Diagnostics Export Manifest (JSON) ==='),
+        isTrue,
+      );
+      expect(exportText.contains('"includedArchives":1'), isTrue);
+      expect(exportText.contains('--- diagnostics.ndjson ---'), isTrue);
+      expect(exportText.contains('--- diagnostics.ndjson.1.gz ---'), isTrue);
+      expect(exportText.contains('"message":"current"'), isTrue);
+      expect(exportText.contains('"message":"archived"'), isTrue);
 
       await dir.delete(recursive: true);
       if (oldInitialized && oldDataPath != null) {
