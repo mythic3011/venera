@@ -538,6 +538,16 @@ class _ComicPageState extends LoadingState<ComicPage, ComicDetails>
       final localItem = await App.repositories.localLibrary
           .loadPrimaryLocalLibraryItem(widget.id);
       if (localItem == null) {
+        AppDiagnostics.warn(
+          'comic.detail',
+          'comic.detail.localMissing',
+          data: <String, Object?>{
+            'comicId': widget.id,
+            'sourceKey': widget.sourceKey,
+            'pageOwner': 'ComicPage',
+            'routeKind': 'ComicDetailPage',
+          },
+        );
         return const Res.error('Local comic not found');
       }
       final detail = await loadLocalComicDetailViewModelForTesting(
