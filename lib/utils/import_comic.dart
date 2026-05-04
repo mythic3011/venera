@@ -37,6 +37,61 @@ bool isSupportedImageExtension(String extension) {
   return _supportedImageExtensions.contains(extension.toLowerCase());
 }
 
+ImportFailure _buildPreflightConflictFailure({
+  required LocalImportPreflightDecision preflight,
+  required String comicTitle,
+}) {
+  return switch (preflight.action) {
+    LocalImportPreflightAction.conflictExistingDirectory =>
+      ImportFailure.destinationExists(
+        comicTitle: comicTitle,
+        targetDirectory: preflight.targetDirectory,
+      ),
+    LocalImportPreflightAction.conflictExistingCanonicalRecord =>
+      ImportFailure.duplicateDetected(
+        comicTitle: comicTitle,
+        targetDirectory: preflight.targetDirectory,
+        existingComicId: preflight.existingComicId,
+      ),
+    _ => throw StateError(
+      'Unsupported preflight conflict action: ${preflight.action}',
+    ),
+  };
+}
+
+String _diagnosticMessageForImportFailure(ImportFailure failure) {
+  return switch (failure.code) {
+    'IMPORT_DUPLICATE_DETECTED' => 'import.local.duplicateDetected',
+    'IMPORT_DESTINATION_EXISTS' => 'import.local.copyFailed',
+    'IMPORT_MISSING_FILES' => 'import.local.missingFiles',
+    _ => 'import.local.copyFailed',
+  };
+}
+
+@visibleForTesting
+Future<LocalComic?> checkSingleComicForTesting(
+  Directory directory, {
+  required LocalImportStoragePort localImportStorage,
+  String? id,
+  String? title,
+  String? subtitle,
+  List<String>? tags,
+  DateTime? createTime,
+  bool useRelativePath = false,
+  bool failOnMissingFiles = false,
+}) {
+  return ImportComic(localImportStorage: localImportStorage)._checkSingleComic(
+    directory,
+    id: id,
+    title: title,
+    subtitle: subtitle,
+    tags: tags,
+    createTime: createTime,
+    useRelativePath: useRelativePath,
+    failOnMissingFiles: failOnMissingFiles,
+  );
+}
+
 @visibleForTesting
 Future<int> registerImportedComicsForTesting({
   required Map<String?, List<LocalComic>> importedComics,
@@ -610,15 +665,14 @@ class ImportComic {
             LocalImportPreflightAction.conflictExistingDirectory ||
         preflight.action ==
             LocalImportPreflightAction.conflictExistingCanonicalRecord) {
-      final failure = ImportFailure.duplicateDetected(
+      final failure = _buildPreflightConflictFailure(
+        preflight: preflight,
         comicTitle: title,
-        targetDirectory: preflight.targetDirectory,
-        existingComicId: preflight.existingComicId,
       );
       AppDiagnostics.error(
         'import.local',
         failure,
-        message: 'import.local.duplicateDetected',
+        message: _diagnosticMessageForImportFailure(failure),
         data: {
           if (ImportLifecycleTrace.current != null)
             'importId': ImportLifecycleTrace.current!.id,
@@ -1156,12 +1210,17 @@ class ImportComic {
     var name = title ?? directory.name;
     await localImportStorage.assertStorageReadyForImport(name);
     if (await localImportStorage.hasDuplicateTitle(name)) {
-      AppDiagnostics.info(
-        'import.comic',
-        'import.duplicate_title',
-        data: {'title': name},
+      final failure = ImportFailure.duplicateDetected(
+        comicTitle: name,
+        targetDirectory: directory.path,
       );
-      return null;
+      AppDiagnostics.error(
+        'import.local',
+        failure,
+        message: 'import.local.duplicateDetected',
+        data: failure.data,
+      );
+      throw failure;
     }
     bool hasChapters = false;
     final chapters = <String>[];
@@ -1241,17 +1300,10 @@ class ImportComic {
         var source = Directory(dir);
         var dest = Directory("$destination/${source.name}");
         if (dest.existsSync()) {
-          final failure = ImportFailure.duplicateDetected(
+          throw ImportFailure.destinationExists(
             comicTitle: source.name,
             targetDirectory: dest.path,
           );
-          AppDiagnostics.error(
-            'import.local',
-            failure,
-            message: 'import.local.duplicateDetected',
-            data: failure.data,
-          );
-          throw failure;
         }
         dest.parent.createSync(recursive: true);
         dest.createSync(recursive: true);
@@ -1290,6 +1342,17 @@ class ImportComic {
       }
 
       try {
+        for (final comic in comics[favoriteFolder]!) {
+          final existingDest = Directory(
+            "$destPath/${Directory(comic.directory).name}",
+          );
+          if (existingDest.existsSync()) {
+            throw ImportFailure.destinationExists(
+              comicTitle: Directory(comic.directory).name,
+              targetDirectory: existingDest.path,
+            );
+          }
+        }
         // copy the comics to the local directory
         var pathMap = await compute<Map<String, dynamic>, Map<String, String>>(
           _copyDirectories,
@@ -1318,24 +1381,28 @@ class ImportComic {
           );
         }
       } catch (e, s) {
+        final failure = e is ImportFailure
+            ? e
+            : ImportFailure.copyFailed(
+                'Failed to copy comics to canonical local root: $destPath',
+              );
         AppDiagnostics.error(
           'import.local',
-          e,
+          failure,
           stackTrace: s,
-          message: 'import.local.copyFailed',
+          message: _diagnosticMessageForImportFailure(failure),
           data: {
             'sourcePaths': comics[favoriteFolder]!
                 .map((comic) => comic.directory)
                 .toList(),
             'destinationRoot': destPath,
             'errorType': e.runtimeType.toString(),
+            ...failure.data,
           },
         );
-        _showMessage("Failed to copy comics".tl);
+        _showMessage(failure.uiMessage);
         AppDiagnostics.error('import.comic', e, stackTrace: s);
-        throw ImportFailure.copyFailed(
-          'Failed to copy comics to canonical local root: $destPath',
-        );
+        throw failure;
       }
     }
     ImportLifecycleTrace.current?.phase(

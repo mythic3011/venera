@@ -546,6 +546,44 @@ void main() {
   );
 
   test(
+    'checkSingleComicForTesting maps DB duplicate title to typed duplicate failure',
+    () async {
+      final tempRoot = await Directory.systemTemp.createTemp(
+        'import-db-duplicate-title',
+      );
+      addTearDown(() => tempRoot.delete(recursive: true));
+      final sourceDir = Directory('${tempRoot.path}/source/comic-a')
+        ..createSync(recursive: true);
+      await _writeImageFile('${sourceDir.path}/cover.png');
+
+      final storage = _FakeImportStorage();
+      storage.onRequireRootPath = () async => '${tempRoot.path}/library';
+      storage.onHasDuplicateTitle = (_) async => true;
+
+      await expectLater(
+        checkSingleComicForTesting(
+          sourceDir,
+          localImportStorage: storage,
+        ),
+        throwsA(
+          isA<ImportFailure>().having(
+            (failure) => failure.code,
+            'code',
+            'IMPORT_DUPLICATE_DETECTED',
+          ),
+        ),
+      );
+
+      final duplicate = DevDiagnosticsApi.recent(channel: 'import.local')
+          .singleWhere(
+            (event) => event.message == 'import.local.duplicateDetected',
+          );
+      expect(duplicate.data['comicTitle'], 'comic-a');
+      expect(duplicate.data['action'], 'blocked');
+    },
+  );
+
+  test(
     'registerComics fails when copy path throws and emits import.local.copyFailed',
     () async {
       final tempRoot = await Directory.systemTemp.createTemp(
@@ -616,6 +654,65 @@ void main() {
     },
   );
 
+  test(
+    'existing destination directory is copy conflict and not duplicate comic name',
+    () async {
+      final tempRoot = await Directory.systemTemp.createTemp(
+        'import-destination-exists',
+      );
+      addTearDown(() => tempRoot.delete(recursive: true));
+
+      final sourceDir = Directory('${tempRoot.path}/source/comic-a')
+        ..createSync(recursive: true);
+      await _writeImageFile('${sourceDir.path}/cover.png');
+      final localRoot = Directory('${tempRoot.path}/runtimeRoot/local')
+        ..createSync(recursive: true);
+      final existingDir = Directory('${localRoot.path}/comic-a')
+        ..createSync(recursive: true);
+      File('${existingDir.path}/old.txt').writeAsStringSync('existing');
+
+      final storage = _FakeImportStorage();
+      storage.onRequireRootPath = () async => localRoot.path;
+      storage.onRegisterImportedComic = (comic) async => comic;
+      final importer = ImportComic(
+        localImportStorage: storage,
+        copyToLocal: true,
+      );
+
+      final success = await importer.registerComics({
+        null: [
+          LocalComic(
+            id: '0',
+            title: 'Comic A',
+            subtitle: '',
+            tags: const [],
+            directory: sourceDir.path,
+            chapters: null,
+            cover: 'cover.png',
+            comicType: ComicType.local,
+            downloadedChapters: const [],
+            createdAt: DateTime.utc(2026, 5, 3),
+          ),
+        ],
+      }, true);
+
+      expect(success, isFalse);
+      expect(storage.registerCalls, 0);
+      expect(File('${existingDir.path}/old.txt').readAsStringSync(), 'existing');
+
+      final events = DevDiagnosticsApi.recent(channel: 'import.local');
+      expect(
+        events.any((event) => event.message == 'import.local.duplicateDetected'),
+        isFalse,
+      );
+      final copyFailed = events.firstWhere(
+        (event) => event.message == 'import.local.copyFailed',
+      );
+      expect(copyFailed.data['reason'], 'destination_exists');
+      expect(copyFailed.data['action'], 'blocked');
+    },
+  );
+
   test('cbz import keeps single cover image as first page', () async {
     final tempRoot = await Directory.systemTemp.createTemp('cbz-import-cover');
     addTearDown(() => tempRoot.delete(recursive: true));
@@ -669,6 +766,15 @@ void main() {
         ),
         throwsA(isA<ImportFailure>()),
       );
+      final events = DevDiagnosticsApi.recent(channel: 'import.local');
+      expect(
+        events.any((event) => event.message == 'import.local.duplicateDetected'),
+        isFalse,
+      );
+      final copyFailed = events.singleWhere(
+        (event) => event.message == 'import.local.copyFailed',
+      );
+      expect(copyFailed.data['reason'], 'destination_exists');
       expect(
         File('${existingDir.path}/old.txt').readAsStringSync(),
         'existing',

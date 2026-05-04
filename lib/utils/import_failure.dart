@@ -13,12 +13,32 @@ class ImportFailure implements Exception {
   final Map<String, Object?> data;
   final String uiMessage;
 
-  ImportFailure.copyFailed(String message)
+  ImportFailure.copyFailed(
+    String message, {
+    Map<String, Object?> data = const {},
+    String? uiMessage,
+  })
     : this._(
         code: 'IMPORT_COPY_FAILED',
         message: message,
-        uiMessage: "Failed to copy comics".tl,
+        data: data,
+        uiMessage: uiMessage ?? "Failed to copy comics".tl,
       );
+
+  ImportFailure.destinationExists({
+    required String comicTitle,
+    required String targetDirectory,
+  }) : this._(
+         code: 'IMPORT_DESTINATION_EXISTS',
+         message: 'Destination already exists for "$comicTitle"',
+         data: <String, Object?>{
+           'comicTitle': comicTitle,
+           'targetDirectory': targetDirectory,
+           'reason': 'destination_exists',
+           'action': 'blocked',
+         },
+         uiMessage: "Comic already exists".tl,
+       );
 
   ImportFailure.duplicateDetected({
     required String comicTitle,
