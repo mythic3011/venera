@@ -21,4 +21,9 @@ class UnifiedLocalLibraryBrowseStoreAdapter
   Future<List<String>> loadChapterIdsForComic(String comicId) {
     return store.loadChapterIdsForComic(comicId);
   }
+
+  @override
+  Future<void> deleteLocalLibraryItemById(String localLibraryItemId) {
+    return store.deleteLocalLibraryItemById(localLibraryItemId);
+  }
 }

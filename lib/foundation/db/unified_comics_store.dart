@@ -976,10 +976,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> deleteCacheEntry(String cacheKey) {
-    return customStatement(
-      'DELETE FROM cache_entries WHERE cache_key = ?;',
-      [cacheKey],
-    );
+    return customStatement('DELETE FROM cache_entries WHERE cache_key = ?;', [
+      cacheKey,
+    ]);
   }
 
   Future<void> deleteAllCacheEntries() {
@@ -1199,10 +1198,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> deleteSourceRepository(String id) {
-    return customStatement(
-      'DELETE FROM source_repositories WHERE id = ?;',
-      [id],
-    );
+    return customStatement('DELETE FROM source_repositories WHERE id = ?;', [
+      id,
+    ]);
   }
 
   Future<void> replaceSourcePackagesForRepository({
@@ -1250,12 +1248,10 @@ class UnifiedComicsStore extends GeneratedDatabase
     String? repositoryId,
   }) async {
     final rows = repositoryId == null
-        ? await customSelect(
-            '''
+        ? await customSelect('''
             SELECT * FROM source_packages
             ORDER BY repository_id ASC, source_key ASC;
-            ''',
-          ).get()
+            ''').get()
         : await customSelect(
             '''
             SELECT * FROM source_packages
@@ -2757,6 +2753,12 @@ class UnifiedComicsStore extends GeneratedDatabase
       return null;
     }
     return _localLibraryItemRecordFromRow(row);
+  }
+
+  Future<void> deleteLocalLibraryItemById(String localLibraryItemId) {
+    return customStatement('DELETE FROM local_library_items WHERE id = ?;', [
+      localLibraryItemId,
+    ]);
   }
 
   Future<List<String>> loadChapterIdsForComic(String comicId) async {

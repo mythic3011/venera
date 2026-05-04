@@ -69,21 +69,24 @@ void main() {
     expect(await store.currentUserVersion(), store.schemaVersion);
   });
 
-  test('init recreates missing favorite folder tables for legacy dbs', () async {
-    final raw = sqlite3.open(dbPath);
-    raw.execute('DROP TABLE IF EXISTS favorite_folder_items;');
-    raw.dispose();
+  test(
+    'init recreates missing favorite folder tables for legacy dbs',
+    () async {
+      final raw = sqlite3.open(dbPath);
+      raw.execute('DROP TABLE IF EXISTS favorite_folder_items;');
+      raw.dispose();
 
-    await store.init();
+      await store.init();
 
-    final tables = await store.listTables();
-    expect(tables, contains('favorite_folder_items'));
+      final tables = await store.listTables();
+      expect(tables, contains('favorite_folder_items'));
 
-    await expectLater(
-      store.deleteFavoriteFolderItemsByComic('non-existent-comic'),
-      completes,
-    );
-  });
+      await expectLater(
+        store.deleteFavoriteFolderItemsByComic('non-existent-comic'),
+        completes,
+      );
+    },
+  );
 
   test('foreign key enforcement is enabled on store connection', () async {
     expect(await store.foreignKeysEnabled(), 1);
@@ -296,6 +299,38 @@ void main() {
 
     expect(item?.id, 'local-item-newer');
     expect(item?.localRootPath, '/library/comic-1-newer');
+  });
+
+  test('deleteLocalLibraryItemById removes only targeted row', () async {
+    await store.upsertComic(
+      const ComicRecord(
+        id: 'comic-delete-lli',
+        title: 'Delete LLI',
+        normalizedTitle: 'delete lli',
+      ),
+    );
+    await store.upsertLocalLibraryItem(
+      const LocalLibraryItemRecord(
+        id: 'lli-1',
+        comicId: 'comic-delete-lli',
+        storageType: 'user_imported',
+        localRootPath: '/library/delete-lli',
+      ),
+    );
+    await store.upsertLocalLibraryItem(
+      const LocalLibraryItemRecord(
+        id: 'lli-2',
+        comicId: 'comic-delete-lli',
+        storageType: 'downloaded',
+        localRootPath: '/library/delete-lli-2',
+      ),
+    );
+
+    await store.deleteLocalLibraryItemById('lli-1');
+    final snapshot = await store.loadComicSnapshot('comic-delete-lli');
+
+    expect(snapshot, isNotNull);
+    expect(snapshot!.localLibraryItems.map((e) => e.id).toList(), ['lli-2']);
   });
 
   test('can upsert and read primary comic source link', () async {

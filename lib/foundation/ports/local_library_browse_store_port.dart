@@ -5,4 +5,5 @@ abstract class LocalLibraryBrowseStorePort {
   Future<List<LocalLibraryBrowseRecord>> loadLocalLibraryBrowseRecords();
   Future<LocalLibraryItemRecord?> loadPrimaryLocalLibraryItem(String comicId);
   Future<List<String>> loadChapterIdsForComic(String comicId);
+  Future<void> deleteLocalLibraryItemById(String localLibraryItemId);
 }

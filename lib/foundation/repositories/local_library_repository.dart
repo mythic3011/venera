@@ -19,10 +19,12 @@ class LocalLibraryBrowseItem {
 class LocalLibraryPrimaryItem {
   const LocalLibraryPrimaryItem({
     required this.id,
+    required this.storageType,
     required this.localRootPath,
   });
 
   final String id;
+  final String storageType;
   final String localRootPath;
 }
 
@@ -55,6 +57,7 @@ class LocalLibraryRepository {
     }
     return LocalLibraryPrimaryItem(
       id: row.id,
+      storageType: row.storageType,
       localRootPath: row.localRootPath,
     );
   }
@@ -65,5 +68,9 @@ class LocalLibraryRepository {
 
   Future<List<String>> loadDownloadedChapterIds(String comicId) {
     return store.loadChapterIdsForComic(comicId);
+  }
+
+  Future<void> deleteLocalLibraryItemById(String localLibraryItemId) {
+    return store.deleteLocalLibraryItemById(localLibraryItemId);
   }
 }
