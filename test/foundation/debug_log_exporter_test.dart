@@ -196,6 +196,7 @@ void main() {
     expect(json['structuredDiagnostics'], isA<Map>());
     final logs = (json['logs'] as Map).cast<String, dynamic>();
     expect(logs['newestErrorsSourceHint'], isA<String>());
+    expect(logs['groupedIssues'], isA<List>());
     expect(logs['newestErrorsBySource'], isA<Map>());
     final newestErrorsBySource = (logs['newestErrorsBySource'] as Map)
         .cast<String, dynamic>();

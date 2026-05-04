@@ -120,7 +120,8 @@ class DebugDiagnosticsService {
         'recentErrorCount': errorSnapshot.sessionErrorCount,
         'persistedErrorCount': errorSnapshot.persistedErrorCount,
         'newestErrorsSourceHint':
-            'newestErrors is mixed session+persisted; check source field. newestErrorsBySource includes structured bucket.',
+            'Use logs.groupedIssues as the deduped primary view; newestErrors/newestErrorsBySource are compatibility drill-down buckets.',
+        'groupedIssues': errorSnapshot.groupedIssues,
         'newestErrors': errorSnapshot.logs,
         'newestErrorsBySource': {
           'session': sessionNewestErrors,

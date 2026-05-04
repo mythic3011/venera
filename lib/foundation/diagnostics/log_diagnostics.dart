@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:venera/foundation/log.dart';
 import 'package:venera/utils/io.dart';
 
@@ -19,6 +21,7 @@ class SerializedLogItem {
 
 class LogDiagnosticSnapshot {
   final List<Map<String, Object?>> logs;
+  final List<Map<String, Object?>> groupedIssues;
   final int sessionTotalCount;
   final int persistedTotalCount;
   final int sessionErrorCount;
@@ -26,6 +29,7 @@ class LogDiagnosticSnapshot {
 
   const LogDiagnosticSnapshot({
     required this.logs,
+    required this.groupedIssues,
     required this.sessionTotalCount,
     required this.persistedTotalCount,
     required this.sessionErrorCount,
@@ -73,9 +77,11 @@ class LogDiagnostics {
     ).map(serializePersisted);
     final logs = [...sessionLogs, ...persistedItems].toList()
       ..sort((a, b) => b['time'].toString().compareTo(a['time'].toString()));
+    final limited = logs.take(limit).toList(growable: false);
 
     return LogDiagnosticSnapshot(
-      logs: logs.take(limit).toList(growable: false),
+      logs: limited,
+      groupedIssues: _buildGroupedIssues(limited),
       sessionTotalCount: Log.logs.length,
       persistedTotalCount: persisted.length,
       sessionErrorCount: Log.logs
@@ -149,5 +155,159 @@ class LogDiagnostics {
       );
     }
     return items;
+  }
+
+  static final RegExp _projectedLegacyPattern = RegExp(
+    r'^\[(error|warning|info)\]\s+([a-zA-Z0-9._-]+):\s+(.+?)(?:\s+errorType=([A-Za-z0-9_.$-]+))?(?:\s+(\{.*\}))?$',
+    dotAll: true,
+  );
+
+  static List<Map<String, Object?>> _buildGroupedIssues(
+    List<Map<String, Object?>> logs,
+  ) {
+    final grouped = <String, _GroupedIssueAccumulator>{};
+    for (final entry in logs) {
+      final parsed = _parseEntry(entry);
+      final signature = parsed.signature;
+      final existing = grouped[signature];
+      if (existing == null) {
+        grouped[signature] = _GroupedIssueAccumulator(parsed, entry);
+      } else {
+        existing.add(parsed, entry);
+      }
+    }
+    final issues = grouped.values.map((issue) => issue.toJson()).toList()
+      ..sort(
+        (a, b) =>
+            b['latestTime'].toString().compareTo(a['latestTime'].toString()),
+      );
+    return issues;
+  }
+
+  static _ParsedEntry _parseEntry(Map<String, Object?> entry) {
+    final title = entry['title']?.toString() ?? '';
+    final content = entry['content']?.toString() ?? '';
+    final parsed = _projectedLegacyPattern.firstMatch(content.trim());
+    if (parsed == null) {
+      final normalizedContent = _normalizeText(content);
+      return _ParsedEntry(
+        signature: 'fallback|$title|$normalizedContent',
+        message: title,
+        fields: <String, Object?>{
+          'fallbackTitle': title,
+          'fallbackContent': normalizedContent,
+        },
+      );
+    }
+
+    Map<String, Object?> data = const <String, Object?>{};
+    final rawJson = parsed.group(5);
+    if (rawJson != null && rawJson.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawJson);
+        if (decoded is Map<String, dynamic>) {
+          data = decoded.map<String, Object?>(
+            (key, value) => MapEntry(key, value),
+          );
+        }
+      } catch (_) {}
+    }
+
+    final message = parsed.group(3)?.trim() ?? title;
+    final diagnosticCode = data['diagnosticCode']?.toString();
+    final sanitizedMessage = data['sanitizedMessage']?.toString();
+    final exceptionType =
+        data['exceptionType']?.toString() ?? parsed.group(4)?.toString();
+    final pageOwner = data['pageOwner']?.toString();
+    final tabOwner = data['tabOwner']?.toString();
+    final signatureParts = <String>[
+      title,
+      message,
+      if (diagnosticCode != null) diagnosticCode,
+      if (sanitizedMessage != null) sanitizedMessage,
+      if (exceptionType != null) exceptionType,
+      if (pageOwner != null) pageOwner,
+      if (tabOwner != null) tabOwner,
+    ];
+    final fields = <String, Object?>{
+      if (diagnosticCode != null) 'diagnosticCode': diagnosticCode,
+      if (sanitizedMessage != null) 'sanitizedMessage': sanitizedMessage,
+      if (exceptionType != null) 'exceptionType': exceptionType,
+      if (pageOwner != null) 'pageOwner': pageOwner,
+      if (tabOwner != null) 'tabOwner': tabOwner,
+      if (data['routeHash'] != null) 'routeHash': data['routeHash'],
+      if (data['routeDiagnosticIdentity'] != null)
+        'routeDiagnosticIdentity': data['routeDiagnosticIdentity'],
+    };
+    return _ParsedEntry(
+      signature: signatureParts.join('|'),
+      message: message,
+      fields: fields,
+    );
+  }
+
+  static String _normalizeText(String value) {
+    return value.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+}
+
+class _ParsedEntry {
+  const _ParsedEntry({
+    required this.signature,
+    required this.message,
+    required this.fields,
+  });
+
+  final String signature;
+  final String message;
+  final Map<String, Object?> fields;
+}
+
+class _GroupedIssueAccumulator {
+  _GroupedIssueAccumulator(this._parsed, Map<String, Object?> firstEntry) {
+    add(_parsed, firstEntry);
+  }
+
+  final _ParsedEntry _parsed;
+  final Map<String, int> _sourceCount = <String, int>{};
+  final Set<String> _routeHashes = <String>{};
+  int _count = 0;
+  DateTime? _latestTime;
+  Map<String, Object?>? _latestEntry;
+
+  void add(_ParsedEntry parsed, Map<String, Object?> entry) {
+    _count++;
+    final source = entry['source']?.toString() ?? 'unknown';
+    _sourceCount[source] = (_sourceCount[source] ?? 0) + 1;
+    final routeHash = parsed.fields['routeHash'];
+    if (routeHash != null) {
+      _routeHashes.add(routeHash.toString());
+    }
+    final time = DateTime.tryParse(entry['time']?.toString() ?? '');
+    if (_latestTime == null || (time != null && time.isAfter(_latestTime!))) {
+      _latestTime = time;
+      _latestEntry = entry;
+    }
+  }
+
+  Map<String, Object?> toJson() {
+    final latestTime = _latestTime?.toIso8601String() ?? '';
+    return <String, Object?>{
+      'signature': _parsed.signature,
+      'message': _parsed.message,
+      'latestTime': latestTime,
+      'occurrenceCount': _count,
+      'sources': {
+        'session': {'count': _sourceCount['session'] ?? 0},
+        'persisted': {'count': _sourceCount['persisted'] ?? 0},
+      },
+      'latestEntry': _latestEntry,
+      'fields': {
+        ..._parsed.fields,
+        if (_routeHashes.isNotEmpty) 'latestRouteHash': _routeHashes.last,
+      },
+      if (_routeHashes.isNotEmpty)
+        'sampleRouteHashes': _routeHashes.toList(growable: false),
+    };
   }
 }

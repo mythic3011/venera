@@ -205,6 +205,93 @@ void main() {
     App.isInitialized = oldInitialized;
   });
 
+  test(
+    'diagnosticSnapshot groups projected legacy duplicates across sources',
+    () async {
+      final oldInitialized = App.isInitialized;
+      final oldDataPath = oldInitialized ? App.dataPath : null;
+      final oldExternal = App.externalStoragePath;
+
+      final dir = await Directory.systemTemp.createTemp(
+        'venera_grouped_diagnostics_test_',
+      );
+      App.dataPath = dir.path;
+      App.externalStoragePath = dir.path;
+      App.isInitialized = true;
+
+      const body =
+          '[error] ui.error: ui.error.visible errorType=LoadError {"routeHash":123,"sanitizedMessage":"LOCAL_COMIC_MISSING","exceptionType":"LoadError","diagnosticCode":"LOCAL_COMIC_MISSING","pageOwner":"ComicPage"}';
+      final persistedFile = File(Log.logFilePath!);
+      await persistedFile.parent.create(recursive: true);
+      await persistedFile.writeAsString(
+        'error ui.error 2026-05-04 12:34:56.123456 \n$body\n\n',
+      );
+      Log.projectedError('ui.error', body);
+
+      final snapshot = await LogDiagnostics.diagnosticSnapshot(
+        level: 'error',
+        limit: 20,
+      );
+      expect(snapshot.groupedIssues.length, 1);
+      final issue = snapshot.groupedIssues.first;
+      expect(issue['occurrenceCount'] as int, greaterThanOrEqualTo(2));
+      final sources = (issue['sources'] as Map).cast<String, dynamic>();
+      expect(
+        (sources['session'] as Map)['count'] as int,
+        greaterThanOrEqualTo(1),
+      );
+      expect(
+        (sources['persisted'] as Map)['count'] as int,
+        greaterThanOrEqualTo(1),
+      );
+
+      await dir.delete(recursive: true);
+      if (oldInitialized && oldDataPath != null) {
+        App.dataPath = oldDataPath;
+      }
+      App.externalStoragePath = oldExternal;
+      App.isInitialized = oldInitialized;
+    },
+  );
+
+  test(
+    'diagnosticSnapshot fallback groups unparseable legacy by title/content',
+    () async {
+      final oldInitialized = App.isInitialized;
+      final oldDataPath = oldInitialized ? App.dataPath : null;
+      final oldExternal = App.externalStoragePath;
+
+      final dir = await Directory.systemTemp.createTemp(
+        'venera_grouped_diagnostics_fallback_test_',
+      );
+      App.dataPath = dir.path;
+      App.externalStoragePath = dir.path;
+      App.isInitialized = true;
+      Log.clear();
+
+      final persistedFile = File(Log.logFilePath!);
+      await persistedFile.parent.create(recursive: true);
+      await persistedFile.writeAsString(
+        'error ui.error 2026-05-04 12:34:56.123456 \nnot parseable payload\n\n'
+        'error ui.error 2026-05-04 12:34:57.123456 \nnot parseable payload\n\n',
+      );
+
+      final snapshot = await LogDiagnostics.diagnosticSnapshot(
+        level: 'error',
+        limit: 20,
+      );
+      expect(snapshot.groupedIssues.length, 1);
+      expect(snapshot.groupedIssues.first['occurrenceCount'], 2);
+
+      await dir.delete(recursive: true);
+      if (oldInitialized && oldDataPath != null) {
+        App.dataPath = oldDataPath;
+      }
+      App.externalStoragePath = oldExternal;
+      App.isInitialized = oldInitialized;
+    },
+  );
+
   test('closeFileSink is safe on repeated calls', () async {
     final oldInitialized = App.isInitialized;
     final oldDataPath = oldInitialized ? App.dataPath : null;
