@@ -13,6 +13,7 @@ import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/history.dart';
 import 'package:venera/foundation/res.dart';
 import 'package:venera/foundation/sources/identity/source_identity.dart';
+import 'package:venera/features/sources/comic_source/runtime.dart';
 import 'package:venera/features/sources/comic_source/runtime/source_capability_policy.dart';
 import 'package:venera/pages/category_comics_page.dart';
 import 'package:venera/pages/search_result_page.dart';
@@ -63,7 +64,9 @@ class ComicSourceManager with ChangeNotifier, Init {
     if (exact != null) {
       return exact;
     }
-    return _sources.firstWhereOrNull((element) => element.identity.matchesKey(key));
+    return _sources.firstWhereOrNull(
+      (element) => element.identity.matchesKey(key),
+    );
   }
 
   ComicSource? find(String key) => findCanonical(key);
@@ -166,7 +169,8 @@ class ComicSourceManager with ChangeNotifier, Init {
 class ComicSource {
   static List<ComicSource> all() => ComicSourceManager().all();
 
-  static ComicSource? find(String key) => ComicSourceManager().findCanonical(key);
+  static ComicSource? find(String key) =>
+      ComicSourceManager().findCanonical(key);
 
   static ComicSource? fromIntKey(int key) =>
       ComicSourceManager().fromIntKey(key);
@@ -283,7 +287,12 @@ class ComicSource {
         'Invalid source data payload, fallback to empty data',
         data: {'sourceKey': key, 'stage': 'loadSourceData', 'error': '$e'},
       );
-      AppDiagnostics.error('source.runtime', e, stackTrace: s, message: 'load_source_data_failed');
+      AppDiagnostics.error(
+        'source.runtime',
+        e,
+        stackTrace: s,
+        message: 'load_source_data_failed',
+      );
       data = <String, dynamic>{};
     }
   }
@@ -328,7 +337,11 @@ class ComicSource {
           'errorMessage': res.errorMessage,
         },
       );
-      AppDiagnostics.error('source.runtime', res.errorMessage ?? 'Error', message: 'relogin_failed');
+      AppDiagnostics.error(
+        'source.runtime',
+        res.errorMessage ?? 'Error',
+        message: 'relogin_failed',
+      );
     }
     return !res.error;
   }
@@ -336,9 +349,28 @@ class ComicSource {
   /// Get settings dynamically from JavaScript source.
   /// This allows sources to use getters for dynamic settings that can change at runtime.
   Map<String, Map<String, dynamic>>? getSettingsDynamic() {
+    final context = SourceRuntimeBoundary.newContext(sourceKey: key);
     try {
       final safeKey = jsonEncode(key);
       var value = JsEngine().runCode("ComicSource.sources[$safeKey]?.settings");
+      if (value != null && value is! Map) {
+        final mapped = LegacySourceDiagnosticsAdapter.mapException(
+          error: SourceRuntimeBoundary.invalidSettingsShape(
+            context: context,
+            rawValue: value,
+          ),
+          context: context,
+          stageOverride: SourceRuntimeStage.parser,
+          codeOverride: SourceRuntimeCodes.settingsInvalid,
+          messageOverride: 'Invalid dynamic settings shape.',
+        );
+        AppDiagnostics.error(
+          'source.runtime',
+          mapped.toDiagnosticJson(),
+          message: 'load_dynamic_settings_failed',
+        );
+        return settings;
+      }
       if (value is Map) {
         var newMap = <String, Map<String, dynamic>>{};
         for (var e in value.entries) {
@@ -361,14 +393,24 @@ class ComicSource {
         return newMap;
       }
       return null;
-    } catch (e) {
+    } catch (e, s) {
+      final mapped = LegacySourceDiagnosticsAdapter.mapException(
+        error: e,
+        context: context,
+        stageOverride: SourceRuntimeStage.parser,
+      );
       AppDiagnostics.error(
         'source.runtime',
-        e,
-        message: 'Failed to get dynamic settings',
-        data: {'sourceKey': key, 'stage': 'dynamicSettings'},
+        mapped.toDiagnosticJson(),
+        stackTrace: s,
+        message: 'failed_to_get_dynamic_settings',
       );
-      AppDiagnostics.error('source.runtime', e, message: 'load_dynamic_settings_failed');
+      AppDiagnostics.error(
+        'source.runtime',
+        mapped.toUiMessage(),
+        stackTrace: s,
+        message: 'load_dynamic_settings_failed',
+      );
       return settings;
     }
   }

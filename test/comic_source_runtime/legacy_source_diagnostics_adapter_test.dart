@@ -62,6 +62,33 @@ void main() {
     expect(mapped.code, SourceRuntimeCodes.legacyUnknown);
   });
 
+  test(
+    'legacy_adapter_maps_reference_error_like_exception_to_runtime_code',
+    () {
+      final mapped = LegacySourceDiagnosticsAdapter.mapException(
+        error: Exception('ReferenceError: foo is not defined'),
+        context: context(),
+      );
+
+      expect(
+        SourceRuntimeCodes.toSourceMeaning(mapped.code),
+        SourceRuntimeCodes.sourceRuntimeException,
+      );
+    },
+  );
+
+  test('legacy_adapter_maps_type_error_like_exception_to_runtime_code', () {
+    final mapped = LegacySourceDiagnosticsAdapter.mapException(
+      error: Exception("TypeError: Cannot read properties of undefined"),
+      context: context(),
+    );
+
+    expect(
+      SourceRuntimeCodes.toSourceMeaning(mapped.code),
+      SourceRuntimeCodes.sourceRuntimeException,
+    );
+  });
+
   test('legacy_adapter_defaults_stage_to_legacy_for_unknown_mapping', () {
     final mapped = LegacySourceDiagnosticsAdapter.mapException(
       error: StateError('unexpected unknown condition'),

@@ -686,7 +686,11 @@ class ComicSourceParser {
           }
           return Res(options);
         } catch (e) {
-          AppDiagnostics.error('source.data_analysis', e, message: 'category_options_load_failed');
+          AppDiagnostics.error(
+            'source.data_analysis',
+            e,
+            message: 'category_options_load_failed',
+          );
           return Res.error(e.toString());
         }
       };
@@ -812,6 +816,10 @@ class ComicSourceParser {
 
     if (_checkExists('search.load')) {
       loadPage = (keyword, page, searchOption) async {
+        final context = SourceRuntimeBoundary.newContext(
+          sourceKey: _key!,
+          headerProfile: 'search.load',
+        );
         try {
           var res = await JsEngine().runCode("""
           ComicSource.sources.$_key.search.load(
@@ -825,12 +833,26 @@ class ComicSourceParser {
             subData: res["maxPage"],
           );
         } catch (e, s) {
-          AppDiagnostics.error('source.network', e, stackTrace: s);
-          return Res.error(e.toString());
+          final mapped = LegacySourceDiagnosticsAdapter.mapException(
+            error: e,
+            context: context,
+            stageOverride: SourceRuntimeStage.request,
+          );
+          AppDiagnostics.error(
+            'source.runtime',
+            mapped.toDiagnosticJson(),
+            stackTrace: s,
+            message: 'search_load_failed',
+          );
+          return Res.error(mapped.toUiMessage());
         }
       };
     } else {
       loadNext = (keyword, next, searchOption) async {
+        final context = SourceRuntimeBoundary.newContext(
+          sourceKey: _key!,
+          headerProfile: 'search.loadNext',
+        );
         try {
           var res = await JsEngine().runCode("""
           ComicSource.sources.$_key.search.loadNext(
@@ -844,8 +866,18 @@ class ComicSourceParser {
             subData: res["next"],
           );
         } catch (e, s) {
-          AppDiagnostics.error('source.network', e, stackTrace: s);
-          return Res.error(e.toString());
+          final mapped = LegacySourceDiagnosticsAdapter.mapException(
+            error: e,
+            context: context,
+            stageOverride: SourceRuntimeStage.request,
+          );
+          AppDiagnostics.error(
+            'source.runtime',
+            mapped.toDiagnosticJson(),
+            stackTrace: s,
+            message: 'search_load_next_failed',
+          );
+          return Res.error(mapped.toUiMessage());
         }
       };
     }
@@ -855,6 +887,10 @@ class ComicSourceParser {
 
   LoadComicFunc? _parseLoadComicFunc() {
     return (id) async {
+      final context = SourceRuntimeBoundary.newContext(
+        sourceKey: _key!,
+        headerProfile: 'comic.loadInfo',
+      );
       try {
         var res = await JsEngine().runCode("""
           ComicSource.sources.$_key.comic.loadInfo(${jsonEncode(id)})
@@ -864,22 +900,46 @@ class ComicSourceParser {
         res['sourceKey'] = _key;
         return Res(ComicDetails.fromJson(res));
       } catch (e, s) {
-        AppDiagnostics.error('source.network', e, stackTrace: s);
-        return Res.error(e.toString());
+        final mapped = LegacySourceDiagnosticsAdapter.mapException(
+          error: e,
+          context: context,
+          stageOverride: SourceRuntimeStage.parser,
+        );
+        AppDiagnostics.error(
+          'source.runtime',
+          mapped.toDiagnosticJson(),
+          stackTrace: s,
+          message: 'load_comic_info_failed',
+        );
+        return Res.error(mapped.toUiMessage());
       }
     };
   }
 
   LoadComicPagesFunc? _parseLoadComicPagesFunc() {
     return (id, ep) async {
+      final context = SourceRuntimeBoundary.newContext(
+        sourceKey: _key!,
+        headerProfile: 'comic.loadEp',
+      );
       try {
         var res = await JsEngine().runCode("""
           ComicSource.sources.$_key.comic.loadEp(${jsonEncode(id)}, ${jsonEncode(ep)})
         """);
         return Res(List.from(res["images"]));
       } catch (e, s) {
-        AppDiagnostics.error('source.network', e, stackTrace: s);
-        return Res.error(e.toString());
+        final mapped = LegacySourceDiagnosticsAdapter.mapException(
+          error: e,
+          context: context,
+          stageOverride: SourceRuntimeStage.parser,
+        );
+        AppDiagnostics.error(
+          'source.runtime',
+          mapped.toDiagnosticJson(),
+          stackTrace: s,
+          message: 'load_comic_pages_failed',
+        );
+        return Res.error(mapped.toUiMessage());
       }
     };
   }
@@ -1175,7 +1235,11 @@ class ComicSourceParser {
           ComicSource.sources.$_key.comic.onThumbnailLoad(${jsonEncode(imageKey)})
         """);
       if (res is! Map) {
-        AppDiagnostics.error('source.network', 'function onThumbnailLoad return invalid data', message: 'invalid_thumbnail_loader_result');
+        AppDiagnostics.error(
+          'source.network',
+          'function onThumbnailLoad return invalid data',
+          message: 'invalid_thumbnail_loader_result',
+        );
         throw "function onThumbnailLoad return invalid data";
       }
       return res as Map<String, dynamic>;
