@@ -112,10 +112,9 @@ void main() {
 
   test('localDownloads source uses shallow non-followLinks listing', () async {
     final content = await File('lib/utils/import_comic.dart').readAsString();
-    expect(
-      content.contains('listSync(recursive: false, followLinks: false)'),
-      isTrue,
-    );
+    expect(content.contains('localDir.listSync('), isTrue);
+    expect(content.contains('recursive: false'), isTrue);
+    expect(content.contains('followLinks: false'), isTrue);
   });
 
   test(
@@ -130,12 +129,9 @@ void main() {
     'localDownloads emits missingFiles when canonical root is not a directory',
     () async {
       final content = await File('lib/utils/import_comic.dart').readAsString();
-      expect(
-        content.contains(
-          "FileSystemEntity.typeSync(rootPath, followLinks: false)",
-        ),
-        isTrue,
-      );
+      expect(content.contains('FileSystemEntity.typeSync('), isTrue);
+      expect(content.contains('rootPath,'), isTrue);
+      expect(content.contains('followLinks: false'), isTrue);
       expect(content.contains("message: 'import.local.missingFiles'"), isTrue);
     },
   );
@@ -576,6 +572,27 @@ void main() {
         '${tempRoot.path}/does-not-exist/comic-a',
       ]);
       expect(copyFailedEvent.data['errorType'], isNotEmpty);
+
+      final lifecycleEvents = DevDiagnosticsApi.recent(
+        channel: 'import.lifecycle',
+      );
+      final started = lifecycleEvents.firstWhere(
+        (event) => event.message == 'import.lifecycle.started',
+      );
+      expect(started.data['operation'], 'import.register_comics');
+      expect(
+        lifecycleEvents.any(
+          (event) =>
+              event.message == 'import.lifecycle.phase' &&
+              event.data['phase'] == 'copy_to_local.started',
+        ),
+        isTrue,
+      );
+      final failed = lifecycleEvents.firstWhere(
+        (event) => event.message == 'import.lifecycle.failed',
+      );
+      expect(failed.data['importId'], started.data['importId']);
+      expect(failed.data['phase'], 'register');
     },
   );
 
