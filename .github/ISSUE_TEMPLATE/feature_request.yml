@@ -1,24 +1,30 @@
 name: Feature request / 功能建議
-description: Propose a concrete feature. This is not a wishlist. / 提出具體功能建議；這裡不是許願池。
+description: Propose a concrete feature with problem, design, and risk analysis. / 提出有問題定義、設計及風險分析的具體功能建議。
 title: "[Proposal]: "
 labels: ["type: proposal", "needs-triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        This repository is not a wishlist or free support queue.
+        Thanks for proposing a feature. This template is for concrete, scoped proposals only.
+
+        This repository is not a wishlist, source request queue, or free support channel.
         If you want different behavior, provide evidence, a concrete proposal, or a PR.
 
-        本 repo 不是許願池，也不是免費支援隊列。
+        多謝你提出功能建議。此模板只適用於具體、有範圍的 proposal。
+
+        本 repo 不是許願池、漫畫源請求隊列，亦不是免費支援渠道。
         如果你希望改變行為，請提供證據、具體方案，或提交 PR。
 
-        Requests without concrete behavior, design direction, or risk analysis may be deferred or closed.
+        Requests without a clear problem, proposed behavior, design direction, or risk analysis may be deferred or closed.
 
-        沒有具體行為、設計方向或風險說明的請求可能會被延後或關閉。
+        缺少明確問題、建議行為、設計方向或風險說明的請求，可能會被延後或關閉。
+
   - type: dropdown
     id: area
     attributes:
       label: Area / 範圍
+      description: Pick the main area affected. / 選擇主要受影響範圍。
       options:
         - Reader / 閱讀器
         - Local Library / 本地漫畫庫
@@ -26,48 +32,184 @@ body:
         - Network / 網絡
         - Comic Source / 漫畫源
         - UI / 介面
+        - Settings / 設定
+        - Performance / 效能
+        - Diagnostics / 診斷
         - Docs / 文件
         - Other / 其他
     validations:
       required: true
+
+  - type: dropdown
+    id: proposal_type
+    attributes:
+      label: Proposal type / 建議類型
+      description: What kind of change is this? / 這是哪一類改動？
+      options:
+        - New user-facing feature / 新使用者功能
+        - UX improvement / 使用體驗改善
+        - Runtime or architecture change / Runtime 或架構改動
+        - Source/runtime capability / 漫畫源或 runtime 能力
+        - Import/export workflow / 匯入/匯出流程
+        - Diagnostics or logging / 診斷或 logging
+        - Documentation / 文件
+        - Other / 其他
+    validations:
+      required: true
+
   - type: textarea
     id: problem
     attributes:
       label: Problem / 要解決的問題
-      description: Describe the user problem, not just the button or source you want. / 說明使用者問題，而不只是列出想要某個按鈕或漫畫源。
+      description: Describe the user problem or engineering problem. Do not only list a button, source, or UI preference. / 說明使用者問題或工程問題，不要只列出想要某個按鈕、漫畫源或 UI 偏好。
+      placeholder: |
+        Example:
+        Local comics can become hidden when canonical DB records and folder names drift apart. Users cannot recover the item without manual file/database inspection.
     validations:
       required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence / 證據
+      description: Provide logs, screenshots, diagnostics, examples, user flow evidence, or links to related issues. / 提供 log、截圖、diagnostics、例子、使用流程證據或相關 issue 連結。
+      placeholder: |
+        Example:
+        structuredDiagnostics: comic.detail.localMissing
+        logs.groupedIssues: Local comic not found
+        Existing folder: runtimeRoot/local/DYE1-1
+    validations:
+      required: true
+
   - type: textarea
     id: proposed
     attributes:
       label: Proposed behavior / 建議行為
-      description: Explain exactly how it should work. / 清楚說明它應該如何運作。
+      description: Explain exactly how it should work from the user's point of view. / 從使用者角度清楚說明它應該如何運作。
+      placeholder: |
+        Example:
+        When a canonical local folder exists, the local library should relink safely and show the comic instead of hiding it.
     validations:
       required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope / 範圍
+      description: Define what is included and what is explicitly out of scope. / 說明包含甚麼，以及明確不包含甚麼。
+      placeholder: |
+        In scope:
+        - ...
+
+        Out of scope:
+        - ...
+    validations:
+      required: true
+
   - type: textarea
     id: insufficient
     attributes:
       label: Why existing behavior is insufficient / 為何現有功能不足
-      description: Explain why current behavior cannot solve the problem. / 說明現有功能為何不能解決問題。
+      description: Explain why the current behavior, workaround, or existing setting cannot solve the problem. / 說明現有行為、workaround 或設定為何不能解決問題。
+      placeholder: |
+        Example:
+        Current behavior hides the item, but does not provide a safe recovery path.
     validations:
       required: true
+
   - type: textarea
     id: implementation
     attributes:
       label: Implementation direction / 實作方向
-      description: Mention possible files/components, data model impact, edge cases, migration risk, performance risk, security risk, or UX risk. / 說明可能涉及的檔案或元件、資料模型影響、邊界情況、migration 風險、效能風險、安全風險或 UX 風險。
+      description: Mention possible files/components, data model impact, edge cases, migration risk, performance risk, security risk, privacy risk, or UX risk. / 說明可能涉及的檔案或元件、資料模型影響、邊界情況、migration 風險、效能風險、安全風險、私隱風險或 UX 風險。
+      placeholder: |
+        Possible direction:
+        - Files/components:
+        - Data model impact:
+        - Edge cases:
+        - Risks:
+        - Tests:
     validations:
       required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / 考慮過的替代方案
+      description: List alternatives and why they are weaker or riskier. / 列出替代方案，以及為何較弱或風險較高。
+      placeholder: |
+        Example:
+        Alternative: keep legacy fallback.
+        Reason rejected: keeps two runtime authorities alive and causes mapping drift.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: compatibility
+    attributes:
+      label: Compatibility impact / 相容性影響
+      description: Does this affect existing data, sources, routes, settings, or workflows? / 會否影響現有資料、漫畫源、路由、設定或流程？
+      options:
+        - No compatibility impact expected / 預期沒有相容性影響
+        - Small UI-only change / 只屬小型 UI 改動
+        - Affects existing settings / 影響現有設定
+        - Affects existing local data / 影響現有本地資料
+        - Affects source/runtime behavior / 影響漫畫源或 runtime 行為
+        - Requires migration or cutover / 需要 migration 或 cutover
+        - Unknown / 不確定
+    validations:
+      required: true
+
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk level / 風險等級
+      description: Estimate the implementation risk. / 估計實作風險。
+      options:
+        - Low / 低
+        - Medium / 中
+        - High / 高
+        - Unknown / 不確定
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria / 驗收標準
+      description: How should maintainers verify that the proposal is complete? / 維護者應如何確認此 proposal 已完成？
+      placeholder: |
+        - ...
+        - ...
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: tests
+    attributes:
+      label: Suggested tests / 建議測試
+      description: List focused tests or verification commands if known. / 如知道，請列出 focused tests 或驗證指令。
+      placeholder: |
+        Example:
+        flutter test test/... 
+        dart analyze ...
+    validations:
+      required: false
+
   - type: dropdown
     id: contribution
     attributes:
       label: Contribution intent / 貢獻意向
+      description: Are you willing to help implement or test this? / 你是否願意協助實作或測試？
       options:
         - I will implement this / 我會實作
         - I can help test / 我可協助測試
+        - I can provide more diagnostics / 我可提供更多 diagnostics
         - Request only / 只是提出請求
     validations:
       required: true
+
   - type: checkboxes
     id: scope_check
     attributes:
@@ -75,7 +217,11 @@ body:
       options:
         - label: I searched existing issues. / 我已搜尋現有 issues。
           required: true
-        - label: This is not a generic wishlist request. / 這不是泛泛而談的許願式請求。
+        - label: This is not a generic wishlist, source request, or support request. / 這不是泛泛而談的許願、漫畫源請求或支援請求。
           required: true
-        - label: I included a concrete behavior/design proposal. / 我已提供具體行為或設計方向。
+        - label: I included a concrete problem and proposed behavior. / 我已提供具體問題及建議行為。
+          required: true
+        - label: I included evidence or a clear example. / 我已提供證據或清楚例子。
+          required: true
+        - label: I considered compatibility, migration, or risk where relevant. / 如相關，我已考慮相容性、migration 或風險。
           required: true

@@ -1,24 +1,32 @@
 name: Bug report / Bug 回報
-description: Report a reproducible bug with logs. / 回報可重現並附有 log 的 bug。
+description: Report a reproducible bug with evidence. / 回報可重現並附有證據的 bug。
 title: "[Bug]: "
 labels: ["type: bug", "needs-triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        This repository is not a wishlist or free support queue.
+        Thanks for reporting a bug. This template is for reproducible problems only.
+
+        This repository is not a wishlist, feature request queue, or free support channel.
         If you want different behavior, provide evidence, a concrete proposal, or a PR.
 
-        本 repo 不是許願池，也不是免費支援隊列。
+        多謝你回報 bug。此模板只適用於可重現的問題。
+
+        本 repo 不是許願池、功能請求隊列，亦不是免費支援渠道。
         如果你希望改變行為，請提供證據、具體方案，或提交 PR。
 
-        Bugs without reproduction steps, platform/version, or logs may be closed as not reproducible.
+        Reports without reproduction steps, platform/version details, or logs may be closed as not reproducible.
+        Please redact passwords, tokens, cookies, session values, and raw personal data before posting.
 
-        沒有重現步驟、平台/版本或 log 的 bug 可能會被標記為無法重現並關閉。
+        缺少重現步驟、平台/版本資料或 log 的回報，可能會被標記為無法重現並關閉。
+        發佈前請先遮蔽密碼、token、cookie、session value 及原始個人資料。
+
   - type: dropdown
     id: area
     attributes:
       label: Area / 範圍
+      description: Pick the main area affected. / 選擇主要受影響範圍。
       options:
         - Reader / 閱讀器
         - Local Library / 本地漫畫庫
@@ -27,74 +35,149 @@ body:
         - Comic Source / 漫畫源
         - UI / 介面
         - Settings / 設定
+        - Performance / 效能
+        - Crash / 閃退
         - Other / 其他
     validations:
       required: true
-  - type: textarea
-    id: current
-    attributes:
-      label: Current behavior / 目前行為
-      description: Describe what happened. / 說明實際發生了甚麼。
-    validations:
-      required: true
-  - type: textarea
-    id: expected
-    attributes:
-      label: Expected behavior / 預期行為
-      description: Describe what should happen. / 說明你預期應該發生甚麼。
-    validations:
-      required: true
-  - type: textarea
-    id: steps
-    attributes:
-      label: Reproduction steps / 重現步驟
-      description: Provide concrete steps. / 提供可執行的重現步驟。
-      placeholder: |
-        1.
-        2.
-        3.
-    validations:
-      required: true
-  - type: input
-    id: platform
-    attributes:
-      label: Platform / 平台
-      placeholder: "macOS / Windows / Linux / Android / iOS"
-    validations:
-      required: true
-  - type: input
-    id: version
-    attributes:
-      label: App version or commit / App 版本或 commit
-    validations:
-      required: true
-  - type: input
-    id: install
-    attributes:
-      label: Install method / 安裝方式
-      placeholder: "GitHub Releases / self-built / third-party package / other"
-    validations:
-      required: true
+
   - type: dropdown
     id: source_type
     attributes:
       label: Source type / 來源類型
+      description: What kind of content or workflow is affected? / 受影響的是哪一類內容或流程？
       options:
         - Local comics / 本地漫畫
         - Remote source / 遠端漫畫源
         - Downloaded comics / 已下載漫畫
         - Import / 匯入
+        - Reader route / 閱讀器路由
         - Settings / 設定
+        - Not source-related / 與來源無關
         - Other / 其他
     validations:
       required: true
+
+  - type: textarea
+    id: current
+    attributes:
+      label: Current behavior / 目前行為
+      description: Describe what happened. Include exact error text if visible. / 說明實際發生了甚麼。如有錯誤訊息，請貼上原文。
+      placeholder: |
+        Example:
+        Opening a local comic shows "Local comic not found" even though the folder exists under the local library directory.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior / 預期行為
+      description: Describe what should happen instead. / 說明你預期應該發生甚麼。
+      placeholder: |
+        Example:
+        The comic should open normally, or the app should show a recoverable local-missing state with a recheck option.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps / 重現步驟
+      description: Provide concrete steps from a clean app launch. / 由重新開 app 開始，提供可執行的具體步驟。
+      placeholder: |
+        1. Open the app.
+        2. Go to ...
+        3. Tap ...
+        4. Observe ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: reproducibility
+    attributes:
+      label: Reproducibility / 可重現程度
+      description: How often does this happen? / 問題出現頻率？
+      options:
+        - Always / 每次都會
+        - Often / 經常
+        - Sometimes / 間中
+        - Once / 只出現過一次
+        - Unknown / 不確定
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform / 平台
+      description: OS and device type. / 作業系統及裝置類型。
+      placeholder: "macOS 15 / Windows 11 / Ubuntu 24.04 / Android 15 / iOS 18"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: App version or commit / App 版本或 commit
+      description: Use the app version, release tag, or commit hash. / 請填 App 版本、release tag 或 commit hash。
+      placeholder: "1.6.3 / v1.6.3 / 1a2b3c4"
+    validations:
+      required: true
+
+  - type: input
+    id: install
+    attributes:
+      label: Install method / 安裝方式
+      placeholder: "GitHub Releases / self-built / third-party package / TestFlight / sideloaded / other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics_summary
+    attributes:
+      label: Diagnostics summary / 診斷摘要
+      description: Paste the relevant grouped issue or structured diagnostic summary if available. / 如有，請貼上 relevant grouped issue 或 structured diagnostic summary。
+      placeholder: |
+        Example:
+        logs.groupedIssues signature: ui.error|ui.error.visible|Local comic not found
+        structuredDiagnostics newestWarningsAndErrors: comic.detail.localMissing
+    validations:
+      required: false
+
   - type: textarea
     id: logs
     attributes:
-      label: Logs / diagnostics / 截圖
-      description: Paste relevant logs, diagnostics, or screenshots. Redact passwords, tokens, cookies, and raw personal data. / 貼上相關 log、diagnostics 或截圖。請先遮蔽密碼、token、cookie 及原始個人資料。
+      label: Logs / diagnostics / screenshots / Log、diagnostics、截圖
+      description: Paste relevant logs, diagnostics, screenshots, or stack traces. Redact passwords, tokens, cookies, session values, device identifiers, and raw personal data. / 貼上相關 log、diagnostics、截圖或 stack trace。請先遮蔽密碼、token、cookie、session value、device identifier 及原始個人資料。
+      render: shell
+      placeholder: |
+        Paste logs here.
+        Do not include passwords, tokens, cookies, or raw personal data.
     validations:
       required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact / 影響
+      description: Explain how this affects usage. / 說明此 bug 如何影響使用。
+      placeholder: |
+        Example:
+        Blocks opening local comics.
+        Causes repeated warnings.
+        Prevents import from completing.
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra_context
+    attributes:
+      label: Additional context / 補充資料
+      description: Add anything else useful, such as recent import, settings changes, source name, or whether it happens after update. / 可補充最近是否有匯入、改設定、來源名稱、是否更新後才出現等。
+    validations:
+      required: false
+
   - type: checkboxes
     id: scope_check
     attributes:
@@ -102,9 +185,13 @@ body:
       options:
         - label: I searched existing issues. / 我已搜尋現有 issues。
           required: true
-        - label: I included reproduction steps. / 我已提供重現步驟。
+        - label: I included concrete reproduction steps. / 我已提供具體重現步驟。
           required: true
-        - label: I included logs/screenshots where relevant. / 我已提供相關 log / 截圖。
+        - label: I included app version or commit. / 我已提供 App 版本或 commit。
           required: true
-        - label: This is not a generic wishlist request. / 這不是泛泛而談的許願式請求。
+        - label: I included logs, diagnostics, or screenshots where relevant. / 我已提供相關 log、diagnostics 或截圖。
+          required: true
+        - label: I redacted passwords, tokens, cookies, session values, and personal data. / 我已遮蔽密碼、token、cookie、session value 及個人資料。
+          required: true
+        - label: This is not a generic wishlist or support request. / 這不是泛泛而談的許願或支援請求。
           required: true

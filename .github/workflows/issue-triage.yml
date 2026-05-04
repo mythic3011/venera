@@ -22,7 +22,11 @@ jobs:
           script: |
             const issue = context.payload.issue;
             const body = issue.body || "";
-            const text = `${issue.title}\n${body}`.toLowerCase();
+            const title = issue.title || "";
+            const text = `${title}\n${body}`.toLowerCase();
+
+            const hasAny = (needles) => needles.some((needle) => text.includes(needle));
+            const titleHasAny = (needles) => needles.some((needle) => title.toLowerCase().includes(needle));
 
             const requiredLabels = {
               "type: bug": "d73a4a",
@@ -34,6 +38,13 @@ jobs:
               "type: network": "1f6feb",
               "type: ui": "1f6feb",
               "type: docs": "0075ca",
+              "type: performance": "1f6feb",
+              "type: crash": "b60205",
+              "type: diagnostics": "5319e7",
+              "proposal: architecture": "5319e7",
+              "proposal: ux": "a2eeef",
+              "proposal: docs": "0075ca",
+              "compatibility-risk": "d93f0b",
               "priority: p0": "b60205",
               "priority: p1": "d93f0b",
               "priority: p2": "fbca04",
@@ -66,43 +77,106 @@ jobs:
             const labels = new Set(issue.labels.map((label) => label.name));
             const add = (label) => labels.add(label);
 
-            if (text.includes("[bug]")) add("type: bug");
-            if (text.includes("[proposal]")) add("type: proposal");
-            if (text.includes("reader") || text.includes("閱讀器")) add("type: reader");
-            if (text.includes("local library") || text.includes("本地漫畫庫") || text.includes("local comic")) add("type: local-library");
-            if (text.includes("import") || text.includes("匯入")) add("type: import");
-            if (text.includes("network") || text.includes("網絡") || text.includes("download")) add("type: network");
-            if (text.includes("comic source") || text.includes("漫畫源") || text.includes("source")) add("type: source");
-            if (text.includes("ui") || text.includes("介面")) add("type: ui");
-            if (text.includes("docs") || text.includes("文件") || text.includes("readme")) add("type: docs");
-            if (text.includes("cookie") || text.includes("token") || text.includes("password") || text.includes("authorization")) {
+            if (titleHasAny(["[bug]"]) || hasAny(["current behavior", "目前行為", "reproduction steps", "重現步驟"])) {
+              add("type: bug");
+            }
+            if (titleHasAny(["[proposal]"]) || hasAny(["proposed behavior", "建議行為", "acceptance criteria", "驗收標準"])) {
+              add("type: proposal");
+            }
+            if (hasAny(["reader", "reading", "閱讀器", "reader route", "閱讀器路由"])) add("type: reader");
+            if (hasAny(["local library", "本地漫畫庫", "local comic", "local comics", "canonical local", "local.library", "comic.detail.localmissing"])) add("type: local-library");
+            if (hasAny(["import", "匯入", "export", "legacy app", "legacy local", "import.local"])) add("type: import");
+            if (hasAny(["network", "網絡", "download", "timeout", "request failed", "source_unavailable"])) add("type: network");
+            if (hasAny(["comic source", "漫畫源", "remote source", "source runtime", "copymanga", "source_key", "sourcekey"])) add("type: source");
+            if (hasAny(["ui", "介面", "ux", "button", "layout", "theme"])) add("type: ui");
+            if (hasAny(["docs", "文件", "readme", "documentation", "文檔"])) add("type: docs");
+            if (hasAny(["performance", "效能", "slow", "lag", "freeze", "memory", "cpu"])) add("type: performance");
+            if (hasAny(["crash", "閃退", "exception", "stack trace", "app.unhandled", "lateinitializationerror", "pathnotfoundexception"])) add("type: crash");
+            if (hasAny(["diagnostics", "診斷", "structureddiagnostics", "groupedissues", "log", "logs"])) add("type: diagnostics");
+
+            if (hasAny(["runtime or architecture", "runtime 或架構", "cutover", "migration", "canonical", "compatibility impact", "相容性影響"])) add("proposal: architecture");
+            if (hasAny(["ux improvement", "使用體驗", "recoverable", "recheck option", "empty state"])) add("proposal: ux");
+            if (hasAny(["documentation", "docs", "readme", "文件"])) add("proposal: docs");
+            if (hasAny(["requires migration", "requires cutover", "需要 migration", "需要 cutover", "affects existing local data", "影響現有本地資料", "affects source/runtime behavior"])) add("compatibility-risk");
+
+            if (hasAny(["cookie", "token", "password", "authorization", "set-cookie", "session", "x-auth-signature", "deviceinfo", "pseudoid", "umstring"])) {
               add("security-sensitive");
             }
 
-            const hasMissingTemplateFields =
-              text.includes("describe what happened") ||
-              text.includes("describe what should happen") ||
-              text.includes("what user problem does this solve") ||
-              text.includes("describe the exact behavior") ||
-              text.includes("1.\n2.\n3.");
+            const hasMissingTemplateFields = hasAny([
+              "describe what happened",
+              "describe what should happen",
+              "provide concrete steps",
+              "from a clean app launch",
+              "what user problem",
+              "describe the exact behavior",
+              "possible direction:",
+              "in scope:\n- ...",
+              "out of scope:\n- ...",
+              "paste logs here",
+              "1. open the app.\n2. go to ...",
+              "說明實際發生了甚麼",
+              "說明你預期應該發生甚麼",
+              "由重新開 app 開始",
+              "說明使用者問題",
+              "說明包含甚麼",
+            ]);
+
+            const hasEvidence = hasAny([
+              "logs.groupedissues",
+              "structureddiagnostics",
+              "stack trace",
+              "screenshot",
+              "traceback",
+              "exception",
+              "errorType",
+              "errortype",
+              "diagnostics",
+              "reproduction steps",
+              "重現步驟",
+            ]);
+
+            const hasConcreteProposal = hasAny([
+              "acceptance criteria",
+              "驗收標準",
+              "implementation direction",
+              "實作方向",
+              "in scope:",
+              "out of scope:",
+              "compatibility impact",
+              "risk level",
+            ]);
+
+            const isProposal = labels.has("type: proposal") || titleHasAny(["[proposal]"]);
+            const isBug = labels.has("type: bug") || titleHasAny(["[bug]"]);
+
+            const genericRequest = hasAny([
+              "please add",
+              "support this",
+              "make the ui better",
+              "it does not work",
+              "add this source",
+              "can you add",
+              "加這個",
+              "支援這個",
+              "希望可以",
+              "不能用",
+              "唔work",
+            ]);
+
             const lowEffort =
               body.length < 500 ||
               hasMissingTemplateFields ||
-              text.includes("please add") ||
-              text.includes("support this") ||
-              text.includes("make the ui better") ||
-              text.includes("it does not work") ||
-              text.includes("加這個") ||
-              text.includes("支援這個") ||
-              text.includes("希望可以") ||
-              text.includes("不能用");
+              genericRequest ||
+              (isBug && !hasEvidence) ||
+              (isProposal && !hasConcreteProposal);
 
             if (lowEffort) {
               add("needs-info");
               add("not-actionable");
             }
 
-            if (text.includes("wishlist") || text.includes("許願")) {
+            if (hasAny(["wishlist", "許願", "please add", "support this", "add this source", "加源", "求加", "希望可以"])) {
               add("wishlist");
             }
 
