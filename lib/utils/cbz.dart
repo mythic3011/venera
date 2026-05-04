@@ -287,15 +287,23 @@ abstract class CBZ {
             LocalImportPreflightAction.conflictExistingDirectory ||
         preflight.action ==
             LocalImportPreflightAction.conflictExistingCanonicalRecord) {
-      final failure = ImportFailure.duplicateDetected(
-        comicTitle: metaData.title,
-        targetDirectory: preflight.targetDirectory,
-        existingComicId: preflight.existingComicId,
-      );
+      final failure = preflight.action ==
+              LocalImportPreflightAction.conflictExistingDirectory
+          ? ImportFailure.destinationExists(
+              comicTitle: metaData.title,
+              targetDirectory: preflight.targetDirectory,
+            )
+          : ImportFailure.duplicateDetected(
+              comicTitle: metaData.title,
+              targetDirectory: preflight.targetDirectory,
+              existingComicId: preflight.existingComicId,
+            );
       AppDiagnostics.error(
         'import.local',
         failure,
-        message: 'import.local.duplicateDetected',
+        message: failure.code == 'IMPORT_DESTINATION_EXISTS'
+            ? 'import.local.copyFailed'
+            : 'import.local.duplicateDetected',
         data: {
           if (ImportLifecycleTrace.current != null)
             'importId': ImportLifecycleTrace.current!.id,
