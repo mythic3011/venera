@@ -7,6 +7,7 @@ import 'package:venera/foundation/db/local_comic_sync.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/local/local_library_file_probe.dart';
 import 'package:venera/foundation/local.dart';
+import 'package:venera/utils/import_lifecycle.dart';
 
 enum LocalImportPreflightAction {
   createNew,
@@ -102,6 +103,10 @@ class CanonicalLocalImportStorage implements LocalImportStoragePort {
 
   @override
   Future<void> assertStorageReadyForImport(String comicTitle) async {
+    ImportLifecycleTrace.current?.phase(
+      'storage.assert_ready.started',
+      data: {'comicTitle': comicTitle},
+    );
     AppDiagnostics.info(
       'import.local',
       'import.local.legacyMirrorSkipped',
@@ -113,10 +118,18 @@ class CanonicalLocalImportStorage implements LocalImportStoragePort {
       },
     );
     await _loadCanonicalBrowseRecords(comicTitle);
+    ImportLifecycleTrace.current?.phase(
+      'storage.assert_ready.completed',
+      data: {'comicTitle': comicTitle},
+    );
   }
 
   @override
   Future<bool> hasDuplicateTitle(String title) async {
+    ImportLifecycleTrace.current?.phase(
+      'storage.duplicate_check.started',
+      data: {'comicTitle': title},
+    );
     final normalizedTitle = _normalizeTitle(title);
     final rows = await _loadCanonicalBrowseRecords(title);
     for (final row in rows) {
@@ -125,20 +138,34 @@ class CanonicalLocalImportStorage implements LocalImportStoragePort {
       final recordNormalized = dynamicRecord.normalizedTitle?.toString() ?? '';
       if (_normalizeTitle(recordTitle) == normalizedTitle ||
           _normalizeTitle(recordNormalized) == normalizedTitle) {
+        ImportLifecycleTrace.current?.phase(
+          'storage.duplicate_check.completed',
+          data: {'comicTitle': title, 'duplicate': true},
+        );
         return true;
       }
     }
+    ImportLifecycleTrace.current?.phase(
+      'storage.duplicate_check.completed',
+      data: {'comicTitle': title, 'duplicate': false},
+    );
     return false;
   }
 
   @override
   Future<String> requireRootPath() async {
+    ImportLifecycleTrace.current?.phase('storage.root.started');
     try {
       final rootPath = await (resolveRootPath ?? _resolveCanonicalRootPath)();
       if (rootPath.trim().isEmpty) {
         throw Exception('empty path');
       }
-      return rootPath.trim();
+      final resolved = rootPath.trim();
+      ImportLifecycleTrace.current?.phase(
+        'storage.root.completed',
+        data: {'rootPath': resolved},
+      );
+      return resolved;
     } catch (_) {
       throw Exception(
         'Canonical local storage unavailable (fail closed): '
@@ -169,6 +196,10 @@ class CanonicalLocalImportStorage implements LocalImportStoragePort {
   Future<LocalImportPreflightDecision> preflightImport(
     String comicTitle,
   ) async {
+    ImportLifecycleTrace.current?.phase(
+      'storage.preflight.started',
+      data: {'comicTitle': comicTitle},
+    );
     final rootPath = await requireRootPath();
     final directoryName = _sanitizeDirectoryName(comicTitle);
     final targetDirectory = p.join(rootPath, directoryName);
@@ -200,40 +231,73 @@ class CanonicalLocalImportStorage implements LocalImportStoragePort {
           preferredExpectedDirectory: primaryItem.localRootPath,
         );
         if (probeResult.isAvailable) {
-          return LocalImportPreflightDecision(
-            action: LocalImportPreflightAction.conflictExistingCanonicalRecord,
-            targetDirectory: primaryItem.localRootPath,
-            existingComicId: matched.comicId.toString(),
+          return _preflightDecision(
+            comicTitle: comicTitle,
+            decision: LocalImportPreflightDecision(
+              action:
+                  LocalImportPreflightAction.conflictExistingCanonicalRecord,
+              targetDirectory: primaryItem.localRootPath,
+              existingComicId: matched.comicId.toString(),
+            ),
           );
         }
         if (probeResult.isCleanupCandidate) {
-          return LocalImportPreflightDecision(
-            action: LocalImportPreflightAction.repairExisting,
-            targetDirectory: primaryItem.localRootPath,
-            existingComicId: matched.comicId.toString(),
+          return _preflightDecision(
+            comicTitle: comicTitle,
+            decision: LocalImportPreflightDecision(
+              action: LocalImportPreflightAction.repairExisting,
+              targetDirectory: primaryItem.localRootPath,
+              existingComicId: matched.comicId.toString(),
+            ),
           );
         }
       }
-      return LocalImportPreflightDecision(
-        action: LocalImportPreflightAction.conflictExistingCanonicalRecord,
-        targetDirectory: targetDirectory,
-        existingComicId: matched.comicId.toString(),
+      return _preflightDecision(
+        comicTitle: comicTitle,
+        decision: LocalImportPreflightDecision(
+          action: LocalImportPreflightAction.conflictExistingCanonicalRecord,
+          targetDirectory: targetDirectory,
+          existingComicId: matched.comicId.toString(),
+        ),
       );
     }
 
     if (targetType == FileSystemEntityType.directory ||
         targetType == FileSystemEntityType.file ||
         targetType == FileSystemEntityType.link) {
-      return LocalImportPreflightDecision(
-        action: LocalImportPreflightAction.conflictExistingDirectory,
-        targetDirectory: targetDirectory,
+      return _preflightDecision(
+        comicTitle: comicTitle,
+        decision: LocalImportPreflightDecision(
+          action: LocalImportPreflightAction.conflictExistingDirectory,
+          targetDirectory: targetDirectory,
+        ),
       );
     }
 
-    return LocalImportPreflightDecision(
-      action: LocalImportPreflightAction.createNew,
-      targetDirectory: targetDirectory,
+    return _preflightDecision(
+      comicTitle: comicTitle,
+      decision: LocalImportPreflightDecision(
+        action: LocalImportPreflightAction.createNew,
+        targetDirectory: targetDirectory,
+      ),
     );
+  }
+
+  LocalImportPreflightDecision _preflightDecision({
+    required String comicTitle,
+    required LocalImportPreflightDecision decision,
+  }) {
+    ImportLifecycleTrace.current?.phase(
+      'storage.preflight.completed',
+      data: {
+        'comicTitle': comicTitle,
+        'action': decision.action.name,
+        'targetDirectory': decision.targetDirectory,
+        if (decision.existingComicId != null)
+          'existingComicId': decision.existingComicId,
+      },
+    );
+    return decision;
   }
 
   @override
@@ -241,6 +305,13 @@ class CanonicalLocalImportStorage implements LocalImportStoragePort {
     LocalComic comic, {
     String? existingComicId,
   }) async {
+    ImportLifecycleTrace.current?.phase(
+      'storage.register.started',
+      data: {
+        'comicTitle': comic.title,
+        if (existingComicId != null) 'existingComicId': existingComicId,
+      },
+    );
     final id = existingComicId ?? await _allocateComicId();
     final registeredComic = LocalComic(
       id: id,
@@ -274,6 +345,13 @@ class CanonicalLocalImportStorage implements LocalImportStoragePort {
         );
       }
     }
+    ImportLifecycleTrace.current?.phase(
+      'storage.register.completed',
+      data: {
+        'comicTitle': registeredComic.title,
+        'comicId': registeredComic.id,
+      },
+    );
     return registeredComic;
   }
 }
