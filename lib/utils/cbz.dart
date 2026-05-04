@@ -5,11 +5,13 @@ import 'package:flutter_7zip/flutter_7zip.dart';
 import 'package:venera/foundation/app/app.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_type.dart';
+import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/local_comics_legacy_bridge.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/utils/local_import_storage.dart';
 import 'package:venera/utils/ext.dart';
 import 'package:venera/utils/file_type.dart';
+import 'package:venera/utils/import_failure.dart';
 import 'package:venera/utils/import_sort.dart';
 import 'package:venera/utils/io.dart';
 import 'package:venera/utils/translations.dart';
@@ -269,17 +271,28 @@ abstract class CBZ {
         );
       } catch (_) {}
     }
-    metaData ??= ComicMetaData(
-      title: fallbackTitle,
-      author: "",
-      tags: [],
-    );
+    metaData ??= ComicMetaData(title: fallbackTitle, author: "", tags: []);
     await assertCanonicalStorageReadyForImport(
       metaData.title,
       storage: storage,
     );
-    if (await storage.hasDuplicateTitle(metaData.title)) {
-      throw Exception('Comic with name ${metaData.title} already exists');
+    final preflight = await storage.preflightImport(metaData.title);
+    if (preflight.action ==
+            LocalImportPreflightAction.conflictExistingDirectory ||
+        preflight.action ==
+            LocalImportPreflightAction.conflictExistingCanonicalRecord) {
+      final failure = ImportFailure.duplicateDetected(
+        comicTitle: metaData.title,
+        targetDirectory: preflight.targetDirectory,
+        existingComicId: preflight.existingComicId,
+      );
+      AppDiagnostics.error(
+        'import.local',
+        failure,
+        message: 'import.local.duplicateDetected',
+        data: failure.data,
+      );
+      throw failure;
     }
     var files = await _collectImageFiles(root);
     if (files.isEmpty) {
@@ -299,88 +312,134 @@ abstract class CBZ {
       effectiveCoverFile = pageFiles.first;
     }
     Map<String, String>? cpMap;
-    final localRootPath = await storage.requireRootPath();
-    var title = sanitizeFileName(metaData.title);
-    var dest = Directory(FilePath.join(localRootPath, title));
-    if (dest.existsSync()) {
-      title = findValidDirectoryName(localRootPath, title);
-      dest = Directory(FilePath.join(localRootPath, title));
+    final dest = Directory(preflight.targetDirectory);
+    final isRepair =
+        preflight.action == LocalImportPreflightAction.repairExisting;
+    if (isRepair) {
+      AppDiagnostics.info(
+        'import.local',
+        'import.local.repairStarted',
+        data: <String, Object?>{
+          'comicTitle': metaData.title,
+          'targetDirectory': preflight.targetDirectory,
+          'existingComicId': preflight.existingComicId,
+          'action': 'repairExisting',
+        },
+      );
+      if (dest.existsSync()) {
+        await dest.deleteIgnoreError(recursive: true);
+      }
     }
     dest.createSync(recursive: true);
-    await effectiveCoverFile.copyFast(
-      FilePath.join(dest.path, 'cover.${effectiveCoverFile.extension}'),
-    );
-    final directoryChapters = metaData.chapters == null
-        ? await _collectTopLevelDirectoryChapters(root)
-        : null;
-    if (metaData.chapters == null && directoryChapters == null) {
-      final tasks = <Map<String, String>>[];
-      for (var i = 0; i < pageFiles.length; i++) {
-        final src = pageFiles[i];
-        tasks.add({
-          'src': src.path,
-          'dst': FilePath.join(dest.path, '${i + 1}.${src.extension}'),
-        });
-      }
-      await copyFilesInBackground(
-        tasks,
-        onProgress: (done, total) {
-          final progress = 0.3 + (done / total) * 0.65;
-          onProgress?.call("Copying pages".tl, progress.clamp(0.0, 0.95));
-        },
+    try {
+      await effectiveCoverFile.copyFast(
+        FilePath.join(dest.path, 'cover.${effectiveCoverFile.extension}'),
       );
-    } else {
-      final chapters = <String, List<File>>{};
-      if (metaData.chapters != null) {
-        for (var chapter in metaData.chapters!) {
-          chapters[chapter.title] = pageFiles.sublist(
-            chapter.start - 1,
-            chapter.end,
-          );
-        }
-      } else {
-        chapters.addAll(directoryChapters!);
-      }
-      int i = 0;
-      cpMap = <String, String>{};
-      final tasks = <Map<String, String>>[];
-      for (var chapter in chapters.entries) {
-        cpMap[i.toString()] = chapter.key;
-        var chapterDir = Directory(FilePath.join(dest.path, i.toString()));
-        chapterDir.createSync(recursive: true);
-        for (var pageIndex = 0; pageIndex < chapter.value.length; pageIndex++) {
-          var src = chapter.value[pageIndex];
+      final directoryChapters = metaData.chapters == null
+          ? await _collectTopLevelDirectoryChapters(root)
+          : null;
+      if (metaData.chapters == null && directoryChapters == null) {
+        final tasks = <Map<String, String>>[];
+        for (var i = 0; i < pageFiles.length; i++) {
+          final src = pageFiles[i];
           tasks.add({
             'src': src.path,
-            'dst': FilePath.join(
-              chapterDir.path,
-              '${pageIndex + 1}.${src.extension}',
-            ),
+            'dst': FilePath.join(dest.path, '${i + 1}.${src.extension}'),
           });
         }
-        i++;
+        await copyFilesInBackground(
+          tasks,
+          onProgress: (done, total) {
+            final progress = 0.3 + (done / total) * 0.65;
+            onProgress?.call("Copying pages".tl, progress.clamp(0.0, 0.95));
+          },
+        );
+      } else {
+        final chapters = <String, List<File>>{};
+        if (metaData.chapters != null) {
+          for (var chapter in metaData.chapters!) {
+            chapters[chapter.title] = pageFiles.sublist(
+              chapter.start - 1,
+              chapter.end,
+            );
+          }
+        } else {
+          chapters.addAll(directoryChapters!);
+        }
+        int i = 0;
+        cpMap = <String, String>{};
+        final tasks = <Map<String, String>>[];
+        for (var chapter in chapters.entries) {
+          cpMap[i.toString()] = chapter.key;
+          var chapterDir = Directory(FilePath.join(dest.path, i.toString()));
+          chapterDir.createSync(recursive: true);
+          for (
+            var pageIndex = 0;
+            pageIndex < chapter.value.length;
+            pageIndex++
+          ) {
+            var src = chapter.value[pageIndex];
+            tasks.add({
+              'src': src.path,
+              'dst': FilePath.join(
+                chapterDir.path,
+                '${pageIndex + 1}.${src.extension}',
+              ),
+            });
+          }
+          i++;
+        }
+        await copyFilesInBackground(
+          tasks,
+          onProgress: (done, total) {
+            final progress = 0.3 + (done / total) * 0.65;
+            onProgress?.call("Copying chapters".tl, progress.clamp(0.0, 0.95));
+          },
+        );
       }
-      await copyFilesInBackground(
-        tasks,
-        onProgress: (done, total) {
-          final progress = 0.3 + (done / total) * 0.65;
-          onProgress?.call("Copying chapters".tl, progress.clamp(0.0, 0.95));
-        },
+      onProgress?.call("Finalizing import".tl, 1.0);
+      final imported = LocalComic(
+        id: preflight.existingComicId ?? '0',
+        title: metaData.title,
+        subtitle: metaData.author,
+        tags: metaData.tags,
+        comicType: ComicType.local,
+        directory: dest.name,
+        chapters: ComicChapters.fromJsonOrNull(cpMap),
+        downloadedChapters: cpMap?.keys.toList() ?? [],
+        cover: 'cover.${effectiveCoverFile.extension}',
+        createdAt: DateTime.now(),
       );
+      if (isRepair) {
+        AppDiagnostics.info(
+          'import.local',
+          'import.local.repairCompleted',
+          data: <String, Object?>{
+            'comicTitle': metaData.title,
+            'targetDirectory': preflight.targetDirectory,
+            'existingComicId': preflight.existingComicId,
+            'action': 'repairExisting',
+          },
+        );
+      }
+      return imported;
+    } catch (error, stackTrace) {
+      if (isRepair) {
+        AppDiagnostics.error(
+          'import.local',
+          error,
+          stackTrace: stackTrace,
+          message: 'import.local.repairFailed',
+          data: <String, Object?>{
+            'comicTitle': metaData.title,
+            'targetDirectory': preflight.targetDirectory,
+            'existingComicId': preflight.existingComicId,
+            'action': 'repairExisting',
+          },
+        );
+      }
+      rethrow;
     }
-    onProgress?.call("Finalizing import".tl, 1.0);
-    return LocalComic(
-      id: '0',
-      title: metaData.title,
-      subtitle: metaData.author,
-      tags: metaData.tags,
-      comicType: ComicType.local,
-      directory: dest.name,
-      chapters: ComicChapters.fromJsonOrNull(cpMap),
-      downloadedChapters: cpMap?.keys.toList() ?? [],
-      cover: 'cover.${effectiveCoverFile.extension}',
-      createdAt: DateTime.now(),
-    );
   }
 
   @visibleForTesting

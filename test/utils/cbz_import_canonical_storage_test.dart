@@ -9,6 +9,7 @@ import 'package:venera/foundation/favorites.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/utils/cbz.dart';
 import 'package:venera/utils/import_comic.dart';
+import 'package:venera/utils/import_failure.dart';
 import 'package:venera/utils/local_import_storage.dart';
 import 'package:venera/utils/translations.dart';
 
@@ -16,6 +17,8 @@ class _FakeImportStorage implements LocalImportStoragePort {
   Future<void> Function(String comicTitle)? onAssertReady;
   Future<bool> Function(String title)? onHasDuplicateTitle;
   Future<String> Function()? onRequireRootPath;
+  Future<LocalImportPreflightDecision> Function(String comicTitle)?
+  onPreflightImport;
   Future<LocalComic> Function(LocalComic comic)? onRegisterImportedComic;
 
   int hasDuplicateCalls = 0;
@@ -38,11 +41,30 @@ class _FakeImportStorage implements LocalImportStoragePort {
   }
 
   @override
-  Future<LocalComic> registerImportedComic(LocalComic comic) async {
+  Future<LocalImportPreflightDecision> preflightImport(
+    String comicTitle,
+  ) async {
+    final rootPath = await requireRootPath();
+    final safeTitle = comicTitle.trim().replaceAll(
+      RegExp(r'[<>:"/\\|?*\x00-\x1F]'),
+      '_',
+    );
+    return await onPreflightImport?.call(comicTitle) ??
+        LocalImportPreflightDecision(
+          action: LocalImportPreflightAction.createNew,
+          targetDirectory: '$rootPath/$safeTitle',
+        );
+  }
+
+  @override
+  Future<LocalComic> registerImportedComic(
+    LocalComic comic, {
+    String? existingComicId,
+  }) async {
     registerCalls++;
     return await onRegisterImportedComic?.call(comic) ??
         LocalComic(
-          id: 'canonical-1',
+          id: existingComicId ?? 'canonical-1',
           title: comic.title,
           subtitle: comic.subtitle,
           tags: comic.tags,
@@ -79,6 +101,132 @@ void main() {
   tearDown(() {
     AppDiagnostics.resetForTesting();
   });
+
+  test(
+    'localDownloads source does not use legacyLocalComicsDirectory',
+    () async {
+      final content = await File('lib/utils/import_comic.dart').readAsString();
+      expect(content.contains('legacyLocalComicsDirectory()'), isFalse);
+    },
+  );
+
+  test('localDownloads source uses shallow non-followLinks listing', () async {
+    final content = await File('lib/utils/import_comic.dart').readAsString();
+    expect(
+      content.contains('listSync(recursive: false, followLinks: false)'),
+      isTrue,
+    );
+  });
+
+  test(
+    'localDownloads creates missing canonical root before scanning',
+    () async {
+      final content = await File('lib/utils/import_comic.dart').readAsString();
+      expect(content.contains('localDir.createSync(recursive: true)'), isTrue);
+    },
+  );
+
+  test(
+    'localDownloads emits missingFiles when canonical root is not a directory',
+    () async {
+      final content = await File('lib/utils/import_comic.dart').readAsString();
+      expect(
+        content.contains(
+          "FileSystemEntity.typeSync(rootPath, followLinks: false)",
+        ),
+        isTrue,
+      );
+      expect(content.contains("message: 'import.local.missingFiles'"), isTrue);
+    },
+  );
+
+  test(
+    'cbz duplicate import throws ImportFailure and emits duplicateDetected without app.unhandled',
+    () async {
+      final tempRoot = await Directory.systemTemp.createTemp(
+        'cbz-duplicate-detected',
+      );
+      addTearDown(() => tempRoot.delete(recursive: true));
+      final cache = Directory('${tempRoot.path}/cache')..createSync();
+      final extracted = Directory('${cache.path}/archive')..createSync();
+      await _writeImageFile('${extracted.path}/page-1.png');
+      final storage = _FakeImportStorage()
+        ..onPreflightImport = (_) async => LocalImportPreflightDecision(
+          action: LocalImportPreflightAction.conflictExistingCanonicalRecord,
+          targetDirectory: '${tempRoot.path}/library',
+          existingComicId: 'comic-1',
+        );
+
+      await expectLater(
+        CBZ.importExtractedDirectoryForTesting(
+          cache,
+          extracted,
+          fallbackTitle: 'duplicate-title',
+          localImportStorage: storage,
+        ),
+        throwsA(isA<ImportFailure>()),
+      );
+
+      final importEvents = DevDiagnosticsApi.recent(channel: 'import.local');
+      final duplicate = importEvents.firstWhere(
+        (event) => event.message == 'import.local.duplicateDetected',
+      );
+      expect(duplicate.data['comicTitle'], 'duplicate-title');
+      expect(duplicate.data['action'], 'blocked');
+      expect(
+        DevDiagnosticsApi.recent().any(
+          (event) => event.message == 'app.unhandled',
+        ),
+        isFalse,
+      );
+      expect(storage.registerCalls, 0);
+    },
+  );
+
+  test('cbz repair import reuses existing comic id', () async {
+    final tempRoot = await Directory.systemTemp.createTemp('cbz-repair-');
+    addTearDown(() => tempRoot.delete(recursive: true));
+    final cache = Directory('${tempRoot.path}/cache')..createSync();
+    final extracted = Directory('${cache.path}/archive')..createSync();
+    await _writeImageFile('${extracted.path}/page-1.png');
+    final storage = _FakeImportStorage()
+      ..onPreflightImport = (_) async => LocalImportPreflightDecision(
+        action: LocalImportPreflightAction.repairExisting,
+        targetDirectory: '${tempRoot.path}/library/comic-a',
+        existingComicId: 'comic-existing',
+      );
+
+    final comic = await CBZ.importExtractedDirectoryForTesting(
+      cache,
+      extracted,
+      fallbackTitle: 'comic-a',
+      localImportStorage: storage,
+    );
+
+    expect(comic.id, 'comic-existing');
+    final events = DevDiagnosticsApi.recent(channel: 'import.local');
+    expect(
+      events.any((event) => event.message == 'import.local.repairStarted'),
+      isTrue,
+    );
+    expect(
+      events.any((event) => event.message == 'import.local.repairCompleted'),
+      isTrue,
+    );
+  });
+
+  test(
+    'pdf duplicate import path uses ImportFailure.duplicateDetected',
+    () async {
+      final content = await File('lib/utils/import_comic.dart').readAsString();
+      expect(content.contains('_importPdfAsComic'), isTrue);
+      expect(
+        content.contains('message: \'import.local.duplicateDetected\''),
+        isTrue,
+      );
+      expect(content.contains('ImportFailure.duplicateDetected('), isTrue);
+    },
+  );
 
   test(
     'cbz import marks legacy mirror as policy-skip while canonical storage is available',
@@ -453,7 +601,7 @@ void main() {
   });
 
   test(
-    'cbz import resolves destination folder collision when folder exists but db has no duplicate',
+    'cbz import fails closed when destination folder already exists',
     () async {
       final tempRoot = await Directory.systemTemp.createTemp(
         'cbz-import-collision',
@@ -464,21 +612,25 @@ void main() {
       final localRoot = Directory('${tempRoot.path}/library')..createSync();
       final existingDir = Directory('${localRoot.path}/collision-title')
         ..createSync();
+      final storage = _FakeImportStorage()
+        ..onRequireRootPath = () async {
+          return localRoot.path;
+        }
+        ..onPreflightImport = (_) async => LocalImportPreflightDecision(
+          action: LocalImportPreflightAction.conflictExistingDirectory,
+          targetDirectory: existingDir.path,
+        );
       File('${existingDir.path}/old.txt').writeAsStringSync('existing');
       await _writeImageFile('${extracted.path}/page-1.png');
 
-      final comic = await CBZ.importExtractedDirectoryForTesting(
-        cache,
-        extracted,
-        fallbackTitle: 'collision-title',
-        localImportStorage: _FakeImportStorage()
-          ..onRequireRootPath = () async => localRoot.path,
-      );
-
-      expect(comic.directory, isNot('collision-title'));
-      expect(
-        Directory('${localRoot.path}/${comic.directory}').existsSync(),
-        isTrue,
+      await expectLater(
+        CBZ.importExtractedDirectoryForTesting(
+          cache,
+          extracted,
+          fallbackTitle: 'collision-title',
+          localImportStorage: storage,
+        ),
+        throwsA(isA<ImportFailure>()),
       );
       expect(
         File('${existingDir.path}/old.txt').readAsStringSync(),

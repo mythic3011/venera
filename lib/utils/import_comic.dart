@@ -11,9 +11,9 @@ import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/favorites.dart';
 import 'package:venera/foundation/local.dart';
-import 'package:venera/foundation/local_comics_legacy_bridge.dart';
 import 'package:sqlite3/sqlite3.dart' as sql;
 import 'package:venera/utils/ext.dart';
+import 'package:venera/utils/import_failure.dart';
 import 'package:venera/utils/import_sort.dart';
 import 'package:venera/utils/local_import_storage.dart';
 import 'package:venera/utils/translations.dart';
@@ -55,6 +55,7 @@ Future<int> registerImportedComicsForTesting({
     for (final comic in importedComics[folder]!) {
       final registeredComic = await localImportStorage.registerImportedComic(
         comic,
+        existingComicId: comic.id == '0' ? null : comic.id,
       );
       importedCount++;
       if (folder != null) {
@@ -140,19 +141,6 @@ class _ExtractedArchive {
   const _ExtractedArchive(this.cache, this.root);
 }
 
-class ImportFailure implements Exception {
-  const ImportFailure._(this.code, this.message);
-
-  final String code;
-  final String message;
-
-  const ImportFailure.copyFailed(String message)
-    : this._('IMPORT_COPY_FAILED', message);
-
-  @override
-  String toString() => '$code: $message';
-}
-
 class ImportComic {
   final BuildContext? uiContext;
   final String? selectedFolder;
@@ -178,6 +166,13 @@ class ImportComic {
     if (context != null && context.mounted) {
       context.showMessage(message: message);
     }
+  }
+
+  String _resolveUiMessage(Object error, {String? fallback}) {
+    if (error is ImportFailure) {
+      return error.uiMessage;
+    }
+    return fallback ?? error.toString();
   }
 
   LoadingDialogController _showLoading({
@@ -222,7 +217,7 @@ class ImportComic {
       result.imported[selectedFolder]!.addAll(imported);
     } catch (e, s) {
       AppDiagnostics.error('import.comic', e, stackTrace: s);
-      _showMessage(e.toString());
+      _showMessage(_resolveUiMessage(e));
     }
     if (shouldAbortImportWhenNoComics(
       imported: result.imported,
@@ -609,13 +604,41 @@ class ImportComic {
   }) async {
     final title = sanitizeFileName(source.basenameWithoutExt);
     await localImportStorage.assertStorageReadyForImport(title);
-    if (await localImportStorage.hasDuplicateTitle(title)) {
-      throw Exception("Comic with name $title already exists");
+    final preflight = await localImportStorage.preflightImport(title);
+    if (preflight.action ==
+            LocalImportPreflightAction.conflictExistingDirectory ||
+        preflight.action ==
+            LocalImportPreflightAction.conflictExistingCanonicalRecord) {
+      final failure = ImportFailure.duplicateDetected(
+        comicTitle: title,
+        targetDirectory: preflight.targetDirectory,
+        existingComicId: preflight.existingComicId,
+      );
+      AppDiagnostics.error(
+        'import.local',
+        failure,
+        message: 'import.local.duplicateDetected',
+        data: failure.data,
+      );
+      throw failure;
     }
-    final localRootPath = await localImportStorage.requireRootPath();
-    final dest = Directory(FilePath.join(localRootPath, title));
-    if (dest.existsSync()) {
-      await dest.deleteIgnoreError(recursive: true);
+    final isRepair =
+        preflight.action == LocalImportPreflightAction.repairExisting;
+    final dest = Directory(preflight.targetDirectory);
+    if (isRepair) {
+      AppDiagnostics.info(
+        'import.local',
+        'import.local.repairStarted',
+        data: <String, Object?>{
+          'comicTitle': title,
+          'targetDirectory': preflight.targetDirectory,
+          'existingComicId': preflight.existingComicId,
+          'action': 'repairExisting',
+        },
+      );
+      if (dest.existsSync()) {
+        await dest.deleteIgnoreError(recursive: true);
+      }
     }
     dest.createSync(recursive: true);
     try {
@@ -630,8 +653,8 @@ class ImportComic {
       final cover = "cover.${pages.first.extension}";
       await pages.first.copyFast(FilePath.join(dest.path, cover));
       onProgress?.call("Finalizing import".tl, 0.98);
-      return LocalComic(
-        id: '0',
+      final imported = LocalComic(
+        id: preflight.existingComicId ?? '0',
         title: title,
         subtitle: '',
         tags: const [],
@@ -642,7 +665,34 @@ class ImportComic {
         downloadedChapters: const [],
         createdAt: DateTime.now(),
       );
-    } catch (_) {
+      if (isRepair) {
+        AppDiagnostics.info(
+          'import.local',
+          'import.local.repairCompleted',
+          data: <String, Object?>{
+            'comicTitle': title,
+            'targetDirectory': preflight.targetDirectory,
+            'existingComicId': preflight.existingComicId,
+            'action': 'repairExisting',
+          },
+        );
+      }
+      return imported;
+    } catch (error, stackTrace) {
+      if (isRepair) {
+        AppDiagnostics.error(
+          'import.local',
+          error,
+          stackTrace: stackTrace,
+          message: 'import.local.repairFailed',
+          data: <String, Object?>{
+            'comicTitle': title,
+            'targetDirectory': preflight.targetDirectory,
+            'existingComicId': preflight.existingComicId,
+            'action': 'repairExisting',
+          },
+        );
+      }
       await dest.deleteIgnoreError(recursive: true);
       rethrow;
     }
@@ -852,7 +902,7 @@ class ImportComic {
       await File(cache).deleteIgnoreError();
     } catch (e, s) {
       AppDiagnostics.error('import.comic', e, stackTrace: s);
-      _showMessage(e.toString());
+      _showMessage(_resolveUiMessage(e));
     }
     controller.close();
     if (cancelled) return false;
@@ -887,14 +937,18 @@ class ImportComic {
       }
     } catch (e, s) {
       AppDiagnostics.error('import.comic', e, stackTrace: s);
-      _showMessage(e.toString());
+      _showMessage(_resolveUiMessage(e));
       return false;
     }
     return registerComics(imported, copyToLocal);
   }
 
   Future<bool> localDownloads() async {
-    var localDir = legacyLocalComicsDirectory();
+    final rootPath = await localImportStorage.requireRootPath();
+    final localDir = Directory(rootPath);
+    if (!localDir.existsSync()) {
+      localDir.createSync(recursive: true);
+    }
     Map<String?, List<LocalComic>> imported = {null: []};
     bool cancelled = false;
     var controller = _showLoading(
@@ -903,21 +957,39 @@ class ImportComic {
       },
     );
     try {
-      if (!await localDir.exists()) {
-        _showMessage("Local path not found".tl);
-        controller.close();
+      final rootType = FileSystemEntity.typeSync(rootPath, followLinks: false);
+      if (rootType != FileSystemEntityType.directory) {
+        final failure = ImportFailure.missingFiles(
+          comicTitle: 'local-downloads',
+          targetDirectory: rootPath,
+        );
+        AppDiagnostics.error(
+          'import.local',
+          failure,
+          message: 'import.local.missingFiles',
+          data: failure.data,
+        );
+        _showMessage(failure.uiMessage);
         return false;
       }
-      await for (var entry in localDir.list()) {
+      final candidates = localDir.listSync(recursive: false, followLinks: false)
+        ..sort((a, b) => naturalCompare(a.name, b.name));
+      for (final entry in candidates) {
         if (cancelled) {
           break;
         }
-        if (entry is Directory) {
-          var stat = await entry.stat();
+        final entryType = FileSystemEntity.typeSync(
+          entry.path,
+          followLinks: false,
+        );
+        if (entryType == FileSystemEntityType.directory) {
+          final directory = Directory(entry.path);
+          final stat = directory.statSync();
           var result = await _checkSingleComic(
-            entry,
+            directory,
             createTime: stat.modified,
             useRelativePath: true,
+            failOnMissingFiles: true,
           );
           if (result != null) {
             imported[null]!.add(result);
@@ -929,7 +1001,7 @@ class ImportComic {
       }
     } catch (e, s) {
       AppDiagnostics.error('import.comic', e, stackTrace: s);
-      _showMessage(e.toString());
+      _showMessage(_resolveUiMessage(e));
     }
     controller.close();
     if (cancelled) return false;
@@ -945,8 +1017,21 @@ class ImportComic {
     List<String>? tags,
     DateTime? createTime,
     bool useRelativePath = false,
+    bool failOnMissingFiles = false,
   }) async {
-    if (!(await directory.exists())) return null;
+    final entityType = FileSystemEntity.typeSync(
+      directory.path,
+      followLinks: false,
+    );
+    if (entityType != FileSystemEntityType.directory) {
+      if (failOnMissingFiles) {
+        throw ImportFailure.missingFiles(
+          comicTitle: title ?? directory.name,
+          targetDirectory: directory.path,
+        );
+      }
+      return null;
+    }
     var name = title ?? directory.name;
     await localImportStorage.assertStorageReadyForImport(name);
     if (await localImportStorage.hasDuplicateTitle(name)) {
@@ -961,12 +1046,12 @@ class ImportComic {
     final chapters = <String>[];
     final rootImageFiles = <String>[];
     final chapterImageFiles = <String, List<String>>{};
-    await for (var entry in directory.list()) {
+    await for (var entry in directory.list(followLinks: false)) {
       if (entry is Directory) {
         hasChapters = true;
         chapters.add(entry.name);
         chapterImageFiles[entry.name] = <String>[];
-        await for (var file in entry.list()) {
+        await for (var file in entry.list(followLinks: false)) {
           if (file is Directory) {
             AppDiagnostics.info(
               'import.comic',
@@ -1035,16 +1120,17 @@ class ImportComic {
         var source = Directory(dir);
         var dest = Directory("$destination/${source.name}");
         if (dest.existsSync()) {
-          // The destination directory already exists, and it is not managed by the app.
-          // Rename the old directory to avoid conflicts.
-          AppDiagnostics.info(
-            'import.comic',
-            'import.directory_conflict_renamed',
-            data: {'directory': source.name},
+          final failure = ImportFailure.duplicateDetected(
+            comicTitle: source.name,
+            targetDirectory: dest.path,
           );
-          dest.renameSync(
-            findValidDirectoryName(dest.parent.path, "${dest.path}_old"),
+          AppDiagnostics.error(
+            'import.local',
+            failure,
+            message: 'import.local.duplicateDetected',
+            data: failure.data,
           );
+          throw failure;
         }
         dest.createSync(recursive: true);
         await copyDirectory(source, dest);
@@ -1139,7 +1225,9 @@ class ImportComic {
       );
       _showMessage("Imported @a comics".tlParams({'a': importedCount}));
     } catch (e, s) {
-      _showMessage("Failed to register comics".tl);
+      _showMessage(
+        _resolveUiMessage(e, fallback: "Failed to register comics".tl),
+      );
       AppDiagnostics.error('import.comic', e, stackTrace: s);
       return false;
     }
