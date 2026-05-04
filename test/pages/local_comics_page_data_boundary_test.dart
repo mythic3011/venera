@@ -3,10 +3,7 @@ import 'package:venera/foundation/comic_type.dart';
 import 'package:venera/foundation/local.dart';
 import 'package:venera/pages/local_comics_page.dart';
 
-LocalComic _localComic({
-  required String id,
-  required ComicType type,
-}) {
+LocalComic _localComic({required String id, required ComicType type}) {
   return LocalComic(
     id: id,
     title: id,
@@ -80,13 +77,24 @@ void main() {
   });
 
   test('localImageUriToPath strips file URI prefix only', () {
-    expect(
-      localImageUriToPath('file:///tmp/a b.jpg'),
-      '/tmp/a b.jpg',
-    );
+    expect(localImageUriToPath('file:///tmp/a b.jpg'), '/tmp/a b.jpg');
     expect(
       localImageUriToPath('https://example.com/a.jpg'),
       'https://example.com/a.jpg',
     );
+  });
+
+  test('applyCanonicalLocalLibraryView respects reconcile visibility set', () {
+    final comics = [
+      _localComic(id: 'show', type: ComicType.local),
+      _localComic(id: 'hide', type: ComicType.local),
+    ];
+    final result = applyCanonicalLocalLibraryView(
+      comics: comics,
+      browseRecords: const [],
+      visibleComicIds: const {'show'},
+      sortType: LocalSortType.name,
+    );
+    expect(result.map((comic) => comic.id).toList(), ['show']);
   });
 }

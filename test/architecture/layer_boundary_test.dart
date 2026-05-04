@@ -3,6 +3,32 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'local reconciler/probe stay decoupled from legacy local authority',
+    () async {
+      const files = <String>[
+        'lib/foundation/local/local_library_file_probe.dart',
+        'lib/foundation/local/local_library_reconciler.dart',
+      ];
+      const forbiddenTokens = <String>[
+        'foundation/local.dart',
+        'LocalManager(',
+        'legacyReadLocalComicsRootPath',
+        'legacyRegisterLocalComic',
+      ];
+      for (final path in files) {
+        final content = await File(path).readAsString();
+        for (final token in forbiddenTokens) {
+          expect(
+            content.contains(token),
+            isFalse,
+            reason: '$path must not reference $token',
+          );
+        }
+      }
+    },
+  );
+
   test('lib/utils stays helper-only outside quarantine', () {
     const quarantinedFiles = <String>{
       // Temporary quarantine for existing mixed files. Follow-up slices should
@@ -22,15 +48,24 @@ void main() {
     final forbiddenImportPatterns = <RegExp>[
       RegExp(r'^package:venera/pages/'),
       RegExp(r'^package:venera/components/'),
-      RegExp(r'^package:venera/foundation/(appdata|favorites|history|local)\.dart$'),
+      RegExp(
+        r'^package:venera/foundation/(appdata|favorites|history|local)\.dart$',
+      ),
       RegExp(r'^\.\./pages/'),
       RegExp(r'^\.\./components/'),
     ];
 
     final utilsDir = Directory('lib/utils');
-    expect(utilsDir.existsSync(), isTrue, reason: 'Expected lib/utils to exist');
+    expect(
+      utilsDir.existsSync(),
+      isTrue,
+      reason: 'Expected lib/utils to exist',
+    );
 
-    final importRegex = RegExp(r'''^\s*import\s+['"]([^'"]+)['"]''', multiLine: true);
+    final importRegex = RegExp(
+      r'''^\s*import\s+['"]([^'"]+)['"]''',
+      multiLine: true,
+    );
     final violations = <String>[];
 
     for (final entity in utilsDir.listSync()) {
@@ -46,7 +81,9 @@ void main() {
       final matches = importRegex.allMatches(contents);
       for (final match in matches) {
         final importPath = match.group(1)!;
-        final isForbidden = forbiddenImportPatterns.any((pattern) => pattern.hasMatch(importPath));
+        final isForbidden = forbiddenImportPatterns.any(
+          (pattern) => pattern.hasMatch(importPath),
+        );
         if (isForbidden) {
           violations.add('lib/utils/$fileName -> $importPath');
         }
@@ -56,7 +93,8 @@ void main() {
     expect(
       violations,
       isEmpty,
-      reason: 'Non-quarantined utils file imported forbidden dependency:\n${violations.join('\n')}',
+      reason:
+          'Non-quarantined utils file imported forbidden dependency:\n${violations.join('\n')}',
     );
   });
 }
