@@ -16,6 +16,7 @@ import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/utils/ext.dart';
 import 'package:venera/utils/opencc.dart';
+import 'package:venera/utils/remote_text_normalizer.dart';
 
 const _latestTagsDatabaseUrl =
     "https://github.com/EhTagTranslation/Database/releases/latest/download/db.text.json";
@@ -260,8 +261,7 @@ extension TagsTranslation on String {
       if (data.isEmpty) {
         return null;
       }
-      if (usedZhCnFallback &&
-          (cacheKey == 'zh_HK' || cacheKey == 'zh_TW')) {
+      if (usedZhCnFallback && (cacheKey == 'zh_HK' || cacheKey == 'zh_TW')) {
         final converted = _convertTagData(data, _TagLocale.traditional);
         try {
           final bundledTraditional = await _loadBundledTagData(
@@ -474,13 +474,12 @@ extension TagsTranslation on String {
 
   static String translationTagWithNamespace(String text, String namespace) {
     final original = text.toLowerCase();
-    final normalized =
-        namespace != "reclass" && original.endsWith('s')
-            ? original.replaceLast('s', '')
-            : original;
+    final normalized = namespace != "reclass" && original.endsWith('s')
+        ? original.replaceLast('s', '')
+        : original;
     String pick(Map<String, String> map) =>
         map[original] ?? map[normalized] ?? original;
-    return switch (namespace) {
+    final translated = switch (namespace) {
       "male" => pick(maleTags),
       "female" => pick(femaleTags),
       "mixed" => pick(mixedTags),
@@ -494,6 +493,11 @@ extension TagsTranslation on String {
       "artist" => pick(artistTags),
       _ => original.translateTagsToCN,
     };
+    return RemoteTextNormalizer.normalizeLabel(
+      translated,
+      surface: RemoteTextSurface.tagLabel,
+      locale: App.locale,
+    );
   }
 
   String _categoryTextDynamic(String c) {
@@ -506,8 +510,11 @@ extension TagsTranslation on String {
 
   String get categoryTextDynamic => _categoryTextDynamic(this);
 
-  String get translateTagsCategoryToCN =>
-      tagsCategoryTranslations[this] ?? this;
+  String get translateTagsCategoryToCN => RemoteTextNormalizer.normalizeLabel(
+    tagsCategoryTranslations[this] ?? this,
+    surface: RemoteTextSurface.categoryLabel,
+    locale: App.locale,
+  );
 
   get tagsCategoryTranslations => switch (App.locale.countryCode) {
     "CN" => tagsCategoryTranslationsCN,

@@ -2,11 +2,17 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
+import 'package:venera/utils/opencc.dart';
 import 'package:venera/utils/tags_translation.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() async {
+    await OpenCC.init();
+  });
 
   late Directory tempDir;
   late UnifiedComicsStore store;
@@ -16,10 +22,14 @@ void main() {
     store = UnifiedComicsStore('${tempDir.path}/data/venera.db');
     await store.init();
     TagsTranslation.resetStateForTest();
+    appdata.settings['enableRemoteChineseTextConversion'] = true;
+    appdata.settings['language'] = 'system';
   });
 
   tearDown(() async {
     TagsTranslation.resetStateForTest();
+    appdata.settings['enableRemoteChineseTextConversion'] = true;
+    appdata.settings['language'] = 'system';
     await store.close();
     if (tempDir.existsSync()) {
       tempDir.deleteSync(recursive: true);
@@ -56,43 +66,63 @@ void main() {
     },
   );
 
-  test(
-    'HK locale DB miss fallback keeps traditional translations',
-    () async {
-      await store.replaceEhTagTaxonomyRecords('ehentai', const [
-        EhTagTaxonomyRecord(
-          providerKey: 'ehentai',
-          locale: 'zh_CN',
-          namespace: 'female',
-          tagKey: 'glasses',
-          translatedLabel: '眼镜',
-          sourceSha: 'db-sha',
-          sourceVersion: 7,
-        ),
-      ]);
+  test('tag translation display conversion can be disabled', () async {
+    appdata.settings['language'] = 'zh-CN';
+    appdata.settings['enableRemoteChineseTextConversion'] = false;
+    await store.replaceEhTagTaxonomyRecords('ehentai', const [
+      EhTagTaxonomyRecord(
+        providerKey: 'ehentai',
+        locale: 'zh_CN',
+        namespace: 'female',
+        tagKey: 'glasses',
+        translatedLabel: '眼镜',
+        sourceSha: 'db-sha',
+        sourceVersion: 7,
+      ),
+    ]);
+    await TagsTranslation.readData(store: store);
+    expect(
+      TagsTranslation.translationTagWithNamespace('glasses', 'female'),
+      '眼镜',
+    );
+  });
 
-      await TagsTranslation.readData(
-        forceReload: true,
-        store: store,
-        localeOverride: const Locale('zh', 'HK'),
-      );
+  test('HK locale DB miss fallback keeps traditional translations', () async {
+    appdata.settings['language'] = 'zh-TW';
+    await store.replaceEhTagTaxonomyRecords('ehentai', const [
+      EhTagTaxonomyRecord(
+        providerKey: 'ehentai',
+        locale: 'zh_CN',
+        namespace: 'female',
+        tagKey: 'glasses',
+        translatedLabel: '眼镜',
+        sourceSha: 'db-sha',
+        sourceVersion: 7,
+      ),
+    ]);
 
-      final namespaced = TagsTranslation.translationTagWithNamespace(
-        'glasses',
-        'female',
-      );
-      final tagged = TagsTranslation.translateTag('female:glasses');
-      expect(namespaced.startsWith('眼鏡'), isTrue);
-      expect(tagged.startsWith('眼鏡'), isTrue);
-      expect(namespaced.contains('眼镜'), isFalse);
-      expect(tagged.contains('眼镜'), isFalse);
-      expect('female'.translateTagsCategoryToCN, isNot('female'));
-    },
-  );
+    await TagsTranslation.readData(
+      forceReload: true,
+      store: store,
+      localeOverride: const Locale('zh', 'HK'),
+    );
+
+    final namespaced = TagsTranslation.translationTagWithNamespace(
+      'glasses',
+      'female',
+    );
+    final tagged = TagsTranslation.translateTag('female:glasses');
+    expect(namespaced.startsWith('眼鏡'), isTrue);
+    expect(tagged.startsWith('眼鏡'), isTrue);
+    expect(namespaced.contains('眼镜'), isFalse);
+    expect(tagged.contains('眼镜'), isFalse);
+    expect('female'.translateTagsCategoryToCN, isNot('female'));
+  });
 
   test(
     'explicit EH refresh writes DB, reloads sync map, and skips unchanged SHA',
     () async {
+      appdata.settings['language'] = 'zh-CN';
       const payload = '''
 {"version":7,"head":{"sha":"sha-123"},"data":[{"namespace":"female","data":{"glasses":{"name":"眼镜"}}}]}
 ''';

@@ -5,6 +5,7 @@ import 'package:flutter_qjs/flutter_qjs.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 import 'package:venera/foundation/app/app.dart';
 import 'package:venera/foundation/js/js_engine.dart';
+import 'package:venera/utils/remote_text_normalizer.dart';
 
 import 'components.dart';
 
@@ -77,13 +78,19 @@ mixin class JsUiApi {
     BuildContext? dialogContext;
     var title = message['title'];
     var content = message['content'];
+    final normalizedTitle = title is String
+        ? normalizeJsDialogTitleForDisplay(title, App.locale)
+        : title;
     var actions = <Widget>[];
     for (var action in message['actions']) {
       if (action['callback'] is! JSInvokable) {
         continue;
       }
       var callback = action['callback'] as JSInvokable;
-      var text = action['text'].toString();
+      var text = normalizeJsActionLabelForDisplay(
+        action['text'].toString(),
+        App.locale,
+      );
       var style = (action['style'] ?? 'text').toString();
       actions.add(
         _JSCallbackButton(
@@ -111,7 +118,7 @@ mixin class JsUiApi {
       builder: (context) {
         dialogContext = context;
         return ContentDialog(
-          title: title,
+          title: normalizedTitle,
           content: Text(content).paddingHorizontal(16),
           actions: actions,
         );
@@ -174,7 +181,7 @@ mixin class JsUiApi {
     }
     await showInputDialog(
       context: uiContext,
-      title: title,
+      title: normalizeJsDialogTitleForDisplay(title, App.locale),
       image: imageUrl,
       imageData: imageData,
       onConfirm: (v) {
@@ -210,10 +217,16 @@ mixin class JsUiApi {
     if (uiContext == null) {
       return Future.value(null);
     }
+    final displayOptions = options
+        .map(
+          (option) =>
+              normalizeJsSelectOptionLabelForDisplay(option, App.locale),
+        )
+        .toList(growable: false);
     return showSelectDialog(
       context: uiContext,
-      title: title,
-      options: options,
+      title: normalizeJsDialogTitleForDisplay(title, App.locale),
+      options: displayOptions,
       initialIndex: initialIndex,
     );
   }
@@ -294,4 +307,28 @@ class _JSCallbackButtonState extends State<_JSCallbackButton> {
       ),
     };
   }
+}
+
+String normalizeJsDialogTitleForDisplay(String title, Locale locale) {
+  return RemoteTextNormalizer.normalizeLabel(
+    title,
+    surface: RemoteTextSurface.jsDialogTitle,
+    locale: locale,
+  );
+}
+
+String normalizeJsActionLabelForDisplay(String label, Locale locale) {
+  return RemoteTextNormalizer.normalizeLabel(
+    label,
+    surface: RemoteTextSurface.jsActionLabel,
+    locale: locale,
+  );
+}
+
+String normalizeJsSelectOptionLabelForDisplay(String label, Locale locale) {
+  return RemoteTextNormalizer.normalizeLabel(
+    label,
+    surface: RemoteTextSurface.jsSelectOptionLabel,
+    locale: locale,
+  );
 }

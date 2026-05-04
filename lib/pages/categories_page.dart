@@ -6,6 +6,7 @@ import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/pages/ranking_page.dart';
 import 'package:venera/pages/settings/settings_page.dart';
 import 'package:venera/utils/ext.dart';
+import 'package:venera/utils/remote_text_normalizer.dart';
 import 'package:venera/utils/translations.dart';
 
 import 'comic_source_page.dart';
@@ -27,7 +28,9 @@ class _CategoriesPageState extends State<CategoriesPage>
 
   List<String> _readEnabledCategories() {
     final raw = appdata.settings["categories"];
-    final configured = raw is Iterable ? raw.whereType<String>().toList() : <String>[];
+    final configured = raw is Iterable
+        ? raw.whereType<String>().toList()
+        : <String>[];
     final allCategories = ComicSource.all()
         .map((e) => e.categoryData?.key)
         .whereType<String>()
@@ -39,7 +42,10 @@ class _CategoriesPageState extends State<CategoriesPage>
     final categories = _readEnabledCategories();
     if (!categories.isEqualTo(this.categories)) {
       final oldController = controller;
-      final newController = TabController(length: categories.length, vsync: this);
+      final newController = TabController(
+        length: categories.length,
+        vsync: this,
+      );
       setState(() {
         this.categories = categories;
         controller = newController;
@@ -104,7 +110,9 @@ class _CategoriesPageState extends State<CategoriesPage>
             tabs: categories.map((e) {
               String title = e;
               try {
-                title = getCategoryDataWithKey(e).title;
+                title = normalizeCategoryDisplayLabel(
+                  getCategoryDataWithKey(e).title,
+                );
               } catch (e) {
                 //
               }
@@ -140,6 +148,14 @@ class _CategoryPage extends StatelessWidget {
 
   CategoryData get data => getCategoryDataWithKey(category);
 
+  String _normalizeLabel(String value, RemoteTextSurface surface) {
+    return RemoteTextNormalizer.normalizeLabel(
+      value,
+      surface: surface,
+      locale: App.locale,
+    );
+  }
+
   String findComicSourceKey() {
     for (var source in ComicSource.all()) {
       if (source.categoryData?.key == category) {
@@ -153,7 +169,11 @@ class _CategoryPage extends StatelessWidget {
   Widget build(BuildContext context) {
     var children = <Widget>[];
     if (data.enableRankingPage || data.buttons.isNotEmpty) {
-      children.add(buildTitle(data.title));
+      children.add(
+        buildTitle(
+          _normalizeLabel(data.title, RemoteTextSurface.categoryLabel),
+        ),
+      );
       children.add(
         Padding(
           padding: const EdgeInsets.fromLTRB(10, 0, 10, 16),
@@ -164,9 +184,15 @@ class _CategoryPage extends StatelessWidget {
                   context.to(() => RankingPage(categoryKey: data.key));
                 }),
               for (var buttonData in data.buttons)
-                buildTag(buttonData.label.tl, (context) {
-                  buttonData.onTap();
-                }),
+                buildTag(
+                  _normalizeLabel(
+                    buttonData.label,
+                    RemoteTextSurface.sourceButtonLabel,
+                  ).tl,
+                  (context) {
+                    buttonData.onTap();
+                  },
+                ),
             ],
           ),
         ),
@@ -182,7 +208,10 @@ class _CategoryPage extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  buildTitleWithRefresh(part.title, () => updater(() {})),
+                  buildTitleWithRefresh(
+                    _normalizeLabel(part.title, RemoteTextSurface.sectionTitle),
+                    () => updater(() {}),
+                  ),
                   buildTags(part.categories),
                 ],
               );
@@ -190,7 +219,11 @@ class _CategoryPage extends StatelessWidget {
           ),
         );
       } else {
-        children.add(buildTitle(part.title));
+        children.add(
+          buildTitle(
+            _normalizeLabel(part.title, RemoteTextSurface.sectionTitle),
+          ),
+        );
         children.add(buildTags(part.categories));
       }
     }
@@ -241,7 +274,9 @@ class _CategoryPage extends StatelessWidget {
   }
 
   Widget buildCategory(CategoryItem c) {
-    return buildTag(c.label, (context) {
+    return buildTag(_normalizeLabel(c.label, RemoteTextSurface.categoryLabel), (
+      context,
+    ) {
       c.target.jump(context);
     });
   }
@@ -267,6 +302,13 @@ class _CategoryPage extends StatelessWidget {
       ),
     );
   }
+}
 
-  bool get enableTranslation => App.locale.languageCode == 'zh';
+@visibleForTesting
+String normalizeCategoryDisplayLabel(String value) {
+  return RemoteTextNormalizer.normalizeLabel(
+    value,
+    surface: RemoteTextSurface.categoryLabel,
+    locale: App.locale,
+  );
 }
