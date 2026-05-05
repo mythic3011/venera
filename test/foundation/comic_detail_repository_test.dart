@@ -4,7 +4,14 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/comic_detail/comic_detail.dart';
+import 'package:venera/foundation/comic_type.dart';
+import 'package:venera/foundation/db/adapters/unified_comic_detail_store_adapter.dart';
+import 'package:venera/foundation/db/adapters/unified_local_library_browse_store_adapter.dart';
+import 'package:venera/foundation/db/local_comic_sync.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
+import 'package:venera/foundation/diagnostics/diagnostics.dart';
+import 'package:venera/foundation/local.dart';
+import 'package:venera/foundation/repositories/local_library_repository.dart';
 import 'package:venera/foundation/res.dart';
 import 'package:venera/foundation/sources/source_ref.dart';
 import 'package:venera/foundation/sources/identity/source_identity.dart';
@@ -324,6 +331,67 @@ void main() {
       expect(detail!.comicId, 'comic-local-loader');
       expect(detail.libraryState, LibraryState.downloaded);
       expect(detail.chapters.single.title, 'Imported Chapter');
+    },
+  );
+
+  test(
+    'canonical local detail helper resolves existing folder without localMissing diagnostic',
+    () async {
+      final tempDir = Directory.systemTemp.createTempSync(
+        'venera-canonical-local-detail-helper-',
+      );
+      final store = UnifiedComicsStore('${tempDir.path}/data/venera.db');
+      addTearDown(() async {
+        await store.close();
+        if (tempDir.existsSync()) {
+          tempDir.deleteSync(recursive: true);
+        }
+      });
+      await store.init();
+      await store.seedDefaultSourcePlatforms();
+      AppDiagnostics.configureSinksForTesting(const []);
+      addTearDown(AppDiagnostics.resetForTesting);
+
+      final comicDir = Directory('${tempDir.path}/runtimeRoot/local/DYE1-1')
+        ..createSync(recursive: true);
+      File('${comicDir.path}/1.jpg').writeAsBytesSync(<int>[1, 2, 3]);
+
+      await LocalComicCanonicalSyncService(
+        store: store,
+        resolveCanonicalLocalRootPath: () async =>
+            '${tempDir.path}/runtimeRoot/local',
+      ).syncComic(
+        LocalComic(
+          id: 'comic-local-existing',
+          title: 'DYE1-1',
+          subtitle: '',
+          tags: const [],
+          directory: comicDir.path,
+          chapters: null,
+          cover: '1.jpg',
+          comicType: ComicType.local,
+          downloadedChapters: const [],
+          createdAt: DateTime.utc(2026, 5, 5),
+        ),
+      );
+
+      final result = await resolveCanonicalLocalDetailForTesting(
+        comicId: 'comic-local-existing',
+        localLibrary: LocalLibraryRepository(
+          store: UnifiedLocalLibraryBrowseStoreAdapter(store),
+        ),
+        store: UnifiedComicDetailStoreAdapter(store),
+        recheck: () async {},
+      );
+
+      expect(result, isNotNull);
+      expect(result!.detail.title, 'DYE1-1');
+      expect(
+        DevDiagnosticsApi.recent(channel: 'comic.detail').any(
+          (event) => event.message == 'comic.detail.localMissing',
+        ),
+        isFalse,
+      );
     },
   );
 
