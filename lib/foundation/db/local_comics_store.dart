@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:venera/foundation/database/app_db_helper.dart';
 
 class LocalComicRecord {
   final String id;
@@ -36,7 +37,9 @@ class LocalComicsStore extends GeneratedDatabase {
     : super(NativeDatabase.createInBackground(File(dbPath)));
 
   Future<void> init() async {
-    await _customStatement('''
+    await _customStatement(
+      'local_comics.init.create_table',
+      '''
       CREATE TABLE IF NOT EXISTS comics (
         id TEXT NOT NULL,
         title TEXT NOT NULL,
@@ -50,7 +53,8 @@ class LocalComicsStore extends GeneratedDatabase {
         created_at INTEGER,
         PRIMARY KEY (id, comic_type)
       );
-    ''');
+      ''',
+    );
   }
 
   @override
@@ -94,6 +98,7 @@ class LocalComicsStore extends GeneratedDatabase {
 
   Future<void> upsert(LocalComicRecord record) async {
     await _customStatement(
+      'local_comics.upsert',
       'INSERT OR REPLACE INTO comics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);',
       [
         record.id,
@@ -112,6 +117,7 @@ class LocalComicsStore extends GeneratedDatabase {
 
   Future<void> deleteComic(String id, int comicType) async {
     await _customStatement(
+      'local_comics.delete',
       'DELETE FROM comics WHERE id = ? AND comic_type = ?;',
       [id, comicType],
     );
@@ -119,6 +125,7 @@ class LocalComicsStore extends GeneratedDatabase {
 
   Future<void> updateCover(String id, int comicType, String cover) async {
     await _customStatement(
+      'local_comics.update_cover',
       'UPDATE comics SET cover = ? WHERE id = ? AND comic_type = ?;',
       [cover, id, comicType],
     );
@@ -131,6 +138,7 @@ class LocalComicsStore extends GeneratedDatabase {
     String downloadedChaptersJson,
   ) async {
     await _customStatement(
+      'local_comics.update_chapters',
       'UPDATE comics SET chapters = ?, downloadedChapters = ? WHERE id = ? AND comic_type = ?;',
       [chaptersJson, downloadedChaptersJson, id, comicType],
     );
@@ -142,27 +150,36 @@ class LocalComicsStore extends GeneratedDatabase {
     String chaptersJson,
   ) async {
     await _customStatement(
+      'local_comics.update_chapters_only',
       'UPDATE comics SET chapters = ? WHERE id = ? AND comic_type = ?;',
       [chaptersJson, id, comicType],
     );
   }
 
   Future<void> batchDelete(List<(String id, int comicType)> keys) async {
-    await transaction(() async {
+    await AppDbHelper.instance.transaction(
+      'local_comics.batch_delete',
+      this,
+      () async {
+      // Intentional inner customStatement calls: already inside one
+      // AppDbHelper transaction, so per-row double-wrapping is unnecessary.
       for (final key in keys) {
         await _customStatement(
+          'local_comics.delete',
           'DELETE FROM comics WHERE id = ? AND comic_type = ?;',
           [key.$1, key.$2],
         );
       }
-    });
+      },
+    );
   }
 
   Future<void> _customStatement(
+    String label,
     String sql, [
     List<Object?> variables = const [],
   ]) {
-    return customStatement(sql, variables);
+    return AppDbHelper.instance.customWrite(label, this, sql, variables);
   }
 
   Future<List<QueryRow>> _customSelect(

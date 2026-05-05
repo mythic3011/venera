@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:venera/foundation/database/app_db_helper.dart';
 
 class HistoryRecord {
   final String id;
@@ -77,7 +78,7 @@ class HistoryStore extends GeneratedDatabase {
   );
 
   Future<void> init() async {
-    await customStatement('''
+    await _write('history.init.create_table', '''
       create table if not exists history  (
         id text primary key,
         title text,
@@ -92,7 +93,7 @@ class HistoryStore extends GeneratedDatabase {
         chapter_group int
       );
     ''');
-    await customStatement('''
+    await _write('history.init.create_image_favorites', '''
       CREATE TABLE IF NOT EXISTS image_favorites (
         id TEXT,
         title TEXT NOT NULL,
@@ -132,7 +133,8 @@ class HistoryStore extends GeneratedDatabase {
   }
 
   Future<void> upsertHistory(HistoryRecord item) {
-    return customStatement(
+    return _write(
+      'history.upsert',
       '''
       insert or replace into history (id, title, subtitle, cover, time, type, ep, page, readEpisode, max_page, chapter_group)
       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
@@ -153,19 +155,22 @@ class HistoryStore extends GeneratedDatabase {
     );
   }
 
-  Future<void> clearHistory() => customStatement('delete from history;');
+  Future<void> clearHistory() => _write('history.clear', 'delete from history;');
 
   Future<void> deleteHistory(String id, int type) {
-    return customStatement('delete from history where id == ? and type == ?;', [
+    return _write('history.delete', 'delete from history where id == ? and type == ?;', [
       id,
       type,
     ]);
   }
 
   Future<void> batchDeleteHistories(List<(String id, int type)> items) async {
-    await transaction(() async {
+    await AppDbHelper.instance.transaction('history.batch_delete', this, () async {
+      // Already inside one AppDbHelper transaction; _write() remains re-entrant
+      // and won't enqueue again, but keeps a single write gateway surface.
       for (final item in items) {
-        await customStatement(
+        await _write(
+          'history.delete',
           'delete from history where id == ? and type == ?;',
           [item.$1, item.$2],
         );
@@ -195,7 +200,8 @@ class HistoryStore extends GeneratedDatabase {
   }
 
   Future<void> upsertImageFavorite(ImageFavoriteRecord favorite) {
-    return customStatement(
+    return _write(
+      'history.image_favorite.upsert',
       '''
       insert or replace into image_favorites(id, title, sub_title, author, tags, translated_tags, time, max_page, source_key, image_favorites_ep, other)
       values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
@@ -217,7 +223,8 @@ class HistoryStore extends GeneratedDatabase {
   }
 
   Future<void> deleteImageFavorite(String id, String sourceKey) {
-    return customStatement(
+    return _write(
+      'history.image_favorite.delete',
       'delete from image_favorites where id == ? and source_key == ?;',
       [id, sourceKey],
     );
@@ -250,5 +257,13 @@ class HistoryStore extends GeneratedDatabase {
           ),
         )
         .toList();
+  }
+
+  Future<void> _write(
+    String label,
+    String sql, [
+    List<Object?> variables = const [],
+  ]) {
+    return AppDbHelper.instance.customWrite(label, this, sql, variables);
   }
 }

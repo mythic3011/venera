@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart' show sqlite3;
+import 'package:venera/foundation/database/app_db_helper.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 
 void main() {
@@ -280,6 +281,653 @@ void main() {
       expect(titleCount, 0);
       expect(localCount, 0);
       expect(favoriteCount, 0);
+    },
+  );
+
+  test(
+    'cache entry lifecycle supports upsert touch delete and clear',
+    () async {
+      const first = CacheEntryRecord(
+        cacheKey: 'cache-key-1',
+        namespace: 'reader',
+        sourcePlatformId: 'local',
+        ownerRef: 'comic-1',
+        remoteUrlHash: 'hash-a',
+        storageDir: '/tmp/cache',
+        fileName: 'file-a.jpg',
+        expiresAtMs: 1000,
+        contentType: 'image/jpeg',
+        sizeBytes: 10,
+        createdAtMs: 1,
+        lastAccessedAtMs: 2,
+      );
+      await store.upsertCacheEntry(first);
+
+      final loaded1 = await store.loadCacheEntry(first.cacheKey);
+      expect(loaded1, isNotNull);
+      expect(loaded1?.fileName, 'file-a.jpg');
+
+      const second = CacheEntryRecord(
+        cacheKey: 'cache-key-1',
+        namespace: 'reader',
+        sourcePlatformId: 'local',
+        ownerRef: 'comic-1',
+        remoteUrlHash: 'hash-b',
+        storageDir: '/tmp/cache',
+        fileName: 'file-b.jpg',
+        expiresAtMs: 2000,
+        contentType: 'image/webp',
+        sizeBytes: 20,
+        createdAtMs: 1,
+        lastAccessedAtMs: 3,
+      );
+      await store.upsertCacheEntry(second);
+      await store.touchCacheEntryAccess(
+        cacheKey: second.cacheKey,
+        expiresAtMs: 3000,
+        lastAccessedAtMs: 4,
+      );
+
+      final loaded2 = await store.loadCacheEntry(second.cacheKey);
+      expect(loaded2, isNotNull);
+      expect(loaded2?.fileName, 'file-b.jpg');
+      expect(loaded2?.expiresAtMs, 3000);
+      expect(loaded2?.lastAccessedAtMs, 4);
+
+      await store.deleteCacheEntry(second.cacheKey);
+      expect(await store.loadCacheEntry(second.cacheKey), isNull);
+
+      await store.upsertCacheEntry(
+        const CacheEntryRecord(
+          cacheKey: 'cache-key-2',
+          namespace: 'reader',
+          storageDir: '/tmp/cache',
+          fileName: 'file-c.jpg',
+          expiresAtMs: 4000,
+          createdAtMs: 5,
+        ),
+      );
+      await store.deleteAllCacheEntries();
+      expect(await store.loadCacheEntry('cache-key-2'), isNull);
+    },
+  );
+
+  test('app settings KV upsert overwrite and clear work', () async {
+    await store.upsertAppSetting(
+      const AppSettingRecord(
+        key: 'feature_x',
+        valueJson: '{"enabled":false}',
+        valueType: 'json',
+        syncPolicy: 'local',
+        updatedAtMs: 10,
+      ),
+    );
+    await store.upsertAppSetting(
+      const AppSettingRecord(
+        key: 'feature_x',
+        valueJson: '{"enabled":true}',
+        valueType: 'json',
+        syncPolicy: 'local',
+        updatedAtMs: 20,
+      ),
+    );
+
+    final settings = await store.loadAppSettings();
+    expect(settings, hasLength(1));
+    expect(settings.single.valueJson, '{"enabled":true}');
+    expect(settings.single.updatedAtMs, 20);
+
+    await store.clearAppSettings();
+    expect(await store.loadAppSettings(), isEmpty);
+  });
+
+  test('search history upsert ordering and clear work', () async {
+    await store.upsertSearchHistory(
+      const SearchHistoryRecord(keyword: 'alpha', position: 2, updatedAtMs: 10),
+    );
+    await store.upsertSearchHistory(
+      const SearchHistoryRecord(keyword: 'beta', position: 1, updatedAtMs: 20),
+    );
+    await store.upsertSearchHistory(
+      const SearchHistoryRecord(keyword: 'alpha', position: 0, updatedAtMs: 30),
+    );
+
+    final rows = await store.loadSearchHistory();
+    expect(rows.map((row) => row.keyword).toList(), ['alpha', 'beta']);
+    expect(rows.first.position, 0);
+    expect(rows.first.updatedAtMs, 30);
+
+    await store.clearSearchHistory();
+    expect(await store.loadSearchHistory(), isEmpty);
+  });
+
+  test('implicit data upsert is idempotent and clear works', () async {
+    await store.upsertImplicitData(
+      const ImplicitDataRecord(key: 'k1', valueJson: '{"v":1}', updatedAtMs: 1),
+    );
+    await store.upsertImplicitData(
+      const ImplicitDataRecord(key: 'k1', valueJson: '{"v":2}', updatedAtMs: 2),
+    );
+
+    final rows = await store.loadImplicitData();
+    expect(rows, hasLength(1));
+    expect(rows.single.valueJson, '{"v":2}');
+    expect(rows.single.updatedAtMs, 2);
+
+    await store.clearImplicitData();
+    expect(await store.loadImplicitData(), isEmpty);
+  });
+
+  test(
+    'history event upsert preserves ordering and repeated id updates',
+    () async {
+      await store.upsertComic(
+        const ComicRecord(
+          id: 'comic-h1',
+          title: 'History Comic',
+          normalizedTitle: 'history comic',
+        ),
+      );
+
+      await store.upsertHistoryEvent(
+        const HistoryEventRecord(
+          id: 'evt-1',
+          comicId: 'comic-h1',
+          sourceTypeValue: 1,
+          sourceKey: 'local',
+          title: 'old',
+          subtitle: 'sub',
+          cover: 'cover',
+          eventTime: '100',
+          chapterIndex: 1,
+          pageIndex: 1,
+          readEpisode: 'ep-1',
+        ),
+      );
+      await store.upsertHistoryEvent(
+        const HistoryEventRecord(
+          id: 'evt-1',
+          comicId: 'comic-h1',
+          sourceTypeValue: 1,
+          sourceKey: 'local',
+          title: 'new',
+          subtitle: 'sub',
+          cover: 'cover',
+          eventTime: '200',
+          chapterIndex: 2,
+          pageIndex: 3,
+          readEpisode: 'ep-2',
+        ),
+      );
+      await store.upsertHistoryEvent(
+        const HistoryEventRecord(
+          id: 'evt-2',
+          comicId: 'comic-h1',
+          sourceTypeValue: 1,
+          sourceKey: 'local',
+          title: 'latest',
+          subtitle: 'sub',
+          cover: 'cover',
+          eventTime: '300',
+          chapterIndex: 0,
+          pageIndex: 0,
+          readEpisode: 'ep-3',
+        ),
+      );
+
+      final latest = await store.loadLatestHistoryEvent('comic-h1');
+      expect(latest, isNotNull);
+      expect(latest?.id, 'evt-2');
+      expect(latest?.eventTime, '300');
+
+      final db = sqlite3.open(dbPath);
+      addTearDown(db.dispose);
+      final evt1Count =
+          db.select('SELECT COUNT(*) AS c FROM history_events WHERE id = ?;', [
+                'evt-1',
+              ]).single['c']
+              as int;
+      expect(evt1Count, 1);
+    },
+  );
+
+  test('deleteComicTitlesForComic removes only target comic titles', () async {
+    await store.upsertComic(
+      const ComicRecord(
+        id: 'comic-delete-titles-a',
+        title: 'Comic A',
+        normalizedTitle: 'comic a',
+      ),
+    );
+    await store.upsertComic(
+      const ComicRecord(
+        id: 'comic-delete-titles-b',
+        title: 'Comic B',
+        normalizedTitle: 'comic b',
+      ),
+    );
+
+    await store.insertComicTitle(
+      const ComicTitleRecord(
+        comicId: 'comic-delete-titles-a',
+        title: 'A',
+        normalizedTitle: 'a',
+        titleType: 'primary',
+      ),
+    );
+    await store.insertComicTitle(
+      const ComicTitleRecord(
+        comicId: 'comic-delete-titles-b',
+        title: 'B',
+        normalizedTitle: 'b',
+        titleType: 'primary',
+      ),
+    );
+
+    await store.deleteComicTitlesForComic('comic-delete-titles-a');
+
+    final db = sqlite3.open(dbPath);
+    addTearDown(db.dispose);
+    final targetCount =
+        db.select(
+              'SELECT COUNT(*) AS c FROM comic_titles WHERE comic_id = ?;',
+              ['comic-delete-titles-a'],
+            ).single['c']
+            as int;
+    final unrelatedCount =
+        db.select(
+              'SELECT COUNT(*) AS c FROM comic_titles WHERE comic_id = ?;',
+              ['comic-delete-titles-b'],
+            ).single['c']
+            as int;
+    expect(targetCount, 0);
+    expect(unrelatedCount, 1);
+  });
+
+  test('deleteChaptersForComic preserves unrelated comics', () async {
+    await store.upsertComic(
+      const ComicRecord(
+        id: 'comic-delete-chapter-a',
+        title: 'Comic Chapter A',
+        normalizedTitle: 'comic chapter a',
+      ),
+    );
+    await store.upsertComic(
+      const ComicRecord(
+        id: 'comic-delete-chapter-b',
+        title: 'Comic Chapter B',
+        normalizedTitle: 'comic chapter b',
+      ),
+    );
+
+    await store.upsertChapter(
+      const ChapterRecord(
+        id: 'chapter-delete-comic-a',
+        comicId: 'comic-delete-chapter-a',
+        title: 'Chapter A',
+        normalizedTitle: 'chapter a',
+      ),
+    );
+    await store.upsertChapter(
+      const ChapterRecord(
+        id: 'chapter-delete-comic-b',
+        comicId: 'comic-delete-chapter-b',
+        title: 'Chapter B',
+        normalizedTitle: 'chapter b',
+      ),
+    );
+
+    await store.deleteChaptersForComic('comic-delete-chapter-a');
+
+    final db = sqlite3.open(dbPath);
+    addTearDown(db.dispose);
+    final targetCount =
+        db.select('SELECT COUNT(*) AS c FROM chapters WHERE comic_id = ?;', [
+              'comic-delete-chapter-a',
+            ]).single['c']
+            as int;
+    final unrelatedCount =
+        db.select('SELECT COUNT(*) AS c FROM chapters WHERE comic_id = ?;', [
+              'comic-delete-chapter-b',
+            ]).single['c']
+            as int;
+    expect(targetCount, 0);
+    expect(unrelatedCount, 1);
+  });
+
+  test('deletePagesForChapter preserves unrelated chapters', () async {
+    await store.upsertComic(
+      const ComicRecord(
+        id: 'comic-delete-pages-a',
+        title: 'Comic Pages A',
+        normalizedTitle: 'comic pages a',
+      ),
+    );
+    await store.upsertComic(
+      const ComicRecord(
+        id: 'comic-delete-pages-b',
+        title: 'Comic Pages B',
+        normalizedTitle: 'comic pages b',
+      ),
+    );
+    await store.upsertChapter(
+      const ChapterRecord(
+        id: 'chapter-delete-pages-a',
+        comicId: 'comic-delete-pages-a',
+        title: 'Chapter Pages A',
+        normalizedTitle: 'chapter pages a',
+      ),
+    );
+    await store.upsertChapter(
+      const ChapterRecord(
+        id: 'chapter-delete-pages-b',
+        comicId: 'comic-delete-pages-b',
+        title: 'Chapter Pages B',
+        normalizedTitle: 'chapter pages b',
+      ),
+    );
+
+    await store.upsertPage(
+      const PageRecord(
+        id: 'page-delete-chapter-a',
+        chapterId: 'chapter-delete-pages-a',
+        pageIndex: 0,
+        localPath: '/tmp/page-delete-chapter-a.jpg',
+      ),
+    );
+    await store.upsertPage(
+      const PageRecord(
+        id: 'page-delete-chapter-b',
+        chapterId: 'chapter-delete-pages-b',
+        pageIndex: 0,
+        localPath: '/tmp/page-delete-chapter-b.jpg',
+      ),
+    );
+
+    await store.deletePagesForChapter('chapter-delete-pages-a');
+
+    final db = sqlite3.open(dbPath);
+    addTearDown(db.dispose);
+    final targetCount =
+        db.select('SELECT COUNT(*) AS c FROM pages WHERE chapter_id = ?;', [
+              'chapter-delete-pages-a',
+            ]).single['c']
+            as int;
+    final unrelatedCount =
+        db.select('SELECT COUNT(*) AS c FROM pages WHERE chapter_id = ?;', [
+              'chapter-delete-pages-b',
+            ]).single['c']
+            as int;
+    expect(targetCount, 0);
+    expect(unrelatedCount, 1);
+  });
+
+  test('repeated upsertChapter is idempotent', () async {
+    await store.upsertComic(
+      const ComicRecord(
+        id: 'comic-upsert-chapter-idempotent',
+        title: 'Chapter Idempotent Comic',
+        normalizedTitle: 'chapter idempotent comic',
+      ),
+    );
+
+    const chapter = ChapterRecord(
+      id: 'chapter-idempotent',
+      comicId: 'comic-upsert-chapter-idempotent',
+      chapterNo: 3,
+      title: 'Chapter Three',
+      normalizedTitle: 'chapter three',
+    );
+    await store.upsertChapter(chapter);
+    await store.upsertChapter(chapter);
+
+    final db = sqlite3.open(dbPath);
+    addTearDown(db.dispose);
+    final rows = db.select(
+      '''
+      SELECT id, comic_id, chapter_no, title, normalized_title
+      FROM chapters
+      WHERE id = ?;
+    ''',
+      [chapter.id],
+    );
+    expect(rows, hasLength(1));
+    expect(rows.single['comic_id'], chapter.comicId);
+    expect(rows.single['chapter_no'], chapter.chapterNo);
+    expect(rows.single['title'], chapter.title);
+    expect(rows.single['normalized_title'], chapter.normalizedTitle);
+  });
+
+  test('repeated upsertPage is idempotent', () async {
+    await store.upsertComic(
+      const ComicRecord(
+        id: 'comic-upsert-page-idempotent',
+        title: 'Page Idempotent Comic',
+        normalizedTitle: 'page idempotent comic',
+      ),
+    );
+    await store.upsertChapter(
+      const ChapterRecord(
+        id: 'chapter-upsert-page-idempotent',
+        comicId: 'comic-upsert-page-idempotent',
+        chapterNo: 7,
+        title: 'Chapter Seven',
+        normalizedTitle: 'chapter seven',
+      ),
+    );
+
+    const page = PageRecord(
+      id: 'page-idempotent',
+      chapterId: 'chapter-upsert-page-idempotent',
+      pageIndex: 2,
+      localPath: '/tmp/page-idempotent.jpg',
+      width: 1200,
+      height: 1800,
+      bytes: 456789,
+    );
+    await store.upsertPage(page);
+    await store.upsertPage(page);
+
+    final db = sqlite3.open(dbPath);
+    addTearDown(db.dispose);
+    final rows = db.select(
+      '''
+      SELECT id, chapter_id, page_index, local_path, width, height, bytes
+      FROM pages
+      WHERE id = ?;
+    ''',
+      [page.id],
+    );
+    expect(rows, hasLength(1));
+    expect(rows.single['chapter_id'], page.chapterId);
+    expect(rows.single['page_index'], page.pageIndex);
+    expect(rows.single['local_path'], page.localPath);
+    expect(rows.single['width'], page.width);
+    expect(rows.single['height'], page.height);
+    expect(rows.single['bytes'], page.bytes);
+  });
+
+  test(
+    'chapter/page ordering remains stable after rebuild-style repeated writes',
+    () async {
+      await store.upsertComic(
+        const ComicRecord(
+          id: 'comic-rebuild-order',
+          title: 'Rebuild Order Comic',
+          normalizedTitle: 'rebuild order comic',
+        ),
+      );
+      await store.upsertComic(
+        const ComicRecord(
+          id: 'comic-rebuild-order-unrelated',
+          title: 'Unrelated Rebuild Comic',
+          normalizedTitle: 'unrelated rebuild comic',
+        ),
+      );
+
+      const chapterA = ChapterRecord(
+        id: 'chapter-rebuild-a',
+        comicId: 'comic-rebuild-order',
+        chapterNo: 2,
+        title: 'Chapter A',
+        normalizedTitle: 'chapter a',
+      );
+      const chapterB = ChapterRecord(
+        id: 'chapter-rebuild-b',
+        comicId: 'comic-rebuild-order',
+        chapterNo: 1,
+        title: 'Chapter B',
+        normalizedTitle: 'chapter b',
+      );
+      const unrelatedChapter = ChapterRecord(
+        id: 'chapter-rebuild-unrelated',
+        comicId: 'comic-rebuild-order-unrelated',
+        chapterNo: 9,
+        title: 'Unrelated Chapter',
+        normalizedTitle: 'unrelated chapter',
+      );
+      await store.upsertChapter(chapterA);
+      await store.upsertChapter(chapterB);
+      await store.upsertChapter(unrelatedChapter);
+      await store.upsertChapter(chapterA);
+      await store.upsertChapter(chapterB);
+
+      const pageA0 = PageRecord(
+        id: 'page-rebuild-a0',
+        chapterId: 'chapter-rebuild-a',
+        pageIndex: 0,
+        localPath: '/tmp/page-rebuild-a0.jpg',
+      );
+      const pageA1 = PageRecord(
+        id: 'page-rebuild-a1',
+        chapterId: 'chapter-rebuild-a',
+        pageIndex: 1,
+        localPath: '/tmp/page-rebuild-a1.jpg',
+      );
+      const pageB0 = PageRecord(
+        id: 'page-rebuild-b0',
+        chapterId: 'chapter-rebuild-b',
+        pageIndex: 0,
+        localPath: '/tmp/page-rebuild-b0.jpg',
+      );
+      const pageUnrelated = PageRecord(
+        id: 'page-rebuild-unrelated',
+        chapterId: 'chapter-rebuild-unrelated',
+        pageIndex: 0,
+        localPath: '/tmp/page-rebuild-unrelated.jpg',
+      );
+      await store.upsertPage(pageA0);
+      await store.upsertPage(pageA1);
+      await store.upsertPage(pageB0);
+      await store.upsertPage(pageUnrelated);
+      await store.upsertPage(pageA0);
+      await store.upsertPage(pageA1);
+      await store.upsertPage(pageB0);
+
+      final primarySnapshot = await store.loadComicSnapshot(
+        'comic-rebuild-order',
+      );
+      expect(primarySnapshot, isNotNull);
+      expect(primarySnapshot!.chapters.map((chapter) => chapter.id).toList(), [
+        'chapter-rebuild-b',
+        'chapter-rebuild-a',
+      ]);
+      final chapterAInSnapshot = primarySnapshot.chapters.firstWhere(
+        (chapter) => chapter.id == 'chapter-rebuild-a',
+      );
+      expect(chapterAInSnapshot.chapterNo, 2);
+
+      final unrelatedSnapshot = await store.loadComicSnapshot(
+        'comic-rebuild-order-unrelated',
+      );
+      expect(unrelatedSnapshot, isNotNull);
+      expect(unrelatedSnapshot!.chapters.map((e) => e.id).toList(), [
+        'chapter-rebuild-unrelated',
+      ]);
+
+      final db = sqlite3.open(dbPath);
+      addTearDown(db.dispose);
+      final chapterAPages = db.select(
+        '''
+        SELECT id
+        FROM pages
+        WHERE chapter_id = ?
+        ORDER BY page_index ASC, id ASC;
+        ''',
+        ['chapter-rebuild-a'],
+      );
+      final unrelatedPages = db.select(
+        '''
+        SELECT id
+        FROM pages
+        WHERE chapter_id = ?
+        ORDER BY page_index ASC, id ASC;
+        ''',
+        ['chapter-rebuild-unrelated'],
+      );
+      expect(chapterAPages.map((row) => row['id']).toList(), [
+        'page-rebuild-a0',
+        'page-rebuild-a1',
+      ]);
+      expect(unrelatedPages.map((row) => row['id']).toList(), [
+        'page-rebuild-unrelated',
+      ]);
+    },
+  );
+
+  test(
+    'cleanup delete sequence rolls back atomically on mid-sequence failure',
+    () async {
+      await store.upsertComic(
+        const ComicRecord(
+          id: 'rollback-comic',
+          title: 'Rollback Comic',
+          normalizedTitle: 'rollback comic',
+        ),
+      );
+      await store.upsertChapter(
+        const ChapterRecord(
+          id: 'rollback-chapter',
+          comicId: 'rollback-comic',
+          title: 'Rollback Chapter',
+          normalizedTitle: 'rollback chapter',
+        ),
+      );
+      await store.upsertPage(
+        const PageRecord(
+          id: 'rollback-page',
+          chapterId: 'rollback-chapter',
+          pageIndex: 0,
+          localPath: '/tmp/rollback-page.jpg',
+        ),
+      );
+
+      await expectLater(
+        AppDbHelper.instance.transaction(
+          'test.cleanup.rollback',
+          store,
+          () async {
+            await store.deletePagesForChapter('rollback-chapter');
+            throw StateError('injected cleanup failure');
+          },
+        ),
+        throwsStateError,
+      );
+
+      final db = sqlite3.open(dbPath);
+      addTearDown(db.dispose);
+      final chapterCount =
+          db.select('SELECT COUNT(*) AS c FROM chapters WHERE id = ?;', [
+                'rollback-chapter',
+              ]).single['c']
+              as int;
+      final pageCount =
+          db.select('SELECT COUNT(*) AS c FROM pages WHERE chapter_id = ?;', [
+                'rollback-chapter',
+              ]).single['c']
+              as int;
+      expect(chapterCount, 1);
+      expect(pageCount, 1);
     },
   );
 
@@ -709,6 +1357,96 @@ void main() {
     expect(second.single.availableVersion, '1.1.0');
   });
 
+  test('favorite folder rename updates folder rows', () async {
+    await store.upsertFavoriteFolder(
+      const FavoriteFolderRecord(folderName: 'old-folder', orderValue: 0),
+    );
+
+    await store.renameFavoriteFolder(before: 'old-folder', after: 'new-folder');
+
+    final raw = sqlite3.open(dbPath);
+    addTearDown(raw.dispose);
+    final folderRows = raw.select(
+      'SELECT folder_name FROM favorite_folders ORDER BY folder_name ASC;',
+    );
+    expect(folderRows.map((row) => row['folder_name']), ['new-folder']);
+  });
+
+  test(
+    'favorite folder order replacement keeps deterministic order values',
+    () async {
+      await store.upsertFavoriteFolder(
+        const FavoriteFolderRecord(folderName: 'A', orderValue: 99),
+      );
+      await store.upsertFavoriteFolder(
+        const FavoriteFolderRecord(folderName: 'B', orderValue: 99),
+      );
+      await store.upsertFavoriteFolder(
+        const FavoriteFolderRecord(folderName: 'C', orderValue: 99),
+      );
+
+      await store.replaceFavoriteFolderOrder(const ['C', 'A', 'B']);
+
+      final raw = sqlite3.open(dbPath);
+      addTearDown(raw.dispose);
+      final rows = raw.select(
+        'SELECT folder_name, order_value FROM favorite_folders ORDER BY order_value ASC;',
+      );
+      expect(
+        rows
+            .map((row) => '${row['folder_name']}:${row['order_value']}')
+            .toList(),
+        ['C:0', 'A:1', 'B:2'],
+      );
+    },
+  );
+
+  test(
+    'favorite folder delete and move-like item updates remain functional',
+    () async {
+      await store.upsertFavoriteFolder(
+        const FavoriteFolderRecord(folderName: 'F1', orderValue: 0),
+      );
+      await store.upsertFavoriteFolder(
+        const FavoriteFolderRecord(folderName: 'F2', orderValue: 1),
+      );
+      await store.upsertFavoriteFolderItem(
+        const FavoriteFolderItemRecord(
+          folderName: 'F1',
+          comicId: 'comic-move',
+          displayOrder: 0,
+        ),
+      );
+
+      await store.deleteFavoriteFolderItem(
+        folderName: 'F1',
+        comicId: 'comic-move',
+      );
+      await store.upsertFavoriteFolderItem(
+        const FavoriteFolderItemRecord(
+          folderName: 'F2',
+          comicId: 'comic-move',
+          displayOrder: 0,
+        ),
+      );
+      await store.deleteFavoriteFolder('F1');
+
+      final raw = sqlite3.open(dbPath);
+      addTearDown(raw.dispose);
+      final folderRows = raw.select(
+        'SELECT folder_name FROM favorite_folders ORDER BY folder_name ASC;',
+      );
+      final itemRows = raw.select(
+        'SELECT folder_name, comic_id FROM favorite_folder_items ORDER BY comic_id ASC;',
+      );
+      expect(folderRows.map((row) => row['folder_name']), ['F2']);
+      expect(
+        itemRows.map((row) => '${row['folder_name']}:${row['comic_id']}'),
+        ['F2:comic-move'],
+      );
+    },
+  );
+
   test(
     'source tags stay scoped to comic source link and user tags stay separate',
     () async {
@@ -892,6 +1630,87 @@ void main() {
     },
   );
 
+  test('eh tag taxonomy replace is rebuildable for same provider', () async {
+    await store.replaceEhTagTaxonomyRecords(_ehentaiProvider, const [
+      EhTagTaxonomyRecord(
+        providerKey: _ehentaiProvider,
+        locale: 'zh_CN',
+        namespace: 'female',
+        tagKey: 'glasses',
+        translatedLabel: '眼镜',
+        sourceSha: 'sha-1',
+        sourceVersion: 1,
+      ),
+    ]);
+
+    await store.replaceEhTagTaxonomyRecords(_ehentaiProvider, const [
+      EhTagTaxonomyRecord(
+        providerKey: _ehentaiProvider,
+        locale: 'zh_CN',
+        namespace: 'male',
+        tagKey: 'tsundere',
+        translatedLabel: '傲娇',
+        sourceSha: 'sha-2',
+        sourceVersion: 2,
+      ),
+    ]);
+
+    final taxonomy = await store.loadEhTagTaxonomy(
+      providerKey: _ehentaiProvider,
+      locale: 'zh_CN',
+    );
+
+    expect(taxonomy.length, 1);
+    expect(taxonomy.single.namespace, 'male');
+    expect(taxonomy.single.tagKey, 'tsundere');
+    expect(taxonomy.single.translatedLabel, '傲娇');
+    expect(taxonomy.single.sourceSha, 'sha-2');
+    expect(taxonomy.single.sourceVersion, 2);
+  });
+
+  test('eh tag taxonomy replace is atomic when insert fails', () async {
+    await store.replaceEhTagTaxonomyRecords(_ehentaiProvider, const [
+      EhTagTaxonomyRecord(
+        providerKey: _ehentaiProvider,
+        locale: 'zh_CN',
+        namespace: 'female',
+        tagKey: 'glasses',
+        translatedLabel: '眼镜',
+        sourceSha: 'sha-before',
+        sourceVersion: 10,
+      ),
+    ]);
+
+    await expectLater(
+      store.replaceEhTagTaxonomyRecords(_ehentaiProvider, const [
+        EhTagTaxonomyRecord(
+          providerKey: _ehentaiProvider,
+          locale: 'zh_CN',
+          namespace: 'female',
+          tagKey: 'duplicate',
+          translatedLabel: '重复一',
+        ),
+        EhTagTaxonomyRecord(
+          providerKey: _ehentaiProvider,
+          locale: 'zh_CN',
+          namespace: 'female',
+          tagKey: 'duplicate',
+          translatedLabel: '重复二',
+        ),
+      ]),
+      throwsA(anything),
+    );
+
+    final taxonomy = await store.loadEhTagTaxonomy(
+      providerKey: _ehentaiProvider,
+      locale: 'zh_CN',
+    );
+    expect(taxonomy.length, 1);
+    expect(taxonomy.single.tagKey, 'glasses');
+    expect(taxonomy.single.sourceSha, 'sha-before');
+    expect(taxonomy.single.sourceVersion, 10);
+  });
+
   test('loads active visible pages in page-order sequence', () async {
     await _insertReaderFixture(store);
 
@@ -969,6 +1788,33 @@ void main() {
       expect(pages.map((page) => page.id), ['page-c']);
     },
   );
+
+  test('replacePageOrderItems is atomic when one insert fails', () async {
+    await _insertReaderFixture(store);
+
+    await expectLater(
+      store.replacePageOrderItems('order-1', const [
+        PageOrderItemRecord(
+          pageOrderId: 'order-1',
+          pageId: 'page-b',
+          sortOrder: 0,
+        ),
+        PageOrderItemRecord(
+          pageOrderId: 'order-1',
+          pageId: 'missing-page',
+          sortOrder: 1,
+        ),
+      ]),
+      throwsA(
+        predicate(
+          (error) => error.toString().contains('FOREIGN KEY constraint failed'),
+        ),
+      ),
+    );
+
+    final pages = await store.loadActivePageOrderPages('chapter-1');
+    expect(pages.map((page) => page.id), ['page-b', 'page-a']);
+  });
 
   test(
     'reader session rows can be inserted and read before tabs exist',
@@ -1090,6 +1936,50 @@ void main() {
     expect(session?.activeTabId, 'tab-3');
   });
 
+  test(
+    'saveReaderProgress rolls back session upsert when tab insert fails',
+    () async {
+      await store.upsertComic(
+        const ComicRecord(
+          id: 'session-comic-rollback',
+          title: 'Session Comic Rollback',
+          normalizedTitle: 'session comic rollback',
+        ),
+      );
+
+      await expectLater(
+        store.saveReaderProgress(
+          session: const ReaderSessionRecord(
+            id: 'session-rollback',
+            comicId: 'session-comic-rollback',
+          ),
+          tab: const ReaderTabRecord(
+            id: 'tab-rollback',
+            sessionId: 'session-missing',
+            comicId: 'session-comic-rollback',
+            chapterId: 'chapter-rollback',
+            pageIndex: 0,
+            sourceRefJson: '{"id":"tab-rollback"}',
+          ),
+          makeActive: false,
+        ),
+        throwsA(
+          predicate(
+            (error) =>
+                error.toString().contains('FOREIGN KEY constraint failed'),
+          ),
+        ),
+      );
+
+      final session = await store.loadReaderSessionByComic(
+        'session-comic-rollback',
+      );
+      final tabs = await store.loadReaderTabsForSession('session-rollback');
+      expect(session, isNull);
+      expect(tabs, isEmpty);
+    },
+  );
+
   test('deleting a session cascades to its tabs', () async {
     await store.upsertComic(
       const ComicRecord(
@@ -1192,6 +2082,141 @@ void main() {
     expect(candidates.single.sourceComicId, 'remote-1');
     expect(candidates.single.status, 'pending');
   });
+
+  test(
+    'repeated remote match upsert deterministically updates existing candidate',
+    () async {
+      await store.upsertComic(
+        const ComicRecord(
+          id: 'candidate-comic-2',
+          title: 'Candidate Comic Two',
+          normalizedTitle: 'candidate comic two',
+        ),
+      );
+      await store.upsertSourcePlatform(
+        const SourcePlatformRecord(
+          id: 'ehentai',
+          canonicalKey: 'ehentai',
+          displayName: 'EHentai',
+          kind: 'remote',
+        ),
+      );
+      await store.upsertRemoteMatchCandidate(
+        const RemoteMatchCandidateRecord(
+          id: 'candidate-old',
+          comicId: 'candidate-comic-2',
+          sourcePlatformId: 'ehentai',
+          sourceComicId: 'remote-2',
+          sourceUrl: 'https://example.com/comic/remote-2',
+          sourceTitle: 'Remote Two Original',
+          confidence: 0.40,
+          metadataJson: '{"pass":1}',
+          status: 'pending',
+          updatedAt: '2026-05-01 08:00:00',
+        ),
+      );
+      await store.upsertRemoteMatchCandidate(
+        const RemoteMatchCandidateRecord(
+          id: 'candidate-new',
+          comicId: 'candidate-comic-2',
+          sourcePlatformId: 'ehentai',
+          sourceComicId: 'remote-2',
+          sourceUrl: 'https://example.com/comic/remote-2-updated',
+          sourceTitle: 'Remote Two Updated',
+          confidence: 0.91,
+          metadataJson: '{"pass":2}',
+          status: 'accepted',
+          updatedAt: '2026-05-01 09:30:00',
+        ),
+      );
+
+      final candidates = await store.loadRemoteMatchCandidates(
+        'candidate-comic-2',
+      );
+
+      expect(candidates, hasLength(1));
+      final candidate = candidates.single;
+      expect(candidate.id, 'candidate-new');
+      expect(candidate.sourceUrl, 'https://example.com/comic/remote-2-updated');
+      expect(candidate.sourceTitle, 'Remote Two Updated');
+      expect(candidate.confidence, 0.91);
+      expect(candidate.metadataJson, '{"pass":2}');
+      expect(candidate.status, 'accepted');
+      expect(candidate.updatedAt, '2026-05-01 09:30:00');
+    },
+  );
+
+  test(
+    'deleteRemoteMatchCandidate removes only targeted candidate and preserves unrelated rows',
+    () async {
+      await store.upsertComic(
+        const ComicRecord(
+          id: 'candidate-comic-3',
+          title: 'Candidate Comic Three',
+          normalizedTitle: 'candidate comic three',
+        ),
+      );
+      await store.upsertSourcePlatform(
+        const SourcePlatformRecord(
+          id: 'mangadex',
+          canonicalKey: 'mangadex',
+          displayName: 'MangaDex',
+          kind: 'remote',
+        ),
+      );
+      await store.upsertRemoteMatchCandidate(
+        const RemoteMatchCandidateRecord(
+          id: 'candidate-delete-me',
+          comicId: 'candidate-comic-3',
+          sourcePlatformId: 'mangadex',
+          sourceComicId: 'remote-3-a',
+          sourceUrl: 'https://example.com/comic/remote-3-a',
+          sourceTitle: 'Delete Me',
+          confidence: 0.72,
+          metadataJson: '{"delete":true}',
+          status: 'pending',
+        ),
+      );
+      await store.upsertRemoteMatchCandidate(
+        const RemoteMatchCandidateRecord(
+          id: 'candidate-keep-1',
+          comicId: 'candidate-comic-3',
+          sourcePlatformId: 'mangadex',
+          sourceComicId: 'remote-3-b',
+          sourceUrl: 'https://example.com/comic/remote-3-b',
+          sourceTitle: 'Keep One',
+          confidence: 0.81,
+          metadataJson: '{"keep":1}',
+          status: 'pending',
+        ),
+      );
+      await store.upsertRemoteMatchCandidate(
+        const RemoteMatchCandidateRecord(
+          id: 'candidate-keep-2',
+          comicId: 'candidate-comic-3',
+          sourcePlatformId: 'mangadex',
+          sourceComicId: 'remote-3-c',
+          sourceUrl: 'https://example.com/comic/remote-3-c',
+          sourceTitle: 'Keep Two',
+          confidence: 0.83,
+          metadataJson: '{"keep":2}',
+          status: 'accepted',
+        ),
+      );
+
+      await store.deleteRemoteMatchCandidate('candidate-delete-me');
+
+      final candidates = await store.loadRemoteMatchCandidates(
+        'candidate-comic-3',
+      );
+
+      expect(candidates, hasLength(2));
+      final ids = candidates.map((it) => it.id).toSet();
+      expect(ids.contains('candidate-delete-me'), isFalse);
+      expect(ids.contains('candidate-keep-1'), isTrue);
+      expect(ids.contains('candidate-keep-2'), isTrue);
+    },
+  );
 }
 
 const _ehentaiProvider = 'ehentai';

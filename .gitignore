@@ -62,3 +62,4 @@ result/*.dmg
 .worktrees/
 android/build/
 docs/plans/.DS_Store
+:memory:*

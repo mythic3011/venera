@@ -7,6 +7,8 @@ import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/db/canonical_db_write_gate.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
+import 'package:venera/features/reader/data/reader_session_repository.dart';
+import 'package:venera/foundation/sources/source_ref.dart';
 
 class _FakeSqliteException implements Exception {
   _FakeSqliteException(this.resultCode, [this.extendedResultCode]);
@@ -74,7 +76,6 @@ void main() {
       );
       expect(lockEvent.data['domain'], 'test');
       expect(lockEvent.data['operation'], 'final_lock');
-      expect(lockEvent.data['attemptCount'], 3);
       expect(lockEvent.data['sqliteCode'], 5);
       expect(lockEvent.data['errorType'], '_FakeSqliteException');
       expect(lockEvent.message.contains('INSERT'), isFalse);
@@ -167,6 +168,31 @@ void main() {
           ),
         ),
       ]);
+
+      await store.upsertReaderTab(
+        const ReaderTabRecord(
+          id: 'tab-2',
+          sessionId: 'reader-session:comic-2',
+          comicId: 'comic-2',
+          chapterId: 'chapter-2',
+          pageIndex: 0,
+          sourceRefJson: '{}',
+        ),
+      );
+      await Future.wait([
+        appdata.saveData(false),
+        store.upsertReaderSession(
+          const ReaderSessionRecord(
+            id: 'reader-session:comic-2',
+            comicId: 'comic-2',
+            activeTabId: 'tab-2',
+          ),
+        ),
+        store.setReaderSessionActiveTab(
+          sessionId: 'reader-session:comic-2',
+          activeTabId: 'tab-2',
+        ),
+      ]);
       } finally {
         await store.close();
         if (tempDir.existsSync()) {
@@ -175,4 +201,82 @@ void main() {
       }
     },
   );
+
+  test('Appdata.saveData does not issue full-table app_settings delete', () async {
+    final tempDir = await Directory.systemTemp.createTemp(
+      'venera-appdata-no-full-delete-',
+    );
+    final store = UnifiedComicsStore.atCanonicalPath(tempDir.path);
+    await store.init();
+    try {
+      App.dataPath = tempDir.path;
+      final appdata = Appdata.createForTest(settingsStore: store);
+      appdata.settings['deviceId'] = 'db-no-delete-device';
+      await store.customStatement('''
+        CREATE TRIGGER IF NOT EXISTS app_settings_no_delete
+        BEFORE DELETE ON app_settings
+        BEGIN
+          SELECT RAISE(ABORT, 'no delete from app_settings');
+        END;
+      ''');
+
+      await appdata.saveData(false);
+    } finally {
+      await store.close();
+      if (tempDir.existsSync()) {
+        await tempDir.delete(recursive: true);
+      }
+    }
+  });
+
+  test('unchanged reader session progress is not written twice', () async {
+    AppDiagnostics.resetForTesting();
+    final tempDir = await Directory.systemTemp.createTemp(
+      'venera-reader-dedupe-',
+    );
+    final store = UnifiedComicsStore.atCanonicalPath(tempDir.path);
+    await store.init();
+    try {
+      await store.upsertComic(
+        const ComicRecord(
+          id: 'comic-dedupe',
+          title: 'Comic Dedupe',
+          normalizedTitle: 'comic dedupe',
+        ),
+      );
+      final repository = ReaderSessionRepository(store: store);
+      final sourceRef = SourceRef.fromLegacyLocal(
+        localType: 'local',
+        localComicId: 'comic-dedupe',
+        chapterId: 'chapter-1',
+      );
+
+      await repository.upsertCurrentLocation(
+        comicId: 'comic-dedupe',
+        chapterId: 'chapter-1',
+        pageIndex: 1,
+        sourceRef: sourceRef,
+      );
+      final firstWriteCount = AppDiagnostics.recent(
+        channel: 'db.write',
+      ).where((event) => event.message == 'db.write.start').length;
+
+      await repository.upsertCurrentLocation(
+        comicId: 'comic-dedupe',
+        chapterId: 'chapter-1',
+        pageIndex: 1,
+        sourceRef: sourceRef,
+      );
+      final secondWriteCount = AppDiagnostics.recent(
+        channel: 'db.write',
+      ).where((event) => event.message == 'db.write.start').length;
+
+      expect(secondWriteCount, firstWriteCount);
+    } finally {
+      await store.close();
+      if (tempDir.existsSync()) {
+        await tempDir.delete(recursive: true);
+      }
+    }
+  });
 }

@@ -8,6 +8,7 @@ import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/common.dart' as sqlite_common;
 import 'package:venera/features/sources/comic_source/comic_source.dart';
+import 'package:venera/foundation/database/app_db_helper.dart';
 import 'package:venera/foundation/db/canonical_db_write_gate.dart';
 import 'package:venera/foundation/db/remote_comic_sync.dart';
 import 'package:venera/foundation/ports/comic_detail_store_port.dart';
@@ -795,6 +796,7 @@ class UnifiedComicsStore extends GeneratedDatabase
   static void _configureDatabase(sqlite_common.CommonDatabase database) {
     database.execute('PRAGMA foreign_keys = ON;');
     database.execute('PRAGMA journal_mode = WAL;');
+    database.execute('PRAGMA busy_timeout = 5000;');
   }
 
   @override
@@ -840,6 +842,8 @@ class UnifiedComicsStore extends GeneratedDatabase
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON;');
+      await customStatement('PRAGMA journal_mode = WAL;');
+      await customStatement('PRAGMA busy_timeout = 5000;');
     },
   );
 
@@ -851,7 +855,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> upsertCacheEntry(CacheEntryRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'cache.upsert_entry',
+      this,
       '''
       INSERT INTO cache_entries (
         cache_key,
@@ -991,13 +997,21 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> deleteCacheEntry(String cacheKey) {
-    return customStatement('DELETE FROM cache_entries WHERE cache_key = ?;', [
-      cacheKey,
-    ]);
+    return AppDbHelper.instance.customWrite(
+      'cache.delete_entry',
+      this,
+      'DELETE FROM cache_entries WHERE cache_key = ?;',
+      [cacheKey],
+    );
   }
 
   Future<void> deleteAllCacheEntries() {
-    return customStatement('DELETE FROM cache_entries;');
+    return AppDbHelper.instance.customWrite(
+      'cache.delete_all_entries',
+      this,
+      'DELETE FROM cache_entries;',
+      const <Object?>[],
+    );
   }
 
   Future<void> touchCacheEntryAccess({
@@ -1005,7 +1019,9 @@ class UnifiedComicsStore extends GeneratedDatabase
     required int expiresAtMs,
     required int lastAccessedAtMs,
   }) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'cache.touch_entry_access',
+      this,
       '''
       UPDATE cache_entries
       SET expires_at_ms = ?,
@@ -1017,27 +1033,25 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> upsertAppSetting(AppSettingRecord record) {
-    return runCanonicalWrite<void>(
-      domain: 'appdata',
-      operation: 'upsert_app_setting',
-      action: () => customStatement(
-        '''
-        INSERT INTO app_settings (key, value_json, value_type, sync_policy, updated_at_ms)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(key) DO UPDATE SET
-          value_json = excluded.value_json,
-          value_type = excluded.value_type,
-          sync_policy = excluded.sync_policy,
-          updated_at_ms = excluded.updated_at_ms;
-        ''',
-        [
-          record.key,
-          record.valueJson,
-          record.valueType,
-          record.syncPolicy,
-          record.updatedAtMs,
-        ],
-      ),
+    return AppDbHelper.instance.customWrite(
+      'settings_kv.upsert_setting',
+      this,
+      '''
+      INSERT INTO app_settings (key, value_json, value_type, sync_policy, updated_at_ms)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        value_json = excluded.value_json,
+        value_type = excluded.value_type,
+        sync_policy = excluded.sync_policy,
+        updated_at_ms = excluded.updated_at_ms;
+      ''',
+      [
+        record.key,
+        record.valueJson,
+        record.valueType,
+        record.syncPolicy,
+        record.updatedAtMs,
+      ],
     );
   }
 
@@ -1059,27 +1073,26 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> clearAppSettings() {
-    return runCanonicalWrite<void>(
-      domain: 'appdata',
-      operation: 'clear_app_settings',
-      action: () => customStatement('DELETE FROM app_settings;'),
+    return AppDbHelper.instance.customWrite(
+      'settings_kv.clear_settings',
+      this,
+      'DELETE FROM app_settings;',
+      const <Object?>[],
     );
   }
 
   Future<void> upsertSearchHistory(SearchHistoryRecord record) {
-    return runCanonicalWrite<void>(
-      domain: 'appdata',
-      operation: 'upsert_search_history',
-      action: () => customStatement(
-        '''
-        INSERT INTO search_history (keyword, position, updated_at_ms)
-        VALUES (?, ?, ?)
-        ON CONFLICT(keyword) DO UPDATE SET
-          position = excluded.position,
-          updated_at_ms = excluded.updated_at_ms;
-        ''',
-        [record.keyword, record.position, record.updatedAtMs],
-      ),
+    return AppDbHelper.instance.customWrite(
+      'search_history.upsert_keyword',
+      this,
+      '''
+      INSERT INTO search_history (keyword, position, updated_at_ms)
+      VALUES (?, ?, ?)
+      ON CONFLICT(keyword) DO UPDATE SET
+        position = excluded.position,
+        updated_at_ms = excluded.updated_at_ms;
+      ''',
+      [record.keyword, record.position, record.updatedAtMs],
     );
   }
 
@@ -1099,27 +1112,26 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> clearSearchHistory() {
-    return runCanonicalWrite<void>(
-      domain: 'appdata',
-      operation: 'clear_search_history',
-      action: () => customStatement('DELETE FROM search_history;'),
+    return AppDbHelper.instance.customWrite(
+      'search_history.clear',
+      this,
+      'DELETE FROM search_history;',
+      const <Object?>[],
     );
   }
 
   Future<void> upsertImplicitData(ImplicitDataRecord record) {
-    return runCanonicalWrite<void>(
-      domain: 'appdata',
-      operation: 'upsert_implicit_data',
-      action: () => customStatement(
-        '''
-        INSERT INTO implicit_data (key, value_json, updated_at_ms)
-        VALUES (?, ?, ?)
-        ON CONFLICT(key) DO UPDATE SET
-          value_json = excluded.value_json,
-          updated_at_ms = excluded.updated_at_ms;
-        ''',
-        [record.key, record.valueJson, record.updatedAtMs],
-      ),
+    return AppDbHelper.instance.customWrite(
+      'implicit_data.upsert',
+      this,
+      '''
+      INSERT INTO implicit_data (key, value_json, updated_at_ms)
+      VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        value_json = excluded.value_json,
+        updated_at_ms = excluded.updated_at_ms;
+      ''',
+      [record.key, record.valueJson, record.updatedAtMs],
     );
   }
 
@@ -1139,15 +1151,18 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> clearImplicitData() {
-    return runCanonicalWrite<void>(
-      domain: 'appdata',
-      operation: 'clear_implicit_data',
-      action: () => customStatement('DELETE FROM implicit_data;'),
+    return AppDbHelper.instance.customWrite(
+      'implicit_data.clear',
+      this,
+      'DELETE FROM implicit_data;',
+      const <Object?>[],
     );
   }
 
   Future<void> upsertSourceRepository(SourceRepositoryRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'source.upsert_repository',
+      this,
       '''
       INSERT INTO source_repositories (
         id,
@@ -1237,23 +1252,33 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> deleteSourceRepository(String id) {
-    return customStatement('DELETE FROM source_repositories WHERE id = ?;', [
-      id,
-    ]);
+    return AppDbHelper.instance.customWrite(
+      'source.delete_repository',
+      this,
+      'DELETE FROM source_repositories WHERE id = ?;',
+      [id],
+    );
   }
 
   Future<void> replaceSourcePackagesForRepository({
     required String repositoryId,
     required List<SourcePackageRecord> records,
   }) {
-    return transaction(() async {
-      await customStatement(
-        'DELETE FROM source_packages WHERE repository_id = ?;',
-        [repositoryId],
-      );
-      for (final record in records) {
-        await customStatement(
-          '''
+    return AppDbHelper.instance.transaction(
+      'source.replace_packages_for_repository',
+      this,
+      () async {
+        await AppDbHelper.instance.customWrite(
+          'source.replace_packages_for_repository.clear',
+          this,
+          'DELETE FROM source_packages WHERE repository_id = ?;',
+          [repositoryId],
+        );
+        for (final record in records) {
+          await AppDbHelper.instance.customWrite(
+            'source.replace_packages_for_repository.insert',
+            this,
+            '''
           INSERT INTO source_packages (
             source_key,
             repository_id,
@@ -1267,20 +1292,21 @@ class UnifiedComicsStore extends GeneratedDatabase
           )
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
           ''',
-          [
-            record.sourceKey,
-            record.repositoryId,
-            record.name,
-            record.fileName,
-            record.scriptUrl,
-            record.availableVersion,
-            record.description,
-            record.contentHash,
-            record.lastSeenAtMs,
-          ],
-        );
-      }
-    });
+            [
+              record.sourceKey,
+              record.repositoryId,
+              record.name,
+              record.fileName,
+              record.scriptUrl,
+              record.availableVersion,
+              record.description,
+              record.contentHash,
+              record.lastSeenAtMs,
+            ],
+          );
+        }
+      },
+    );
   }
 
   Future<List<SourcePackageRecord>> loadSourcePackages({
@@ -1357,18 +1383,24 @@ class UnifiedComicsStore extends GeneratedDatabase
     final aliases = sourcePlatformResolver.platforms
         .expand(_aliasesForDefinition)
         .toList(growable: false);
-    await transaction(() async {
-      for (final platform in platforms) {
-        await upsertSourcePlatform(platform);
-      }
-      for (final alias in aliases) {
-        await upsertSourcePlatformAlias(alias);
-      }
-    });
+    await AppDbHelper.instance.transaction(
+      'source.seed_platforms',
+      this,
+      () async {
+        for (final platform in platforms) {
+          await upsertSourcePlatform(platform);
+        }
+        for (final alias in aliases) {
+          await upsertSourcePlatformAlias(alias);
+        }
+      },
+    );
   }
 
   Future<void> upsertSourcePlatform(SourcePlatformRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'source.upsert_platform',
+      this,
       '''
       INSERT INTO source_platforms (
         id,
@@ -1400,7 +1432,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> upsertSourcePlatformAlias(SourcePlatformAliasRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'source.upsert_platform_alias',
+      this,
       '''
       INSERT INTO source_platform_aliases (
         platform_id,
@@ -1507,7 +1541,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> upsertComic(ComicRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'comic_library.upsert_comic',
+      this,
       '''
       INSERT INTO comics (
         id,
@@ -1536,7 +1572,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> insertComicTitle(ComicTitleRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'comic_library.insert_comic_title',
+      this,
       '''
       INSERT INTO comic_titles (
         comic_id,
@@ -1562,25 +1600,36 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> deleteComicTitlesForComic(String comicId) {
-    return customStatement('DELETE FROM comic_titles WHERE comic_id = ?;', [
-      comicId,
-    ]);
+    return AppDbHelper.instance.customWrite(
+      'cleanup.delete_comic_titles_for_comic',
+      this,
+      'DELETE FROM comic_titles WHERE comic_id = ?;',
+      [comicId],
+    );
   }
 
   Future<void> deleteChaptersForComic(String comicId) {
-    return customStatement('DELETE FROM chapters WHERE comic_id = ?;', [
-      comicId,
-    ]);
+    return AppDbHelper.instance.customWrite(
+      'cleanup.delete_chapters_for_comic',
+      this,
+      'DELETE FROM chapters WHERE comic_id = ?;',
+      [comicId],
+    );
   }
 
   Future<void> deletePagesForChapter(String chapterId) {
-    return customStatement('DELETE FROM pages WHERE chapter_id = ?;', [
-      chapterId,
-    ]);
+    return AppDbHelper.instance.customWrite(
+      'cleanup.delete_pages_for_chapter',
+      this,
+      'DELETE FROM pages WHERE chapter_id = ?;',
+      [chapterId],
+    );
   }
 
   Future<void> upsertLocalLibraryItem(LocalLibraryItemRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'comic_library.upsert_local_library_item',
+      this,
       '''
       INSERT INTO local_library_items (
         id,
@@ -1622,20 +1671,27 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> upsertComicSourceLink(ComicSourceLinkRecord record) async {
-    await transaction(() async {
-      if (record.isPrimary) {
-        await customStatement(
-          '''
+    await AppDbHelper.instance.transaction(
+      'source.link.upsert',
+      this,
+      () async {
+        if (record.isPrimary) {
+          await AppDbHelper.instance.customWrite(
+            'source.link.upsert.clear_primary',
+            this,
+            '''
           UPDATE comic_source_links
           SET is_primary = 0,
               updated_at = CURRENT_TIMESTAMP
           WHERE comic_id = ? AND is_primary = 1;
           ''',
-          [record.comicId],
-        );
-      }
-      await customStatement(
-        '''
+            [record.comicId],
+          );
+        }
+        await AppDbHelper.instance.customWrite(
+          'source.link.upsert.insert',
+          this,
+          '''
         INSERT INTO comic_source_links (
           id,
           comic_id,
@@ -1664,23 +1720,24 @@ class UnifiedComicsStore extends GeneratedDatabase
           updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP),
           metadata_json = excluded.metadata_json;
         ''',
-        [
-          record.id,
-          record.comicId,
-          record.sourcePlatformId,
-          record.sourceComicId,
-          record.linkStatus,
-          record.isPrimary ? 1 : 0,
-          record.sourceUrl,
-          record.sourceTitle,
-          record.downloadedAt,
-          record.lastVerifiedAt,
-          record.linkedAt,
-          record.updatedAt,
-          record.metadataJson,
-        ],
-      );
-    });
+          [
+            record.id,
+            record.comicId,
+            record.sourcePlatformId,
+            record.sourceComicId,
+            record.linkStatus,
+            record.isPrimary ? 1 : 0,
+            record.sourceUrl,
+            record.sourceTitle,
+            record.downloadedAt,
+            record.lastVerifiedAt,
+            record.linkedAt,
+            record.updatedAt,
+            record.metadataJson,
+          ],
+        );
+      },
+    );
   }
 
   Future<SourcePlatformRecord?> loadSourcePlatformById(
@@ -1768,7 +1825,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> upsertChapterSourceLink(ChapterSourceLinkRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'source.link.upsert_chapter',
+      this,
       '''
       INSERT INTO chapter_source_links (
         id,
@@ -1802,7 +1861,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> upsertPageSourceLink(PageSourceLinkRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'source.link.upsert_page',
+      this,
       '''
       INSERT INTO page_source_links (
         id,
@@ -1839,7 +1900,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> upsertSourceTag(SourceTagRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'source.tag.upsert',
+      this,
       '''
       INSERT INTO source_tags (
         id,
@@ -1868,7 +1931,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   Future<void> attachSourceTagToComicSourceLink(
     ComicSourceLinkTagRecord record,
   ) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'source.link.attach_tag',
+      this,
       '''
       INSERT INTO comic_source_link_tags (
         comic_source_link_id,
@@ -1899,7 +1964,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> clearSourceTagsForComicSourceLink(String comicSourceLinkId) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'source.link.clear_tags',
+      this,
       '''
       DELETE FROM comic_source_link_tags
       WHERE comic_source_link_id = ?;
@@ -1909,7 +1976,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> upsertUserTag(UserTagRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'comic_library.upsert_user_tag',
+      this,
       '''
       INSERT INTO user_tags (
         id,
@@ -1938,7 +2007,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> attachUserTagToComic(ComicUserTagRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'comic_library.attach_user_tag_to_comic',
+      this,
       '''
       INSERT INTO comic_user_tags (
         comic_id,
@@ -1956,7 +2027,9 @@ class UnifiedComicsStore extends GeneratedDatabase
     required String comicId,
     required String userTagId,
   }) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'comic_library.remove_user_tag_from_comic',
+      this,
       '''
       DELETE FROM comic_user_tags
       WHERE comic_id = ?
@@ -1984,39 +2057,47 @@ class UnifiedComicsStore extends GeneratedDatabase
     String providerKey,
     Iterable<EhTagTaxonomyRecord> records,
   ) async {
-    await transaction(() async {
-      await customStatement(
-        'DELETE FROM eh_tag_taxonomy WHERE provider_key = ?;',
-        [providerKey],
-      );
-      for (final record in records) {
-        await customStatement(
-          '''
-          INSERT INTO eh_tag_taxonomy (
-            provider_key,
-            locale,
-            namespace,
-            tag_key,
-            translated_label,
-            source_sha,
-            source_version,
-            updated_at
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP));
-          ''',
-          [
-            record.providerKey,
-            record.locale,
-            record.namespace,
-            record.tagKey,
-            record.translatedLabel,
-            record.sourceSha,
-            record.sourceVersion,
-            record.updatedAt,
-          ],
+    await AppDbHelper.instance.transaction(
+      'tags.replace_taxonomy',
+      this,
+      () async {
+        await AppDbHelper.instance.customWrite(
+          'tags.replace_taxonomy.delete_existing',
+          this,
+          'DELETE FROM eh_tag_taxonomy WHERE provider_key = ?;',
+          [providerKey],
         );
-      }
-    });
+        for (final record in records) {
+          await AppDbHelper.instance.customWrite(
+            'tags.replace_taxonomy.insert_record',
+            this,
+            '''
+            INSERT INTO eh_tag_taxonomy (
+              provider_key,
+              locale,
+              namespace,
+              tag_key,
+              translated_label,
+              source_sha,
+              source_version,
+              updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP));
+            ''',
+            [
+              record.providerKey,
+              record.locale,
+              record.namespace,
+              record.tagKey,
+              record.translatedLabel,
+              record.sourceSha,
+              record.sourceVersion,
+              record.updatedAt,
+            ],
+          );
+        }
+      },
+    );
   }
 
   Future<List<EhTagTaxonomyRecord>> loadEhTagTaxonomy({
@@ -2107,7 +2188,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> upsertFavorite(FavoriteRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'comic_library.upsert_favorite',
+      this,
       '''
       INSERT INTO favorites (
         comic_id,
@@ -2123,13 +2206,18 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> deleteFavorite(String comicId) {
-    return customStatement('DELETE FROM favorites WHERE comic_id = ?;', [
-      comicId,
-    ]);
+    return AppDbHelper.instance.customWrite(
+      'comic_library.delete_favorite',
+      this,
+      'DELETE FROM favorites WHERE comic_id = ?;',
+      [comicId],
+    );
   }
 
   Future<void> upsertFavoriteFolder(FavoriteFolderRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'favorite.upsert_folder',
+      this,
       '''
       INSERT INTO favorite_folders (
         folder_name,
@@ -2158,7 +2246,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> deleteFavoriteFolder(String folderName) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'favorite.delete_folder',
+      this,
       'DELETE FROM favorite_folders WHERE folder_name = ?;',
       [folderName],
     );
@@ -2168,44 +2258,60 @@ class UnifiedComicsStore extends GeneratedDatabase
     required String before,
     required String after,
   }) async {
-    await transaction(() async {
-      await customStatement(
-        '''
+    await AppDbHelper.instance.transaction(
+      'favorite.rename_folder',
+      this,
+      () async {
+        await AppDbHelper.instance.customWrite(
+          'favorite.rename_folder.folders',
+          this,
+          '''
         UPDATE favorite_folders
         SET folder_name = ?, updated_at = CURRENT_TIMESTAMP
         WHERE folder_name = ?;
         ''',
-        [after, before],
-      );
-      await customStatement(
-        '''
+          [after, before],
+        );
+        await AppDbHelper.instance.customWrite(
+          'favorite.rename_folder.items',
+          this,
+          '''
         UPDATE favorite_folder_items
         SET folder_name = ?
         WHERE folder_name = ?;
         ''',
-        [after, before],
-      );
-    });
+          [after, before],
+        );
+      },
+    );
   }
 
   Future<void> replaceFavoriteFolderOrder(List<String> folders) async {
-    await transaction(() async {
-      for (var i = 0; i < folders.length; i++) {
-        await customStatement(
-          '''
+    await AppDbHelper.instance.transaction(
+      'favorite.replace_folder_order',
+      this,
+      () async {
+        for (var i = 0; i < folders.length; i++) {
+          await AppDbHelper.instance.customWrite(
+            'favorite.replace_folder_order.item',
+            this,
+            '''
           UPDATE favorite_folders
           SET order_value = ?,
               updated_at = CURRENT_TIMESTAMP
           WHERE folder_name = ?;
           ''',
-          [i, folders[i]],
-        );
-      }
-    });
+            [i, folders[i]],
+          );
+        }
+      },
+    );
   }
 
   Future<void> upsertFavoriteFolderItem(FavoriteFolderItemRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'favorite.upsert_folder_item',
+      this,
       '''
       INSERT INTO favorite_folder_items (
         folder_name,
@@ -2225,7 +2331,9 @@ class UnifiedComicsStore extends GeneratedDatabase
     required String folderName,
     required String comicId,
   }) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'favorite.delete_folder_item',
+      this,
       '''
       DELETE FROM favorite_folder_items
       WHERE folder_name = ? AND comic_id = ?;
@@ -2235,14 +2343,18 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> deleteFavoriteFolderItemsByComic(String comicId) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'favorite.delete_folder_items_by_comic',
+      this,
       'DELETE FROM favorite_folder_items WHERE comic_id = ?;',
       [comicId],
     );
   }
 
   Future<void> upsertChapter(ChapterRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'chapter_page.upsert_chapter',
+      this,
       '''
       INSERT INTO chapters (
         id,
@@ -2274,7 +2386,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> upsertPage(PageRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'chapter_page.upsert_page',
+      this,
       '''
       INSERT INTO pages (
         id,
@@ -2312,7 +2426,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> upsertPageOrder(PageOrderRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'page_order.upsert',
+      this,
       '''
       INSERT INTO page_orders (
         id,
@@ -2350,37 +2466,47 @@ class UnifiedComicsStore extends GeneratedDatabase
     String pageOrderId,
     List<PageOrderItemRecord> items,
   ) async {
-    await transaction(() async {
-      await customStatement(
-        'DELETE FROM page_order_items WHERE page_order_id = ?;',
-        [pageOrderId],
-      );
-      for (final record in items) {
-        await customStatement(
-          '''
-          INSERT INTO page_order_items (
-            page_order_id,
-            page_id,
-            sort_order,
-            is_hidden,
-            added_at
-          )
-          VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP));
-          ''',
-          [
-            record.pageOrderId,
-            record.pageId,
-            record.sortOrder,
-            record.isHidden ? 1 : 0,
-            record.addedAt,
-          ],
+    await AppDbHelper.instance.transaction(
+      'page_order.replace_items',
+      this,
+      () async {
+        await AppDbHelper.instance.customWrite(
+          'page_order.replace_items.delete_existing',
+          this,
+          'DELETE FROM page_order_items WHERE page_order_id = ?;',
+          [pageOrderId],
         );
-      }
-    });
+        for (final record in items) {
+          await AppDbHelper.instance.customWrite(
+            'page_order.replace_items.insert_item',
+            this,
+            '''
+            INSERT INTO page_order_items (
+              page_order_id,
+              page_id,
+              sort_order,
+              is_hidden,
+              added_at
+            )
+            VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP));
+            ''',
+            [
+              record.pageOrderId,
+              record.pageId,
+              record.sortOrder,
+              record.isHidden ? 1 : 0,
+              record.addedAt,
+            ],
+          );
+        }
+      },
+    );
   }
 
   Future<void> upsertHistoryEvent(HistoryEventRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'history_event.upsert',
+      this,
       '''
       INSERT INTO history_events (
         id,
@@ -2437,7 +2563,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> upsertReaderTab(ReaderTabRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'reader_sessions.upsert_tab',
+      this,
       '''
       INSERT INTO reader_tabs (
         id,
@@ -2506,12 +2634,83 @@ class UnifiedComicsStore extends GeneratedDatabase
     if (existing == null) {
       throw StateError('Reader session $sessionId does not exist.');
     }
-    await upsertReaderSession(
+    await updateReaderSessionActiveTab(
+      sessionId: sessionId,
+      comicId: existing.read<String>('comic_id'),
+      activeTabId: activeTabId,
+    );
+  }
+
+  Future<void> updateReaderSessionActiveTab({
+    required String sessionId,
+    required String comicId,
+    required String? activeTabId,
+  }) {
+    return upsertReaderSession(
       ReaderSessionRecord(
         id: sessionId,
-        comicId: existing.read<String>('comic_id'),
+        comicId: comicId,
         activeTabId: activeTabId,
       ),
+    );
+  }
+
+  Future<void> saveReaderProgress({
+    required ReaderSessionRecord session,
+    required ReaderTabRecord tab,
+    required bool makeActive,
+  }) {
+    return AppDbHelper.instance.transaction(
+      'reader_sessions.saveProgress',
+      this,
+      () async {
+        await _runReaderSessionUpsert(session);
+        await customStatement(
+          '''
+        INSERT INTO reader_tabs (
+          id,
+          session_id,
+          comic_id,
+          chapter_id,
+          page_index,
+          source_ref_json,
+          page_order_id,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
+        ON CONFLICT(id) DO UPDATE SET
+          session_id = excluded.session_id,
+          comic_id = excluded.comic_id,
+          chapter_id = excluded.chapter_id,
+          page_index = excluded.page_index,
+          source_ref_json = excluded.source_ref_json,
+          page_order_id = excluded.page_order_id,
+          updated_at = COALESCE(excluded.updated_at, CURRENT_TIMESTAMP);
+        ''',
+          [
+            tab.id,
+            tab.sessionId,
+            tab.comicId,
+            tab.chapterId,
+            tab.pageIndex,
+            tab.sourceRefJson,
+            tab.pageOrderId,
+            tab.createdAt,
+            tab.updatedAt,
+          ],
+        );
+        if (makeActive) {
+          await customStatement(
+            '''
+          UPDATE reader_sessions
+          SET active_tab_id = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?;
+          ''',
+            [tab.id, session.id],
+          );
+        }
+      },
     );
   }
 
@@ -2579,13 +2778,21 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> deleteReaderSession(String sessionId) {
-    return customStatement('DELETE FROM reader_sessions WHERE id = ?;', [
-      sessionId,
-    ]);
+    return AppDbHelper.instance.customWrite(
+      'reader_sessions.delete_session',
+      this,
+      'DELETE FROM reader_sessions WHERE id = ?;',
+      [sessionId],
+    );
   }
 
   Future<void> deleteReaderTab(String tabId) {
-    return customStatement('DELETE FROM reader_tabs WHERE id = ?;', [tabId]);
+    return AppDbHelper.instance.customWrite(
+      'reader_sessions.delete_tab',
+      this,
+      'DELETE FROM reader_tabs WHERE id = ?;',
+      [tabId],
+    );
   }
 
   Future<List<ReaderActivityRecord>> loadReaderActivity({int? limit}) async {
@@ -2631,13 +2838,21 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> deleteReaderActivity(String comicId) {
-    return customStatement('DELETE FROM reader_sessions WHERE comic_id = ?;', [
-      comicId,
-    ]);
+    return AppDbHelper.instance.customWrite(
+      'reader_sessions.delete_activity',
+      this,
+      'DELETE FROM reader_sessions WHERE comic_id = ?;',
+      [comicId],
+    );
   }
 
   Future<void> clearReaderActivity() {
-    return customStatement('DELETE FROM reader_sessions;');
+    return AppDbHelper.instance.customWrite(
+      'reader_sessions.clear_activity',
+      this,
+      'DELETE FROM reader_sessions;',
+      const <Object?>[],
+    );
   }
 
   Future<Map<String, ReaderStatusRecord>> loadReaderStatusesForComics(
@@ -2681,7 +2896,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> upsertRemoteMatchCandidate(RemoteMatchCandidateRecord record) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'remote_match.upsert_candidate',
+      this,
       '''
       INSERT INTO remote_match_candidates (
         id,
@@ -2737,7 +2954,9 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> deleteRemoteMatchCandidate(String candidateId) {
-    return customStatement(
+    return AppDbHelper.instance.customWrite(
+      'remote_match.delete_candidate',
+      this,
       'DELETE FROM remote_match_candidates WHERE id = ?;',
       [candidateId],
     );
@@ -2821,9 +3040,12 @@ class UnifiedComicsStore extends GeneratedDatabase
   }
 
   Future<void> deleteLocalLibraryItemById(String localLibraryItemId) {
-    return customStatement('DELETE FROM local_library_items WHERE id = ?;', [
-      localLibraryItemId,
-    ]);
+    return AppDbHelper.instance.customWrite(
+      'comic_library.delete_local_library_item_by_id',
+      this,
+      'DELETE FROM local_library_items WHERE id = ?;',
+      [localLibraryItemId],
+    );
   }
 
   Future<List<String>> loadChapterIdsForComic(String comicId) async {

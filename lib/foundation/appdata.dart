@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:venera/foundation/app/app.dart';
+import 'package:venera/foundation/database/app_db_helper.dart';
 import 'package:venera/foundation/db/unified_comics_store.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/utils/data_sync.dart';
@@ -281,46 +282,76 @@ class Appdata with Init {
       return;
     }
     final now = DateTime.now().millisecondsSinceEpoch;
-    await store.clearAppSettings();
-    await store.clearSearchHistory();
-    await store.clearImplicitData();
+    await AppDbHelper.instance.transaction('appdata.save', store, () async {
+      final existingRows = await store.customSelect(
+        'SELECT key FROM app_settings ORDER BY key ASC;',
+      ).get();
+      final existingKeys = existingRows
+          .map((row) => row.read<String>('key'))
+          .toSet();
+      final currentKeys = settings._data.keys.toSet();
+      final removedKeys = existingKeys.difference(currentKeys);
 
-    for (final entry in settings._data.entries) {
-      final value = entry.value;
-      final valueType = _valueTypeOf(value);
-      final syncPolicy = _disableSync.contains(entry.key)
-          ? 'local_only'
-          : 'syncable';
-      await store.upsertAppSetting(
-        AppSettingRecord(
-          key: entry.key,
-          valueJson: jsonEncode(value),
-          valueType: valueType,
-          syncPolicy: syncPolicy,
-          updatedAtMs: now,
-        ),
-      );
-    }
+      for (final key in removedKeys) {
+        await store.customStatement('DELETE FROM app_settings WHERE key = ?;', [
+          key,
+        ]);
+      }
 
-    for (var i = 0; i < searchHistory.length; i++) {
-      await store.upsertSearchHistory(
-        SearchHistoryRecord(
-          keyword: searchHistory[i],
-          position: i,
-          updatedAtMs: now,
-        ),
-      );
-    }
+      for (final entry in settings._data.entries) {
+        final value = entry.value;
+        final valueType = _valueTypeOf(value);
+        final syncPolicy = _disableSync.contains(entry.key)
+            ? 'local_only'
+            : 'syncable';
+        await store.customStatement(
+          '''
+          INSERT INTO app_settings (key, value_json, value_type, sync_policy, updated_at_ms)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(key) DO UPDATE SET
+            value_json = excluded.value_json,
+            value_type = excluded.value_type,
+            sync_policy = excluded.sync_policy,
+            updated_at_ms = excluded.updated_at_ms;
+          ''',
+          [
+            entry.key,
+            jsonEncode(value),
+            valueType,
+            syncPolicy,
+            now,
+          ],
+        );
+      }
 
-    for (final entry in implicitData.entries) {
-      await store.upsertImplicitData(
-        ImplicitDataRecord(
-          key: entry.key,
-          valueJson: jsonEncode(entry.value),
-          updatedAtMs: now,
-        ),
-      );
-    }
+      await store.customStatement('DELETE FROM search_history;');
+      for (var i = 0; i < searchHistory.length; i++) {
+        await store.customStatement(
+          '''
+          INSERT INTO search_history (keyword, position, updated_at_ms)
+          VALUES (?, ?, ?)
+          ON CONFLICT(keyword) DO UPDATE SET
+            position = excluded.position,
+            updated_at_ms = excluded.updated_at_ms;
+          ''',
+          [searchHistory[i], i, now],
+        );
+      }
+
+      await store.customStatement('DELETE FROM implicit_data;');
+      for (final entry in implicitData.entries) {
+        await store.customStatement(
+          '''
+          INSERT INTO implicit_data (key, value_json, updated_at_ms)
+          VALUES (?, ?, ?)
+          ON CONFLICT(key) DO UPDATE SET
+            value_json = excluded.value_json,
+            updated_at_ms = excluded.updated_at_ms;
+          ''',
+          [entry.key, jsonEncode(entry.value), now],
+        );
+      }
+    });
   }
 
   String _valueTypeOf(Object? value) {
