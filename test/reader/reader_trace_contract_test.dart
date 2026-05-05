@@ -631,6 +631,86 @@ void main() {
   );
 
   test(
+    'reader parent unmount diagnostic is suppressed for expected didPop teardown',
+    () {
+      emitReaderParentUnmountDiagnosticForTesting(
+        buildReaderParentShellDiagnosticForTesting(
+          owner: 'ReaderWithLoading.parentUnmount',
+          branch: 'content',
+          readerChildMounted: false,
+          comicId: '1',
+          loadMode: 'local',
+          sourceKey: 'local',
+          chapterId: '1:__imported__',
+          chapterIndex: 1,
+          page: 1,
+          selectedIndex: 1,
+          currentPage: 1,
+          routeName: '/reader',
+          routeSnapshot: const {
+            'routeHash': 101,
+            'routeLifecycleEvent': 'didPop',
+          },
+          expectedReaderTabId: 'local:local:1:1:__imported__',
+          activeReaderTabId: 'local:local:1:1:__imported__',
+          pageOrderId: '1:__imported__:source_default',
+          reason: 'parentState.dispose',
+          openDurationMs: 880,
+        ),
+      );
+
+      final messages = DevDiagnosticsApi.recent(
+        channel: 'reader.lifecycle',
+      ).map((event) => event.message);
+      expect(messages, isNot(contains('reader.parent.unmount.retainedTab')));
+    },
+  );
+
+  test('short lived reader dispose warning is suppressed for didRemove', () {
+    expect(shouldWarnOnShortLivedReaderDisposeForTesting('didRemove'), isFalse);
+    expect(shouldWarnOnShortLivedReaderDisposeForTesting('didPop'), isFalse);
+    expect(shouldWarnOnShortLivedReaderDisposeForTesting('didReplace'), isFalse);
+    expect(shouldWarnOnShortLivedReaderDisposeForTesting('didPush'), isTrue);
+    expect(shouldWarnOnShortLivedReaderDisposeForTesting(null), isTrue);
+  });
+
+  test(
+    'short lived reader dispose diagnostic is suppressed for expected didRemove teardown',
+    () {
+      emitReaderShortLivedDisposeDiagnosticForTesting({
+        'routeLifecycleEvent': 'didRemove',
+        'disposeCause': 'State.dispose',
+        'disposeOwner': 'Reader.dispose',
+        'comicId': '1',
+      });
+
+      final messages = DevDiagnosticsApi.recent(
+        channel: 'reader.lifecycle',
+      ).map((event) => event.message);
+      expect(messages, isNot(contains('reader.dispose.short_lived')));
+    },
+  );
+
+  test(
+    'short lived reader dispose diagnostic still emits for unexpected teardown',
+    () {
+      emitReaderShortLivedDisposeDiagnosticForTesting({
+        'routeLifecycleEvent': 'didPush',
+        'disposeCause': 'State.dispose',
+        'disposeOwner': 'Reader.dispose',
+        'comicId': '1',
+        'openDurationMs': 800,
+      });
+
+      final event = DevDiagnosticsApi.recent(
+        channel: 'reader.lifecycle',
+      ).lastWhere((event) => event.message == 'reader.dispose.short_lived');
+      expect(event.data['routeLifecycleEvent'], 'didPush');
+      expect(event.data['disposeOwner'], 'Reader.dispose');
+    },
+  );
+
+  test(
     'shell build diagnostic includes active tab id expected tab id and page order id',
     () {
       final data = buildReaderParentShellDiagnosticForTesting(
@@ -829,6 +909,171 @@ void main() {
       expect(start['chapterId'], 'ch-3');
       expect(start['page'], 4);
       expect(end['resultSummary'], 'bytes=1234');
+    },
+  );
+
+  test(
+    'provider pending clears after load/decode path and does not emit notSubscribed',
+    () {
+      readerTraceRecorder.clear();
+      ReaderDiagnostics.clearPendingProviderSubscriptionsForTesting();
+      ReaderDiagnostics.markImageProviderAwaitingSubscription(
+        loadMode: 'local',
+        sourceKey: 'local',
+        comicId: 'comic-7',
+        chapterId: 'ch-3',
+        page: 4,
+        imageKey: 'file:///tmp/page-4.jpg',
+      );
+
+      final callId = ReaderDiagnostics.beginImageLoad(
+        loadMode: 'local',
+        sourceKey: 'local',
+        comicId: 'comic-7',
+        chapterId: 'ch-3',
+        page: 4,
+        imageKey: 'file:///tmp/page-4.jpg',
+      );
+      ReaderDiagnostics.endImageLoad(
+        callId: callId,
+        loadMode: 'local',
+        sourceKey: 'local',
+        comicId: 'comic-7',
+        chapterId: 'ch-3',
+        page: 4,
+        imageKey: 'file:///tmp/page-4.jpg',
+        byteLength: 1234,
+      );
+      ReaderDiagnostics.recordImageDecodeSuccess(
+        imageKey: 'file:///tmp/page-4.jpg',
+        sourceKey: 'local',
+        comicId: 'comic-7',
+        chapterId: 'ch-3',
+        page: 4,
+        byteLength: 1234,
+      );
+
+      final emitted = ReaderDiagnostics.recordProviderNotSubscribedIfPending(
+        loadMode: 'local',
+        sourceKey: 'local',
+        comicId: 'comic-7',
+        chapterId: 'ch-3',
+        page: 4,
+        imageKey: 'file:///tmp/page-4.jpg',
+        owner: 'reader.render.postFrame',
+      );
+      expect(emitted, isFalse);
+
+      final warningEvents = DevDiagnosticsApi.recent(channel: 'reader.render');
+      expect(
+        warningEvents.where(
+          (event) => event.message == 'reader.render.provider.notSubscribed',
+        ),
+        isEmpty,
+      );
+    },
+  );
+
+  test('provider never listened still emits notSubscribed warning', () {
+    readerTraceRecorder.clear();
+    ReaderDiagnostics.clearPendingProviderSubscriptionsForTesting();
+    ReaderDiagnostics.markImageProviderAwaitingSubscription(
+      loadMode: 'local',
+      sourceKey: 'local',
+      comicId: 'comic-8',
+      chapterId: 'ch-4',
+      page: 1,
+      imageKey: 'file:///tmp/page-1.jpg',
+    );
+
+    final emitted = ReaderDiagnostics.recordProviderNotSubscribedIfPending(
+      loadMode: 'local',
+      sourceKey: 'local',
+      comicId: 'comic-8',
+      chapterId: 'ch-4',
+      page: 1,
+      imageKey: 'file:///tmp/page-1.jpg',
+      owner: 'reader.render.postFrame',
+    );
+    expect(emitted, isTrue);
+
+    final warning = DevDiagnosticsApi.recent(channel: 'reader.render').single;
+    expect(warning.message, 'reader.render.provider.notSubscribed');
+    expect(warning.data['code'], 'PROVIDER_NOT_SUBSCRIBED');
+  });
+
+  test(
+    'provider recreated for same imageKey after prior success does not emit notSubscribed',
+    () {
+      readerTraceRecorder.clear();
+      ReaderDiagnostics.clearPendingProviderSubscriptionsForTesting();
+
+      ReaderDiagnostics.markImageProviderAwaitingSubscription(
+        loadMode: 'local',
+        sourceKey: 'local',
+        comicId: 'comic-9',
+        chapterId: 'ch-6',
+        page: 1,
+        imageKey: 'file:///tmp/page-rebuild.jpg',
+        providerTrackingKey: 'provider-A',
+      );
+      final callId = ReaderDiagnostics.beginImageLoad(
+        loadMode: 'local',
+        sourceKey: 'local',
+        comicId: 'comic-9',
+        chapterId: 'ch-6',
+        page: 1,
+        imageKey: 'file:///tmp/page-rebuild.jpg',
+        providerTrackingKey: 'provider-A',
+      );
+      ReaderDiagnostics.endImageLoad(
+        callId: callId,
+        loadMode: 'local',
+        sourceKey: 'local',
+        comicId: 'comic-9',
+        chapterId: 'ch-6',
+        page: 1,
+        imageKey: 'file:///tmp/page-rebuild.jpg',
+        byteLength: 256,
+      );
+      ReaderDiagnostics.recordImageDecodeSuccess(
+        imageKey: 'file:///tmp/page-rebuild.jpg',
+        sourceKey: 'local',
+        comicId: 'comic-9',
+        chapterId: 'ch-6',
+        page: 1,
+        byteLength: 256,
+      );
+
+      ReaderDiagnostics.markImageProviderAwaitingSubscription(
+        loadMode: 'local',
+        sourceKey: 'local',
+        comicId: 'comic-9',
+        chapterId: 'ch-6',
+        page: 1,
+        imageKey: 'file:///tmp/page-rebuild.jpg',
+        providerTrackingKey: 'provider-B',
+      );
+
+      final emitted = ReaderDiagnostics.recordProviderNotSubscribedIfPending(
+        loadMode: 'local',
+        sourceKey: 'local',
+        comicId: 'comic-9',
+        chapterId: 'ch-6',
+        page: 1,
+        imageKey: 'file:///tmp/page-rebuild.jpg',
+        owner: 'reader.render.postFrame',
+        providerTrackingKey: 'provider-B',
+      );
+      expect(emitted, isFalse);
+
+      final warningEvents = DevDiagnosticsApi.recent(channel: 'reader.render');
+      expect(
+        warningEvents.where(
+          (event) => event.message == 'reader.render.provider.notSubscribed',
+        ),
+        isEmpty,
+      );
     },
   );
 
