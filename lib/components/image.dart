@@ -259,6 +259,12 @@ class _AnimatedImageState extends State<AnimatedImage>
       return;
     }
 
+    final imageProvider = widget.image;
+    if (imageProvider is ReaderImageProvider) {
+      ReaderDiagnostics.markImageProviderSubscriptionObserved(
+        imageKey: imageProvider.imageKey,
+      );
+    }
     _imageStream!.addListener(_getListener());
     _completerHandle?.dispose();
     _completerHandle = null;
