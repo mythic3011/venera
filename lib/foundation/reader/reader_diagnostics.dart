@@ -11,6 +11,8 @@ class ReaderDiagnostics {
   static final Map<String, DateTime> _callStarts = {};
   static final Map<String, String> _callCorrelationIds = {};
   static final Map<String, DateTime> _pendingProviderSubscriptions = {};
+  static final Map<String, Set<String>> _pendingProviderKeysByImageKey = {};
+  static final Map<String, _ImageLifecycleState> _imageLifecycleByKey = {};
 
   static Map<String, dynamic> toDiagnosticsJson() {
     return readerTraceRecorder.toDiagnosticsJson();
@@ -599,16 +601,41 @@ class ReaderDiagnostics {
     required String chapterId,
     required int page,
     required String imageKey,
+    String? providerTrackingKey,
   }) {
-    _pendingProviderSubscriptions[_imageProviderSubscriptionKey(
-          loadMode: loadMode,
-          sourceKey: sourceKey,
-          comicId: comicId,
-          chapterId: chapterId,
-          page: page,
-          imageKey: imageKey,
-        )] =
-        DateTime.now();
+    final now = DateTime.now();
+    final lifecycle = _imageLifecycleByKey.putIfAbsent(
+      imageKey,
+      _ImageLifecycleState.new,
+    );
+    lifecycle.providerCreatedAt = now;
+    if (lifecycle.hasPreviousSuccessfulState) {
+      return;
+    }
+    final key = _imageProviderSubscriptionKey(
+      loadMode: loadMode,
+      sourceKey: sourceKey,
+      comicId: comicId,
+      chapterId: chapterId,
+      page: page,
+      imageKey: imageKey,
+      providerTrackingKey: providerTrackingKey,
+    );
+    _pendingProviderSubscriptions[key] = now;
+    _pendingProviderKeysByImageKey.putIfAbsent(imageKey, () => <String>{}).add(
+      key,
+    );
+  }
+
+  static void markImagePageAttached({
+    required String imageKey,
+  }) {
+    final lifecycle = _imageLifecycleByKey.putIfAbsent(
+      imageKey,
+      _ImageLifecycleState.new,
+    );
+    lifecycle.pageAttachedAt = DateTime.now();
+    _clearPendingProviderSubscriptionsByImageKey(imageKey: imageKey);
   }
 
   static void markImageProviderLoadStarted({
@@ -618,17 +645,88 @@ class ReaderDiagnostics {
     required String chapterId,
     required int page,
     required String imageKey,
+    String? providerTrackingKey,
   }) {
-    _pendingProviderSubscriptions.remove(
-      _imageProviderSubscriptionKey(
-        loadMode: loadMode,
-        sourceKey: sourceKey,
-        comicId: comicId,
-        chapterId: chapterId,
-        page: page,
-        imageKey: imageKey,
-      ),
+    final lifecycle = _imageLifecycleByKey.putIfAbsent(
+      imageKey,
+      _ImageLifecycleState.new,
     );
+    lifecycle.providerLoadStartedAt = DateTime.now();
+    _clearPendingProviderSubscription(
+      loadMode: loadMode,
+      sourceKey: sourceKey,
+      comicId: comicId,
+      chapterId: chapterId,
+      page: page,
+      imageKey: imageKey,
+      providerTrackingKey: providerTrackingKey,
+    );
+    _clearPendingProviderSubscriptionsByImageKey(imageKey: imageKey);
+  }
+
+  static void markImageProviderLoadSucceeded({
+    required String imageKey,
+  }) {
+    final lifecycle = _imageLifecycleByKey.putIfAbsent(
+      imageKey,
+      _ImageLifecycleState.new,
+    );
+    lifecycle.providerLoadSucceededAt = DateTime.now();
+    lifecycle.hasPreviousSuccessfulState = true;
+    _clearPendingProviderSubscriptionsByImageKey(imageKey: imageKey);
+  }
+
+  static void markImageProviderSubscriptionObserved({
+    required String imageKey,
+  }) {
+    final lifecycle = _imageLifecycleByKey.putIfAbsent(
+      imageKey,
+      _ImageLifecycleState.new,
+    );
+    lifecycle.decodeSucceededAt = DateTime.now();
+    lifecycle.hasPreviousSuccessfulState = true;
+    _clearPendingProviderSubscriptionsByImageKey(imageKey: imageKey);
+  }
+
+  static void _clearPendingProviderSubscription({
+    required String loadMode,
+    required String? sourceKey,
+    required String comicId,
+    required String chapterId,
+    required int page,
+    required String imageKey,
+    String? providerTrackingKey,
+  }) {
+    final key = _imageProviderSubscriptionKey(
+      loadMode: loadMode,
+      sourceKey: sourceKey,
+      comicId: comicId,
+      chapterId: chapterId,
+      page: page,
+      imageKey: imageKey,
+      providerTrackingKey: providerTrackingKey,
+    );
+    _pendingProviderSubscriptions.remove(key);
+    final keysForImage = _pendingProviderKeysByImageKey[imageKey];
+    if (keysForImage == null) {
+      return;
+    }
+    keysForImage.remove(key);
+    if (keysForImage.isEmpty) {
+      _pendingProviderKeysByImageKey.remove(imageKey);
+    }
+  }
+
+  static void _clearPendingProviderSubscriptionsByImageKey({
+    required String imageKey,
+  }) {
+    final keysForImage = _pendingProviderKeysByImageKey.remove(imageKey);
+    if (keysForImage == null || keysForImage.isEmpty) {
+      return;
+    }
+    for (final key in keysForImage) {
+      _pendingProviderSubscriptions.remove(key);
+    }
   }
 
   static bool recordProviderNotSubscribedIfPending({
@@ -639,6 +737,7 @@ class ReaderDiagnostics {
     required int page,
     required String imageKey,
     required String owner,
+    String? providerTrackingKey,
   }) {
     final key = _imageProviderSubscriptionKey(
       loadMode: loadMode,
@@ -647,9 +746,22 @@ class ReaderDiagnostics {
       chapterId: chapterId,
       page: page,
       imageKey: imageKey,
+      providerTrackingKey: providerTrackingKey,
     );
     final createdAt = _pendingProviderSubscriptions.remove(key);
+    final keysForImage = _pendingProviderKeysByImageKey[imageKey];
+    keysForImage?.remove(key);
+    if (keysForImage != null && keysForImage.isEmpty) {
+      _pendingProviderKeysByImageKey.remove(imageKey);
+    }
     if (createdAt == null) {
+      return false;
+    }
+    final lifecycle = _imageLifecycleByKey[imageKey];
+    if (_shouldSuppressProviderNotSubscribed(
+      lifecycle: lifecycle,
+      providerCreatedAt: createdAt,
+    )) {
       return false;
     }
     final elapsedMs = DateTime.now().difference(createdAt).inMilliseconds;
@@ -689,6 +801,47 @@ class ReaderDiagnostics {
   @visibleForTesting
   static void clearPendingProviderSubscriptionsForTesting() {
     _pendingProviderSubscriptions.clear();
+    _pendingProviderKeysByImageKey.clear();
+    _imageLifecycleByKey.clear();
+  }
+
+  static bool _shouldSuppressProviderNotSubscribed({
+    required _ImageLifecycleState? lifecycle,
+    required DateTime providerCreatedAt,
+  }) {
+    if (lifecycle == null) {
+      return false;
+    }
+    if (lifecycle.hasPreviousSuccessfulState) {
+      return true;
+    }
+    return _isNearOrAfter(
+          moment: lifecycle.pageAttachedAt,
+          reference: providerCreatedAt,
+        ) ||
+        _isNearOrAfter(
+          moment: lifecycle.providerLoadStartedAt,
+          reference: providerCreatedAt,
+        ) ||
+        _isNearOrAfter(
+          moment: lifecycle.providerLoadSucceededAt,
+          reference: providerCreatedAt,
+        ) ||
+        _isNearOrAfter(
+          moment: lifecycle.decodeSucceededAt,
+          reference: providerCreatedAt,
+        );
+  }
+
+  static bool _isNearOrAfter({
+    required DateTime? moment,
+    required DateTime reference,
+  }) {
+    if (moment == null) {
+      return false;
+    }
+    final lowerBound = reference.subtract(const Duration(milliseconds: 250));
+    return !moment.isBefore(lowerBound);
   }
 
   static String beginImageLoad({
@@ -698,6 +851,7 @@ class ReaderDiagnostics {
     required String chapterId,
     required int page,
     required String imageKey,
+    String? providerTrackingKey,
   }) {
     markImageProviderLoadStarted(
       loadMode: loadMode,
@@ -706,6 +860,7 @@ class ReaderDiagnostics {
       chapterId: chapterId,
       page: page,
       imageKey: imageKey,
+      providerTrackingKey: providerTrackingKey,
     );
     return beginCall(
       functionName: 'ReaderImageProvider.load',
@@ -726,7 +881,11 @@ class ReaderDiagnostics {
     required String chapterId,
     required int page,
     required String imageKey,
+    String? providerTrackingKey,
   }) {
+    if (providerTrackingKey != null && providerTrackingKey.isNotEmpty) {
+      return providerTrackingKey;
+    }
     return '$loadMode|${sourceKey ?? ''}|$comicId|$chapterId|$page|$imageKey';
   }
 
@@ -751,6 +910,7 @@ class ReaderDiagnostics {
       page: page,
       resultSummary: 'bytes=$byteLength',
     );
+    markImageProviderLoadSucceeded(imageKey: imageKey);
   }
 
   static void failImageLoad({
@@ -844,6 +1004,7 @@ class ReaderDiagnostics {
         'byteLength': byteLength,
       },
     );
+    markImageProviderSubscriptionObserved(imageKey: imageKey);
   }
 
   static void recordImageDecodeError({
@@ -989,4 +1150,13 @@ class ReaderDiagnostics {
     }
     return trimmed.replaceAll(RegExp(r'\s+'), '_');
   }
+}
+
+class _ImageLifecycleState {
+  DateTime? providerCreatedAt;
+  DateTime? pageAttachedAt;
+  DateTime? providerLoadStartedAt;
+  DateTime? providerLoadSucceededAt;
+  DateTime? decodeSucceededAt;
+  bool hasPreviousSuccessfulState = false;
 }
