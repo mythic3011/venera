@@ -126,10 +126,10 @@ void main() {
   );
 
   test(
-    'localDownloads initializes local manager before resolving import root',
+    'localDownloads resolves canonical import root without LocalManager init',
     () async {
       final content = await File('lib/utils/import_comic.dart').readAsString();
-      expect(content.contains('LocalManager().ensureInitialized()'), isTrue);
+      expect(content.contains('LocalManager().ensureInitialized()'), isFalse);
     },
   );
 
