@@ -1088,7 +1088,6 @@ class ImportComic {
       bool cancelled = false;
       try {
         lifecycle.phase('local_downloads.root.resolve.started');
-        await LocalManager().ensureInitialized();
         rootPath = await localImportStorage.requireRootPath();
         localDir = Directory(rootPath);
         if (!localDir.existsSync()) {
