@@ -286,6 +286,7 @@ class _ReaderState extends State<Reader>
   bool _isInitialized = false;
   bool _traceOpened = false;
   DateTime? _traceOpenedAt;
+  int? _routeHashSnapshot;
   String? _routeNameSnapshot;
   ReaderPaginationDiagnostics? _lastLoadedPaginationDiagnostics;
 
@@ -351,7 +352,9 @@ class _ReaderState extends State<Reader>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _routeNameSnapshot = ModalRoute.of(context)?.settings.name;
+    final route = ModalRoute.of(context);
+    _routeNameSnapshot = route?.settings.name;
+    _routeHashSnapshot = route?.hashCode;
     if (!_traceOpened) {
       _traceOpenedAt = DateTime.now();
       recordReaderOpenDiagnostics();
