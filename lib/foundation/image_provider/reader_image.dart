@@ -49,7 +49,7 @@ String readerImageLoadContextForTesting({
 class ReaderImageProvider
     extends BaseImageProvider<image_provider.ReaderImageProvider> {
   /// Image provider for normal image.
-  const ReaderImageProvider(
+  ReaderImageProvider(
     this.imageKey,
     this.sourceRef,
     this.canonicalComicId,
@@ -57,6 +57,7 @@ class ReaderImageProvider
     this.chapterRefId,
     this.page, {
     this.enableResize = false,
+    required this.providerTrackingKey,
   });
 
   final String imageKey;
@@ -75,6 +76,8 @@ class ReaderImageProvider
   String get eid => chapterRefId;
 
   final int page;
+
+  final String providerTrackingKey;
 
   @override
   final bool enableResize;
@@ -99,6 +102,7 @@ class ReaderImageProvider
       chapterId: chapterRefId,
       page: page,
       imageKey: imageKey,
+      providerTrackingKey: providerTrackingKey,
     );
     try {
       if (imageKey.startsWith('file://')) {
