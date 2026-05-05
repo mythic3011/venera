@@ -9,6 +9,7 @@ ReaderImageProvider buildReaderImageProvider({
   required int page,
   required bool enableResize,
 }) {
+  final providerTrackingKey = allocateReaderProviderTrackingKeyForTesting();
   recordReaderPageAttachedDiagnostic(
     imageKey: imageKey,
     sourceRef: sourceRef,
@@ -22,6 +23,7 @@ ReaderImageProvider buildReaderImageProvider({
     canonicalComicId: canonicalComicId,
     chapterRefId: chapterRefId,
     page: page,
+    providerTrackingKey: providerTrackingKey,
   );
   return ReaderImageProvider(
     imageKey,
@@ -31,6 +33,7 @@ ReaderImageProvider buildReaderImageProvider({
     chapterRefId,
     page,
     enableResize: enableResize,
+    providerTrackingKey: providerTrackingKey,
   );
 }
 
