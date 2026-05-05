@@ -1,5 +1,12 @@
 part of 'reader.dart';
 
+int _readerProviderTrackingCounter = 0;
+
+String allocateReaderProviderTrackingKeyForTesting() {
+  _readerProviderTrackingCounter++;
+  return 'reader-provider-$_readerProviderTrackingCounter';
+}
+
 void recordReaderPageAttachedDiagnostic({
   required String imageKey,
   required SourceRef sourceRef,
@@ -8,6 +15,7 @@ void recordReaderPageAttachedDiagnostic({
   required int page,
 }) {
   final loadMode = imageKey.startsWith('file://') ? 'local' : 'remote';
+  ReaderDiagnostics.markImagePageAttached(imageKey: imageKey);
   AppDiagnostics.trace(
     'reader.render',
     'reader.render.page.attached',
@@ -28,6 +36,7 @@ void recordReaderProviderCreatedDiagnostic({
   required String canonicalComicId,
   required String chapterRefId,
   required int page,
+  required String providerTrackingKey,
 }) {
   final loadMode = imageKey.startsWith('file://') ? 'local' : 'remote';
   ReaderDiagnostics.markImageProviderAwaitingSubscription(
@@ -37,6 +46,7 @@ void recordReaderProviderCreatedDiagnostic({
     chapterId: chapterRefId,
     page: page,
     imageKey: imageKey,
+    providerTrackingKey: providerTrackingKey,
   );
   AppDiagnostics.trace(
     'reader.render',
@@ -63,15 +73,18 @@ void recordReaderProviderCreatedDiagnostic({
     },
   );
   SchedulerBinding.instance.addPostFrameCallback((_) {
-    ReaderDiagnostics.recordProviderNotSubscribedIfPending(
-      loadMode: loadMode,
-      sourceKey: sourceRef.sourceKey,
-      comicId: canonicalComicId,
-      chapterId: chapterRefId,
-      page: page,
-      imageKey: imageKey,
-      owner: 'reader.render.postFrame',
-    );
+    Future<void>.delayed(const Duration(milliseconds: 50), () {
+      ReaderDiagnostics.recordProviderNotSubscribedIfPending(
+        loadMode: loadMode,
+        sourceKey: sourceRef.sourceKey,
+        comicId: canonicalComicId,
+        chapterId: chapterRefId,
+        page: page,
+        imageKey: imageKey,
+        owner: 'reader.render.postFrame',
+        providerTrackingKey: providerTrackingKey,
+      );
+    });
   });
 }
 
