@@ -117,6 +117,26 @@ void main() {
     expect(snapshot.pageOrderId, '1:__imported__:source_default');
   });
 
+  test('snapshot reports local only when canonical local reader has no source link', () async {
+    await _insertCanonicalImportedReaderFixture(store);
+
+    final snapshot =
+        await ReaderDebugSnapshotService(
+          localLibraryStore: store,
+          comicDetailStore: store,
+          readerSessionStore: store,
+        ).build(
+          comicId: '1',
+          chapterId: '1:__imported__',
+          loadMode: 'local',
+          controllerLifecycle: 'open',
+        );
+
+    expect(snapshot.linkStatus, 'local_only');
+    expect(snapshot.sourcePlatformId, isNull);
+    expect(snapshot.sourceComicId, isNull);
+  });
+
   test(
     'reader diagnostics emits stable correlation id across call timeline',
     () {
