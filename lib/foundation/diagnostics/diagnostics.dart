@@ -424,6 +424,10 @@ abstract final class AppDiagnostics {
     unawaited(_structuredLogWriter.close());
   }
 
+  static Future<void> flushPersisted() {
+    return _structuredLogWriter.close();
+  }
+
   static void _record({
     required DiagnosticLevel level,
     required String channel,

@@ -61,3 +61,4 @@ macos/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme
 result/*.dmg
 .worktrees/
 android/build/
+docs/plans/.DS_Store

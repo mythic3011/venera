@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:venera/foundation/app/app.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
+import 'package:venera/foundation/reader/reader_diagnostics.dart';
 import 'package:venera/foundation/log.dart';
 import 'package:venera/utils/io.dart';
 
@@ -86,8 +87,116 @@ Future<String> buildDiagnosticsExportText() async {
   }
   buffer.writeln();
 
+  buffer.writeln("=== Crash Runtime Metadata (JSON) ===");
+  buffer.writeln(jsonEncode(await _buildCrashRuntimeMetadata()));
+  buffer.writeln();
+
+  buffer.writeln("=== Previous Lifecycle Marker (JSON) ===");
+  final marker = await _readLifecycleMarker();
+  if (marker == null) {
+    buffer.writeln('(missing)');
+  } else {
+    final sanitized = Map<String, Object?>.from(marker);
+    sanitized.remove('runtimeRoot');
+    if (sanitized['previousMarkerState'] is Map) {
+      final previousState = Map<String, Object?>.from(
+        sanitized['previousMarkerState'] as Map,
+      );
+      previousState.remove('runtimeRoot');
+      sanitized['previousMarkerState'] = previousState;
+    }
+    buffer.writeln(jsonEncode(sanitized));
+  }
+  buffer.writeln();
+
+  buffer.writeln("=== DB Lock Summary (JSON) ===");
+  buffer.writeln(jsonEncode(_dbLockSummary()));
+  buffer.writeln();
+
+  buffer.writeln("=== Reader Trace Snapshot (JSON) ===");
+  buffer.writeln(jsonEncode(_readerTraceSnapshot()));
+  buffer.writeln();
+
+  buffer.writeln("=== Legacy Log Tail (logs.txt) ===");
+  final tail = await _readLegacyLogTail(maxLines: 200);
+  if (tail.trim().isEmpty) {
+    buffer.writeln('(empty)');
+  } else {
+    buffer.writeln(tail);
+  }
+  buffer.writeln();
+
   buffer.write(await Log.buildExportText());
   return buffer.toString();
+}
+
+Future<Map<String, Object?>> _buildCrashRuntimeMetadata() async {
+  return {
+    'appVersion': App.version,
+    'platform': {'os': Platform.operatingSystem, 'isDesktop': App.isDesktop},
+    'runtime': {
+      'runtimeRootBase': App.runtimeRootBasePath,
+      'runtimeRootOverrideActive': App.runtimeRootOverrideActive,
+    },
+    'generatedAt': DateTime.now().toUtc().toIso8601String(),
+  };
+}
+
+Future<Map<String, Object?>?> _readLifecycleMarker() async {
+  if (!App.isInitialized) {
+    return null;
+  }
+  final markerFile = File(
+    FilePath.join(App.dataPath, 'runtime', 'lifecycle_marker.json'),
+  );
+  if (!await markerFile.exists()) {
+    return null;
+  }
+  final parsed = jsonDecode(await markerFile.readAsString());
+  if (parsed is! Map) {
+    return null;
+  }
+  return Map<String, Object?>.from(parsed);
+}
+
+Map<String, Object?> _dbLockSummary() {
+  final events = DevDiagnosticsApi.recent(channel: 'app.fatal');
+  final byCode = <String, int>{};
+  var total = 0;
+  for (final event in events) {
+    if (event.message != 'app.fatal.dbLocked') {
+      continue;
+    }
+    total++;
+    final code = '${event.data['sqliteCode'] ?? 'unknown'}';
+    byCode[code] = (byCode[code] ?? 0) + 1;
+  }
+  return {'total': total, 'bySqliteCode': byCode};
+}
+
+Map<String, Object?> _readerTraceSnapshot() {
+  final data = ReaderDiagnostics.toDiagnosticsJson();
+  final trace = data['readerTrace'];
+  if (trace is Map<String, dynamic>) {
+    return Map<String, Object?>.from(trace);
+  }
+  return const {'available': false};
+}
+
+Future<String> _readLegacyLogTail({required int maxLines}) async {
+  final path = Log.logFilePath;
+  if (path == null) {
+    return '';
+  }
+  final file = File(path);
+  if (!await file.exists()) {
+    return '';
+  }
+  final lines = await file.readAsLines();
+  if (lines.length <= maxLines) {
+    return lines.join('\n');
+  }
+  return lines.sublist(lines.length - maxLines).join('\n');
 }
 
 Future<File?> exportDiagnosticsToFile({String? outputPath}) async {
@@ -99,6 +208,23 @@ Future<File?> exportDiagnosticsToFile({String? outputPath}) async {
       Directory(App.dataPath)
           .joinFile(
             Log.buildExportFileName(prefix: 'venera_diagnostics_export'),
+          )
+          .path;
+  final file = File(outPath);
+  await file.parent.create(recursive: true);
+  await file.writeAsString(await buildDiagnosticsExportText());
+  return file;
+}
+
+Future<File?> exportCrashReportBundleToFile({String? outputPath}) async {
+  if (!App.isInitialized) {
+    return null;
+  }
+  final outPath =
+      outputPath ??
+      Directory(App.dataPath)
+          .joinFile(
+            Log.buildExportFileName(prefix: 'venera_crash_report_bundle'),
           )
           .path;
   final file = File(outPath);
