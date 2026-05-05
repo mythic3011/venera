@@ -274,48 +274,46 @@ class Appdata with Init {
       return;
     }
     final now = DateTime.now().millisecondsSinceEpoch;
-    await store.transaction(() async {
-      await store.clearAppSettings();
-      await store.clearSearchHistory();
-      await store.clearImplicitData();
+    await store.clearAppSettings();
+    await store.clearSearchHistory();
+    await store.clearImplicitData();
 
-      for (final entry in settings._data.entries) {
-        final value = entry.value;
-        final valueType = _valueTypeOf(value);
-        final syncPolicy = _disableSync.contains(entry.key)
-            ? 'local_only'
-            : 'syncable';
-        await store.upsertAppSetting(
-          AppSettingRecord(
-            key: entry.key,
-            valueJson: jsonEncode(value),
-            valueType: valueType,
-            syncPolicy: syncPolicy,
-            updatedAtMs: now,
-          ),
-        );
-      }
+    for (final entry in settings._data.entries) {
+      final value = entry.value;
+      final valueType = _valueTypeOf(value);
+      final syncPolicy = _disableSync.contains(entry.key)
+          ? 'local_only'
+          : 'syncable';
+      await store.upsertAppSetting(
+        AppSettingRecord(
+          key: entry.key,
+          valueJson: jsonEncode(value),
+          valueType: valueType,
+          syncPolicy: syncPolicy,
+          updatedAtMs: now,
+        ),
+      );
+    }
 
-      for (var i = 0; i < searchHistory.length; i++) {
-        await store.upsertSearchHistory(
-          SearchHistoryRecord(
-            keyword: searchHistory[i],
-            position: i,
-            updatedAtMs: now,
-          ),
-        );
-      }
+    for (var i = 0; i < searchHistory.length; i++) {
+      await store.upsertSearchHistory(
+        SearchHistoryRecord(
+          keyword: searchHistory[i],
+          position: i,
+          updatedAtMs: now,
+        ),
+      );
+    }
 
-      for (final entry in implicitData.entries) {
-        await store.upsertImplicitData(
-          ImplicitDataRecord(
-            key: entry.key,
-            valueJson: jsonEncode(entry.value),
-            updatedAtMs: now,
-          ),
-        );
-      }
-    });
+    for (final entry in implicitData.entries) {
+      await store.upsertImplicitData(
+        ImplicitDataRecord(
+          key: entry.key,
+          valueJson: jsonEncode(entry.value),
+          updatedAtMs: now,
+        ),
+      );
+    }
   }
 
   String _valueTypeOf(Object? value) {
