@@ -373,6 +373,7 @@ class _ReaderWithLoadingState
     extends LoadingState<ReaderWithLoading, ReaderProps> {
   DateTime? _readerChildMountedAt;
   bool _readerChildMounted = false;
+  int? _routeHashSnapshot;
   String? _routeNameSnapshot;
   Map<String, Object?> _routeDiagnosticSnapshot = const {};
   SourceRef? _resolvedSourceRefForDiagnostics;
@@ -499,6 +500,10 @@ class _ReaderWithLoadingState
     if (activeTab?.tabId != expectedReaderTabId) {
       return;
     }
+    final routeLifecycleEvent =
+        navigatorLifecycleDiagnosticForRouteHash(
+          _routeHashSnapshot,
+        )?['event']?.toString();
     emitReaderParentUnmountDiagnosticForTesting(
       buildReaderParentShellDiagnosticForTesting(
         owner: 'ReaderWithLoading.parentUnmount',
@@ -513,7 +518,6 @@ class _ReaderWithLoadingState
         selectedIndex: data?.history.ep,
         currentPage: data?.history.page,
         routeName: routeName,
-        routeSnapshot: _routeDiagnosticSnapshot,
         expectedReaderTabId: expectedReaderTabId,
         activeReaderTabId: activeTab?.tabId,
         pageOrderId: activeTab?.pageOrderId,
@@ -528,6 +532,11 @@ class _ReaderWithLoadingState
         ),
         reason: reason,
         openDurationMs: openDurationMs,
+        routeSnapshot: {
+          ..._routeDiagnosticSnapshot,
+          if (routeLifecycleEvent != null)
+            'routeLifecycleEvent': routeLifecycleEvent,
+        },
       ),
     );
   }
@@ -587,6 +596,7 @@ class _ReaderWithLoadingState
     final route = ModalRoute.of(context);
     _routeNameSnapshot = route?.settings.name;
     final routeHash = route?.hashCode;
+    _routeHashSnapshot = routeHash;
     final hostDiagnostic = navigatorPushHostDiagnosticForRouteHash(routeHash);
     final lifecycleDiagnostic = navigatorLifecycleDiagnosticForRouteHash(
       routeHash,
