@@ -7,13 +7,13 @@ import 'package:venera/foundation/app/app.dart';
 import 'package:venera/foundation/appdata.dart';
 import 'package:venera/foundation/appdata_authority_audit.dart';
 import 'package:venera/foundation/comic_type.dart';
-import 'package:venera/foundation/db/local_comic_sync.dart';
 import 'package:venera/features/sources/comic_source/comic_source.dart';
 import 'package:venera/foundation/diagnostics/diagnostics.dart';
 import 'package:venera/foundation/local.dart';
-import 'package:venera/foundation/local/local_library_reconciler.dart';
+import 'package:venera/foundation/local/canonical_local_library_runtime.dart';
 import 'package:venera/foundation/local_comics_legacy_bridge.dart';
 import 'package:venera/foundation/repositories/local_library_repository.dart';
+import 'package:venera/foundation/reader/canonical_reader_pages.dart';
 import 'package:venera/pages/comic_details_page/comic_page.dart';
 import 'package:venera/pages/downloading_page.dart';
 import 'package:venera/pages/favorites/favorites_page.dart';
@@ -279,60 +279,74 @@ List<LocalComic> applyCanonicalLocalLibraryView({
 }
 
 class _LocalComicsGateway {
-  final LocalLibraryReconciler _reconciler = const LocalLibraryReconciler();
+  _LocalComicsGateway()
+    : _runtime = CanonicalLocalLibraryRuntimeService(
+        store: App.unifiedComicsStore,
+      );
 
-  Future<void> ensureInitialized() => legacyEnsureLocalComicsInitialized();
+  final CanonicalLocalLibraryRuntimeService _runtime;
+  String? _localRootPath;
 
-  bool get isInitialized => legacyIsLocalComicsInitialized();
+  Future<void> ensureInitialized() async {
+    _localRootPath = await _runtime.requireRootPath();
+  }
 
-  void addListener(VoidCallback listener) =>
-      legacyAddLocalComicsListener(listener);
+  bool get isInitialized => _localRootPath != null;
 
-  void removeListener(VoidCallback listener) =>
-      legacyRemoveLocalComicsListener(listener);
+  void addListener(VoidCallback listener) {}
 
-  List<LocalComic> getComics(LocalSortType sortType) =>
-      legacyGetLocalComics(sortType);
+  void removeListener(VoidCallback listener) {}
 
-  List<LocalComic> search(String keyword) => legacySearchLocalComics(keyword);
+  Future<List<LocalComic>> getComics(LocalSortType sortType) {
+    return _runtime.loadAvailableComics();
+  }
+
+  Future<List<LocalComic>> search(String keyword) async {
+    final comics = await _runtime.loadAvailableComics();
+    final normalizedKeyword = keyword.trim().toLowerCase();
+    return comics
+        .where(
+          (comic) =>
+              normalizedKeyword.isEmpty ||
+              comic.title.toLowerCase().contains(normalizedKeyword) ||
+              comic.tags.any(
+                (tag) => tag.toLowerCase().contains(normalizedKeyword),
+              ),
+        )
+        .toList(growable: false);
+  }
 
   Future<List<LocalComic>> getVisibleComics(
     LocalSortType sortType, {
     String keyword = '',
   }) async {
-    final comics = legacyGetLocalComics(LocalSortType.name);
+    final comics = await _runtime.loadAvailableComics(reconcile: true);
     final repository = App.repositories.localLibrary;
     final browseRecords = await repository.loadBrowseRecords();
-    final reconcileItems = comics
-        .map(
-          (comic) => LocalLibraryReconcileItem(
-            comicId: comic.id,
-            comicDirectoryName: comic.directory,
-          ),
-        )
-        .toList(growable: false);
-    final reconcileResult = await _reconciler.reconcileBrowseVisibility(
-      items: reconcileItems,
-      loadPrimaryItem: repository.loadPrimaryLocalLibraryItem,
-      canonicalBrowseRootPath: legacyLocalComicsRootPath(),
-    );
     return applyCanonicalLocalLibraryView(
       comics: comics,
       browseRecords: browseRecords,
-      visibleComicIds: reconcileResult.visibleComicIds,
       sortType: sortType,
       keyword: keyword,
     );
   }
 
-  LocalComic? findComic(String id, ComicType comicType) =>
-      legacyFindLocalComicByIdAndType(id, comicType);
+  Future<LocalComic?> findComic(String id, ComicType comicType) {
+    return _runtime.loadComicById(id, reconcile: true);
+  }
 
   Future<List<String>> loadImages(
     String comicId,
     ComicType comicType,
     Object chapterOrIndex,
-  ) => legacyLoadLocalComicImages(comicId, comicType, chapterOrIndex);
+  ) {
+    return CanonicalReaderPages(
+      store: App.repositories.comicDetailStore,
+    ).loadLocalPages(
+      localComicId: comicId,
+      chapterId: chapterOrIndex is String ? chapterOrIndex : null,
+    );
+  }
 
   void renameChapter(LocalComic comic, String chapterId, String newName) =>
       legacyRenameLocalComicChapter(comic, chapterId, newName);
@@ -372,61 +386,11 @@ class _LocalComicsGateway {
   void reorderChapters(LocalComic comic, List<String> chapterIds) =>
       legacyReorderLocalComicChapters(comic, chapterIds);
 
-  String get localRootPath => legacyLocalComicsRootPath();
+  String get localRootPath => _localRootPath ?? '';
 
   Future<int> recheckAppDataLocalDirectory() async {
-    final rootPath = legacyLocalComicsRootPath();
-    final rootType = FileSystemEntity.typeSync(rootPath, followLinks: false);
-    if (rootType != FileSystemEntityType.directory) {
-      AppDiagnostics.info(
-        'local.library',
-        'local.library.recheckSkipped',
-        data: <String, Object?>{'rootPath': rootPath, 'reason': 'missing_root'},
-      );
-      return 0;
-    }
-    final existing = legacyGetLocalComics(LocalSortType.name);
-    final existingDirectoryNames = existing
-        .where(
-          (comic) =>
-              !comic.directory.contains('/') && !comic.directory.contains('\\'),
-        )
-        .map((comic) => comic.directory)
-        .toSet();
-    var added = 0;
-    final candidates = Directory(rootPath)
-        .listSync(recursive: false, followLinks: false)
-        .whereType<Directory>()
-        .toList(growable: false);
-    for (final directory in candidates) {
-      if (existingDirectoryNames.contains(directory.name)) {
-        continue;
-      }
-      final discovered = buildDiscoveredLocalComicFromDirectory(
-        directory,
-        comicId: legacyFindValidLocalComicId(ComicType.local),
-        createdAt: directory.statSync().modified,
-      );
-      if (discovered == null) {
-        AppDiagnostics.warn(
-          'local.library',
-          'local.library.missingFiles',
-          data: <String, Object?>{
-            'comicId': directory.name,
-            'status': 'noReadablePages',
-            'expectedDirectory': directory.path,
-            'action': 'hide',
-          },
-        );
-        continue;
-      }
-      legacyRegisterLocalComic(discovered, discovered.id);
-      await LocalComicCanonicalSyncService(
-        store: App.unifiedComicsStore,
-      ).syncComic(discovered);
-      added++;
-    }
-    return added;
+    _localRootPath ??= await _runtime.requireRootPath();
+    return _runtime.recheck();
   }
 }
 
@@ -470,10 +434,6 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
     });
   }
 
-  void _handleManagerUpdate() {
-    update();
-  }
-
   Future<void> _recheckLocalComics() async {
     AppDiagnostics.info(
       'local.library',
@@ -505,15 +465,11 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
     if (!mounted) {
       return;
     }
-    _gateway.addListener(_handleManagerUpdate);
     await update();
   }
 
   @override
   void dispose() {
-    if (_gateway.isInitialized) {
-      _gateway.removeListener(_handleManagerUpdate);
-    }
     super.dispose();
   }
 
@@ -796,13 +752,11 @@ class _LocalComicsPageState extends State<LocalComicsPage> {
                       }
                     });
                   } else {
-                    // prevent dirty data
-                    var comic = _gateway.findComic(
-                      c.id,
-                      ComicType.fromKey(c.sourceKey),
-                    )!;
                     context.to(
-                      () => buildLocalComicDetailEntry(comic, heroTag: heroTag),
+                      () => buildLocalComicDetailEntry(
+                        c as LocalComic,
+                        heroTag: heroTag,
+                      ),
                     );
                   }
                 },
@@ -1315,7 +1269,7 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
   }
 
   Future<void> _reload() async {
-    final refreshed = _gateway.findComic(
+    final refreshed = await _gateway.findComic(
       widget.comic.id,
       widget.comic.comicType,
     );
@@ -1487,7 +1441,7 @@ class _LocalComicManagePanelState extends State<_LocalComicManagePanel>
     if (saving) return;
     final comic = current;
     if (comic == null) return;
-    final all = _gateway.getComics(LocalSortType.name);
+    final all = await _gateway.getComics(LocalSortType.name);
     final candidates = buildChapterMergeCandidates(
       targetComic: comic,
       allComics: all,
