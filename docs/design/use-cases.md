@@ -36,11 +36,13 @@ Use cases orchestrate repositories to implement business logic. Each use case:
 
 **Main Flow**:
 1. System normalizes title (lowercase, remove punctuation)
-2. System checks if normalized title exists → DuplicateError
-3. System creates Comic with ComicMetadata
-4. System creates default ReaderSession (chapter 0, page 0)
-5. System emits `comic.created` event
-6. Return new Comic with ID
+2. System treats normalized title as a search key only; duplicate normalized titles may still represent separate canonical works
+3. If `idempotencyKey` is present, the system replays only a previously completed result with the same canonical input hash
+4. If the same `idempotencyKey` is reused with different canonical input, the system returns `IDEMPOTENCY_CONFLICT` and performs no mutation
+5. System creates Comic with ComicMetadata
+6. System creates default ReaderSession (chapter 0, page 0)
+7. System emits `comic.created` event
+8. Return new Comic with ID
 
 **Post-conditions**:
 - Comic exists in database
@@ -49,7 +51,7 @@ Use cases orchestrate repositories to implement business logic. Each use case:
 - Comic marked as modified
 
 **Error Handling**:
-- If duplicate title: throw `DuplicateError`, no changes
+- If the same `idempotencyKey` is reused with a different canonical input: throw `IDEMPOTENCY_CONFLICT`, no changes
 - If write permission denied: throw `ForbiddenError`
 - If database fails: throw `StorageError`, transaction rolled back
 
@@ -735,4 +737,3 @@ Entity: DiagnosticsEvent
 | Reorder Pages | X | - | X | - | X |
 | Search Comics | - | - | X | - | X |
 | List Comics | - | - | X | - | - |
-

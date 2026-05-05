@@ -12,7 +12,7 @@ Repositories provide abstraction over data storage. Each repository interface de
 - Return types and error conditions
 - Invariants and contracts
 
-All repositories are **transactional** (operations either fully succeed or fully fail).
+All repositories are **transactional** (operations either fully succeed or fully fail). Boundary enforcement keeps `src/domain`, `src/application`, and `src/ports` free of Kysely, SQLite, DB schema, and repository adapter imports.
 
 ---
 
@@ -28,12 +28,12 @@ Persistence layer for Comic and ComicMetadata entities.
 - Returns Comic with all metadata
 - Throws: `NotFoundError` if ID not in database
 
-#### `getComicByNormalizedTitle(normalizedTitle: String) -> Comic | Error`
+#### `listByNormalizedTitle(normalizedTitle: NormalizedTitle) -> List<Comic> | Error`
 **Contract**:
-- Retrieves comic by normalized title
-- Returns Comic with all metadata
-- Throws: `NotFoundError` if title not found
-- Used for deduplication check
+- Retrieves all comics sharing the same normalized title
+- Returns domain-shaped comics with all metadata
+- Returns empty list if the title is not found
+- Used for lookup only, not canonical identity
 
 #### `listAllComics(limit: Integer = 1000, offset: Integer = 0) -> List<Comic> | Error`
 **Contract**:
@@ -63,8 +63,9 @@ Persistence layer for Comic and ComicMetadata entities.
 - Generates UUID for ID
 - Normalizes title for `normalized_title`
 - Returns created Comic with ID assigned
-- Throws: `DuplicateError` if normalized title already exists
 - Atomic: both Comic and ComicMetadata inserted or both fail
+
+Idempotent mutation replay is a separate persistence concern. Stored `result_json` must be treated as a public DTO projection and validated strictly before replay reaches the application layer.
 
 #### `updateComicMetadata(id: ComicId, metadata: ComicMetadata) -> Comic | Error`
 **Contract**:
@@ -511,4 +512,3 @@ For performance, repositories support batch commands:
 - `deletePages(pageIds)` - bulk delete with reindexing
 
 Batch operations are atomic: all succeed or all fail.
-

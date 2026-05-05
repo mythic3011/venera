@@ -104,6 +104,7 @@ export interface CreateCanonicalComicInput {
   readonly description?: string;
   readonly authorName?: string;
   readonly originHint?: ComicOriginHint;
+  readonly idempotencyKey?: string;
 }
 
 export interface CreatedCanonicalComic {

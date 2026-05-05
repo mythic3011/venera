@@ -148,6 +148,14 @@
 
 ---
 
+## Runtime/Core Foundation Correction
+
+For the current pre-stable `runtime/core` foundation slice, treat `normalizedTitle` as a non-unique search key, keep `CreateCanonicalComic` idempotency claim/create/replay inside one transaction, replay only completed results through a strict public DTO mapper, persist diagnostics events with `schemaVersion = "1.0.0"`, and keep boundary tests blocking Kysely, SQLite, DB schema, repository adapters, and legacy imports from `src/domain`, `src/application`, and `src/ports`.
+
+Success criteria for this slice also require that rollback never leaves a completed idempotency record behind.
+
+---
+
 ## Next Immediate Step
 
 Begin Phase 2.1: Implement domain models in Rust matching schema definitions.

@@ -4,6 +4,8 @@
 
 ---
 
+This canonical runtime schema is still in the pre-stable schema-definition stage. Define the canonical schema directly, reset unsafe early schema choices when needed, and do not pay migration compatibility tax for non-stable internal data.
+
 ## Table: comics
 
 Canonical identity for comic works.
@@ -11,13 +13,13 @@ Canonical identity for comic works.
 | Column | Type | Constraints | Notes |
 |--------|------|-------------|-------|
 | id | UUID | PRIMARY KEY | Immutable |
-| normalized_title | TEXT | NOT NULL, UNIQUE | Lowercase, no punctuation, for deduplication |
+| normalized_title | TEXT | NOT NULL | Lowercase, no punctuation, for search and matching only |
 | created_at | TIMESTAMP | NOT NULL, DEFAULT CURRENT_TIMESTAMP | UTC |
 | updated_at | TIMESTAMP | NOT NULL, DEFAULT CURRENT_TIMESTAMP | UTC |
 
 **Indexes**:
 - PRIMARY KEY `id`
-- UNIQUE INDEX on `normalized_title`
+- NON-UNIQUE INDEX on `normalized_title`
 
 ---
 
@@ -325,4 +327,3 @@ Metadata for file imports (CBZ, PDF, directories).
 - **Point-in-time recovery**: Supported via transaction log
 - **Audit trail**: `created_at`, `updated_at` timestamps on all records
 - **Checksums**: `import_batches.files[].checksum` for integrity verification
-

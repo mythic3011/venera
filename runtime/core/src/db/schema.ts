@@ -159,6 +159,7 @@ export interface ReaderSessionsTable {
 
 export interface DiagnosticsEventsTable {
   id: string;
+  schema_version: string;
   timestamp: string;
   level: string;
   channel: string;
@@ -170,6 +171,19 @@ export interface DiagnosticsEventsTable {
   comic_id: string | null;
   source_platform_id: string | null;
   payload_json: string;
+}
+
+export interface OperationIdempotencyTable {
+  operation_name: string;
+  idempotency_key: string;
+  input_hash: string;
+  status: string;
+  result_type: string | null;
+  result_resource_id: string | null;
+  result_json: string | null;
+  result_schema_version: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CoreDatabaseSchema {
@@ -188,4 +202,5 @@ export interface CoreDatabaseSchema {
   storage_placements: StoragePlacementsTable;
   reader_sessions: ReaderSessionsTable;
   diagnostics_events: DiagnosticsEventsTable;
+  operation_idempotency: OperationIdempotencyTable;
 }

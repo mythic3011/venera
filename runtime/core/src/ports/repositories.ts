@@ -10,6 +10,12 @@ import type {
 import type { Chapter, ChapterTreeNode, ListChapterChildrenInput } from "../domain/chapter.js";
 import type { DiagnosticsEvent, DiagnosticsQuery, RecordDiagnosticsEventInput } from "../domain/diagnostics.js";
 import type {
+  CompleteOperationIdempotencyInput,
+  CreateOperationIdempotencyInput,
+  GetOperationIdempotencyInput,
+  OperationIdempotencyRecord,
+} from "../domain/idempotency.js";
+import type {
   ChapterId,
   ComicId,
   ComicTitleId,
@@ -34,7 +40,7 @@ import type { Result } from "../shared/result.js";
 
 export interface ComicRepositoryPort {
   getById(id: ComicId): Promise<Result<Comic | null>>;
-  getByNormalizedTitle(title: NormalizedTitle): Promise<Result<Comic | null>>;
+  listByNormalizedTitle(title: NormalizedTitle): Promise<Result<readonly Comic[]>>;
   create(input: CreateComicInput): Promise<Result<Comic>>;
 }
 
@@ -110,6 +116,18 @@ export interface DiagnosticsEventRepositoryPort {
   query(input: DiagnosticsQuery): Promise<Result<readonly DiagnosticsEvent[]>>;
 }
 
+export interface OperationIdempotencyRepositoryPort {
+  get(
+    input: GetOperationIdempotencyInput,
+  ): Promise<Result<OperationIdempotencyRecord | null>>;
+  createInProgress(
+    input: CreateOperationIdempotencyInput,
+  ): Promise<Result<OperationIdempotencyRecord>>;
+  markCompleted(
+    input: CompleteOperationIdempotencyInput,
+  ): Promise<Result<OperationIdempotencyRecord>>;
+}
+
 export interface CoreRepositories {
   readonly comics: ComicRepositoryPort;
   readonly comicMetadata: ComicMetadataRepositoryPort;
@@ -124,4 +142,5 @@ export interface CoreRepositories {
   readonly storageObjects: StorageObjectRepositoryPort;
   readonly storagePlacements: StoragePlacementRepositoryPort;
   readonly diagnosticsEvents: DiagnosticsEventRepositoryPort;
+  readonly operationIdempotency: OperationIdempotencyRepositoryPort;
 }

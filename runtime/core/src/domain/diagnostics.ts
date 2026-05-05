@@ -23,8 +23,12 @@ export const DIAGNOSTIC_AUTHORITIES = [
 
 export type DiagnosticAuthority = (typeof DIAGNOSTIC_AUTHORITIES)[number];
 
+export const DIAGNOSTICS_SCHEMA_VERSION = "1.0.0" as const;
+export type DiagnosticsSchemaVersion = typeof DIAGNOSTICS_SCHEMA_VERSION;
+
 export interface DiagnosticsEvent {
   readonly id: DiagnosticsEventId;
+  readonly schemaVersion: DiagnosticsSchemaVersion;
   readonly timestamp: Date;
   readonly level: DiagnosticLevel;
   readonly channel: string;
@@ -40,6 +44,7 @@ export interface DiagnosticsEvent {
 
 export interface RecordDiagnosticsEventInput {
   readonly id: DiagnosticsEventId;
+  readonly schemaVersion?: DiagnosticsSchemaVersion;
   readonly timestamp: Date;
   readonly level: DiagnosticLevel;
   readonly channel: string;

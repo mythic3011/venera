@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import Database from "better-sqlite3";
 import { Kysely, SqliteDialect, type Transaction } from "kysely";
 
+import type { CoreError } from "../shared/errors.js";
 import { createCoreError } from "../shared/errors.js";
 import { err, type Result } from "../shared/result.js";
 import type { CoreTransactionPort } from "../ports/system.js";
@@ -26,6 +27,13 @@ export interface RuntimeDatabaseHandle extends CoreDatabaseHandle {
   readonly transactionPort: CoreTransactionPort;
 }
 
+class TransactionRollbackSignal extends Error {
+  constructor(readonly error: CoreError) {
+    super("Transaction rollback requested.");
+    this.name = "TransactionRollbackSignal";
+  }
+}
+
 class QueryExecutorContext implements QueryExecutorProvider, CoreTransactionPort {
   private readonly storage = new AsyncLocalStorage<Transaction<CoreDatabaseSchema>>();
 
@@ -40,9 +48,20 @@ class QueryExecutorContext implements QueryExecutorProvider, CoreTransactionPort
   ): Promise<Result<TValue>> {
     try {
       return await this.db.transaction().execute((transaction) =>
-        this.storage.run(transaction, operation),
+        this.storage.run(transaction, async () => {
+          const result = await operation();
+          if (!result.ok) {
+            throw new TransactionRollbackSignal(result.error);
+          }
+
+          return result;
+        }),
       );
     } catch (cause) {
+      if (cause instanceof TransactionRollbackSignal) {
+        return err(cause.error);
+      }
+
       return err(
         createCoreError({
           code: "INTERNAL_ERROR",

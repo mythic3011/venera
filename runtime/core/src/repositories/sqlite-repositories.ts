@@ -19,12 +19,25 @@ import {
   CHAPTER_KINDS,
 } from "../domain/chapter.js";
 import {
+  DIAGNOSTICS_SCHEMA_VERSION,
   DIAGNOSTIC_AUTHORITIES,
   DIAGNOSTIC_LEVELS,
   type DiagnosticsEvent,
   type DiagnosticsQuery,
   type RecordDiagnosticsEventInput,
 } from "../domain/diagnostics.js";
+import {
+  CREATE_CANONICAL_COMIC_OPERATION_NAME,
+  CREATED_CANONICAL_COMIC_RESULT_TYPE,
+  IDEMPOTENCY_RESULT_SCHEMA_VERSION,
+  OPERATION_IDEMPOTENCY_STATUSES,
+  parseIdempotencyKey,
+  parseInputHash,
+  type CompleteOperationIdempotencyInput,
+  type CreateOperationIdempotencyInput,
+  type GetOperationIdempotencyInput,
+  type OperationIdempotencyRecord,
+} from "../domain/idempotency.js";
 import {
   parseChapterId,
   parseChapterSourceLinkId,
@@ -85,6 +98,7 @@ import type {
   ComicTitleRepositoryPort,
   CoreRepositories,
   DiagnosticsEventRepositoryPort,
+  OperationIdempotencyRepositoryPort,
   PageOrderRepositoryPort,
   PageRepositoryPort,
   ReaderSessionRepositoryPort,
@@ -95,6 +109,7 @@ import type {
 } from "../ports/repositories.js";
 import type { QueryExecutorProvider } from "../db/database.js";
 import type { CoreDatabaseSchema } from "../db/schema.js";
+import type { JsonObject } from "../shared/json.js";
 import { createCoreError } from "../shared/errors.js";
 import { err, isErr, ok, type Result } from "../shared/result.js";
 import { ensureEnumValue, isoToDate, parseJsonObject, unwrapMappedResult } from "./mappers/common.js";
@@ -640,6 +655,19 @@ function mapDiagnosticsEvent(
     return id;
   }
 
+  if (row.schema_version !== DIAGNOSTICS_SCHEMA_VERSION) {
+    return err(
+      createCoreError({
+        code: "INTERNAL_ERROR",
+        message: "Invalid persisted diagnostics schema version.",
+        details: {
+          fieldName: "schema_version",
+          rawValue: row.schema_version,
+        },
+      }),
+    );
+  }
+
   const level = ensureEnumValue(row.level, DIAGNOSTIC_LEVELS, "level");
   if (isErr(level)) {
     return level;
@@ -674,12 +702,148 @@ function mapDiagnosticsEvent(
 
   return ok(withOptional(withOptional(withOptional(withOptional(withOptional(withOptional({
     id: id.value,
+    schemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
     timestamp: timestamp.value,
     level: level.value,
     channel: row.channel,
     eventName: row.event_name,
     payload: payload.value ?? {},
   }, "correlationId", row.correlation_id ?? undefined), "boundary", row.boundary ?? undefined), "action", row.action ?? undefined), "authority", authority.value), "comicId", comicId.value), "sourcePlatformId", sourcePlatformId.value));
+}
+
+function mapOperationIdempotencyRecord(
+  row: CoreDatabaseSchema["operation_idempotency"],
+): Result<OperationIdempotencyRecord> {
+  if (row.operation_name !== CREATE_CANONICAL_COMIC_OPERATION_NAME) {
+    return err(
+      createCoreError({
+        code: "INTERNAL_ERROR",
+        message: "Invalid persisted operation_name.",
+        details: {
+          fieldName: "operation_name",
+          rawValue: row.operation_name,
+        },
+      }),
+    );
+  }
+
+  const idempotencyKey = parseIdempotencyKey(row.idempotency_key);
+  if (isErr(idempotencyKey)) {
+    return idempotencyKey;
+  }
+
+  const inputHash = parseInputHash(row.input_hash);
+  if (isErr(inputHash)) {
+    return inputHash;
+  }
+
+  const status = ensureEnumValue(row.status, OPERATION_IDEMPOTENCY_STATUSES, "status");
+  if (isErr(status)) {
+    return status;
+  }
+
+  const createdAt = isoToDate(row.created_at, "created_at");
+  if (isErr(createdAt)) {
+    return createdAt;
+  }
+
+  const updatedAt = isoToDate(row.updated_at, "updated_at");
+  if (isErr(updatedAt)) {
+    return updatedAt;
+  }
+
+  if (status.value === "completed") {
+    if (
+      row.result_type === null
+      || row.result_resource_id === null
+      || row.result_json === null
+      || row.result_schema_version === null
+    ) {
+      return err(
+        createCoreError({
+          code: "INTERNAL_ERROR",
+          message: "Completed operation replay row is missing required result fields.",
+          details: {
+            fieldName: "operation_idempotency",
+            operationName: row.operation_name,
+            idempotencyKey: row.idempotency_key,
+          },
+        }),
+      );
+    }
+
+    if (row.result_schema_version !== IDEMPOTENCY_RESULT_SCHEMA_VERSION) {
+      return err(
+        createCoreError({
+          code: "INTERNAL_ERROR",
+          message: "Invalid persisted operation replay schema version.",
+          details: {
+            fieldName: "result_schema_version",
+            rawValue: row.result_schema_version,
+          },
+        }),
+      );
+    }
+
+    const parsedJson = parseJsonObject(row.result_json, "result_json");
+    if (isErr(parsedJson)) {
+      return parsedJson;
+    }
+
+    if (parsedJson.value === undefined) {
+      return err(
+        createCoreError({
+          code: "INTERNAL_ERROR",
+          message: "Completed operation replay row is missing result_json.",
+          details: {
+            fieldName: "result_json",
+            operationName: row.operation_name,
+            idempotencyKey: row.idempotency_key,
+          },
+        }),
+      );
+    }
+
+    if (row.result_type !== CREATED_CANONICAL_COMIC_RESULT_TYPE) {
+      return err(
+        createCoreError({
+          code: "INTERNAL_ERROR",
+          message: "Invalid persisted operation replay result type.",
+          details: {
+            fieldName: "result_type",
+            rawValue: row.result_type,
+          },
+        }),
+      );
+    }
+
+    const resultResourceId = parseComicId(row.result_resource_id);
+    if (isErr(resultResourceId)) {
+      return resultResourceId;
+    }
+
+    return ok({
+      operationName: CREATE_CANONICAL_COMIC_OPERATION_NAME,
+      idempotencyKey: idempotencyKey.value,
+      inputHash: inputHash.value,
+      status: "completed",
+      resultType: CREATED_CANONICAL_COMIC_RESULT_TYPE,
+      resultResourceId: resultResourceId.value,
+      resultJson: parsedJson.value,
+      resultSchemaVersion: IDEMPOTENCY_RESULT_SCHEMA_VERSION,
+      createdAt: createdAt.value,
+      updatedAt: updatedAt.value,
+    });
+  }
+
+  return ok({
+    operationName: CREATE_CANONICAL_COMIC_OPERATION_NAME,
+    idempotencyKey: idempotencyKey.value,
+    inputHash: inputHash.value,
+    status: status.value,
+    createdAt: createdAt.value,
+    updatedAt: updatedAt.value,
+  } as OperationIdempotencyRecord);
 }
 
 class SqliteComicRepository implements ComicRepositoryPort {
@@ -697,15 +861,28 @@ class SqliteComicRepository implements ComicRepositoryPort {
     });
   }
 
-  getByNormalizedTitle(title: string): Promise<Result<Comic | null>> {
+  listByNormalizedTitle(title: string): Promise<Result<readonly Comic[]>> {
     return catchRepositoryError(async () => {
-      const row = await currentDb(this.executorProvider)
+      const rows = await currentDb(this.executorProvider)
         .selectFrom("comics")
         .selectAll()
         .where("normalized_title", "=", title)
-        .executeTakeFirst();
+        .orderBy("created_at", "asc")
+        .orderBy("id", "asc")
+        .execute();
 
-      return row === undefined ? ok(null) : mapComic(row);
+      return ok(rows.map((row) => unwrapMappedResult(mapComic(row))));
+    });
+  }
+
+  async getByNormalizedTitle(title: string): Promise<Result<Comic | null>> {
+    return catchRepositoryError(async () => {
+      const comics = await this.listByNormalizedTitle(title);
+      if (isErr(comics)) {
+        return comics;
+      }
+
+      return ok(comics.value[0] ?? null);
     });
   }
 
@@ -1459,10 +1636,12 @@ class SqliteDiagnosticsEventRepository implements DiagnosticsEventRepositoryPort
 
   async record(input: RecordDiagnosticsEventInput): Promise<Result<DiagnosticsEvent>> {
     return catchRepositoryError(async () => {
+      const schemaVersion = input.schemaVersion ?? DIAGNOSTICS_SCHEMA_VERSION;
       await currentDb(this.executorProvider)
         .insertInto("diagnostics_events")
         .values({
           id: input.id,
+          schema_version: schemaVersion,
           timestamp: input.timestamp.toISOString(),
           level: input.level,
           channel: input.channel,
@@ -1479,6 +1658,7 @@ class SqliteDiagnosticsEventRepository implements DiagnosticsEventRepositoryPort
 
       return ok({
         ...input,
+        schemaVersion,
       });
     });
   }
@@ -1512,6 +1692,99 @@ class SqliteDiagnosticsEventRepository implements DiagnosticsEventRepositoryPort
   }
 }
 
+class SqliteOperationIdempotencyRepository
+implements OperationIdempotencyRepositoryPort {
+  constructor(private readonly executorProvider: QueryExecutorProvider) {}
+
+  async get(
+    input: GetOperationIdempotencyInput,
+  ): Promise<Result<OperationIdempotencyRecord | null>> {
+    return catchRepositoryError(async () => {
+      const existing = await currentDb(this.executorProvider)
+        .selectFrom("operation_idempotency")
+        .selectAll()
+        .where("operation_name", "=", input.operationName)
+        .where("idempotency_key", "=", input.idempotencyKey)
+        .executeTakeFirst();
+
+      return existing === undefined ? ok(null) : mapOperationIdempotencyRecord(existing);
+    });
+  }
+
+  async createInProgress(
+    input: CreateOperationIdempotencyInput,
+  ): Promise<Result<OperationIdempotencyRecord>> {
+    return catchRepositoryError(async () => {
+      await currentDb(this.executorProvider)
+        .insertInto("operation_idempotency")
+        .values({
+          operation_name: input.operationName,
+          idempotency_key: input.idempotencyKey,
+          input_hash: input.inputHash,
+          status: "in_progress",
+          result_type: null,
+          result_resource_id: null,
+          result_json: null,
+          result_schema_version: null,
+          created_at: input.createdAt.toISOString(),
+          updated_at: input.createdAt.toISOString(),
+        })
+        .execute();
+
+      return ok({
+        operationName: input.operationName,
+        idempotencyKey: input.idempotencyKey,
+        inputHash: input.inputHash,
+        status: "in_progress",
+        createdAt: input.createdAt,
+        updatedAt: input.createdAt,
+      });
+    });
+  }
+
+  async markCompleted(
+    input: CompleteOperationIdempotencyInput,
+  ): Promise<Result<OperationIdempotencyRecord>> {
+    return catchRepositoryError(async () => {
+      await currentDb(this.executorProvider)
+        .updateTable("operation_idempotency")
+        .set({
+          status: "completed",
+          result_type: CREATED_CANONICAL_COMIC_RESULT_TYPE,
+          result_resource_id: input.resultResourceId,
+          result_json: JSON.stringify(input.resultJson),
+          result_schema_version: IDEMPOTENCY_RESULT_SCHEMA_VERSION,
+          updated_at: input.updatedAt.toISOString(),
+        })
+        .where("operation_name", "=", input.operationName)
+        .where("idempotency_key", "=", input.idempotencyKey)
+        .where("input_hash", "=", input.inputHash)
+        .where("status", "=", "in_progress")
+        .execute();
+
+      const persisted = await this.get({
+        operationName: input.operationName,
+        idempotencyKey: input.idempotencyKey,
+      });
+      if (isErr(persisted)) {
+        return persisted;
+      }
+
+      if (persisted.value === null) {
+        return err(
+          createCoreError({
+            code: "INTERNAL_ERROR",
+            message: "Completed operation replay row was not found after update.",
+          }),
+        );
+      }
+
+      return ok(persisted.value);
+    });
+  }
+
+}
+
 export function createCoreRepositories(
   executorProvider: QueryExecutorProvider,
 ): CoreRepositories {
@@ -1529,5 +1802,6 @@ export function createCoreRepositories(
     storageObjects: new SqliteStorageObjectRepository(executorProvider),
     storagePlacements: new SqliteStoragePlacementRepository(executorProvider),
     diagnosticsEvents: new SqliteDiagnosticsEventRepository(executorProvider),
+    operationIdempotency: new SqliteOperationIdempotencyRepository(executorProvider),
   };
 }

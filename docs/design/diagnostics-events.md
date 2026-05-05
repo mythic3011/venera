@@ -12,7 +12,7 @@ Diagnostics events are emitted by all use cases and domain operations. They serv
 - **Debugging**: Trace request flow via correlation IDs
 - **Analytics**: Understand user behavior
 
-Events are **immutable** once created and are stored in a time-series database or log.
+Events are **immutable** once created and are stored in a time-series database or log. Stored and replayed diagnostics events preserve an explicit versioned public shape; for the current runtime/core foundation slice, persisted events read back with `schemaVersion = "1.0.0"`.
 
 ---
 
@@ -21,6 +21,7 @@ Events are **immutable** once created and are stored in a time-series database o
 ```
 Entity: DiagnosticsEvent
   id: String (UUID v4, globally unique)
+  schemaVersion: String ("1.0.0")
   timestamp: Timestamp (UTC, ISO8601)
   correlationId: String (UUID v4, trace ID for request)
   sessionId: String (optional, user session or request ID)
@@ -625,4 +626,3 @@ When an operation fails, emit event with:
 ```
 
 Do NOT include stack traces in events.
-

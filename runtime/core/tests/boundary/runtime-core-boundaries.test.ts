@@ -17,6 +17,15 @@ const forbiddenLegacyPatterns = [
   /(?:^|\/)venera-core(?:\/|$)/
 ];
 
+const forbiddenDataAccessImports = [
+  /^kysely(?:\/.*)?$/,
+  /^better-sqlite3$/,
+  /^node:sqlite(?:\/.*)?$/,
+  /(?:^|\/)\.\.\/db(?:\/|$)/,
+  /(?:^|\/)\.\.\/repositories(?:\/|$)/,
+  /(?:^|\/)\.\.\/legacy(?:\/|$)/,
+];
+
 function findForbiddenImports(relativeDir: string, patterns: RegExp[]): string[] {
   return listTypeScriptFiles(relativeDir).flatMap((filePath) => {
     const sourceText = readCoreFile(relativeToCore(filePath));
@@ -36,15 +45,17 @@ describe("runtime/core architectural boundaries", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps Kysely out of src/domain and src/application", () => {
-    const violations = findForbiddenImports("src/domain", [/^kysely(?:\/.*)?$/]).concat(
-      findForbiddenImports("src/application", [/^kysely(?:\/.*)?$/])
-    );
+  it("keeps db adapters, schema wiring, and legacy imports out of src/domain, src/application, and src/ports", () => {
+    const violations = [
+      ...findForbiddenImports("src/domain", forbiddenDataAccessImports),
+      ...findForbiddenImports("src/application", forbiddenDataAccessImports),
+      ...findForbiddenImports("src/ports", forbiddenDataAccessImports),
+    ];
 
     expect(violations).toEqual([]);
   });
 
-  it("keeps src/index.ts free of db row/schema exports when the entrypoint exists", () => {
+  it("keeps src/index.ts free of db, repository adapter, and schema internals when the entrypoint exists", () => {
     const indexSource = readCoreFile("src/index.ts");
 
     if (indexSource === null) {
@@ -59,6 +70,7 @@ describe("runtime/core architectural boundaries", () => {
       (specifier) =>
         specifier.startsWith("./db") ||
         specifier.startsWith("./repositories") ||
+        specifier.includes("/sqlite") ||
         specifier.includes("/schema") ||
         specifier.includes("/rows") ||
         specifier.includes("/tables")
@@ -70,6 +82,7 @@ describe("runtime/core architectural boundaries", () => {
 
     expect(forbiddenReExports).toEqual([]);
     expect(forbiddenPublicNames).toEqual([]);
+    expect(strippedSource).not.toMatch(/\bcreateCoreDatabase\b/);
     expect(strippedSource).not.toMatch(/\bKysely\b/);
   });
 });

@@ -1,5 +1,4 @@
 export {
-  createCoreDatabase,
   createCoreRuntime,
   type CoreRuntime,
   type CreateCoreRuntimeOptions,
