@@ -52,6 +52,40 @@ This fork may simplify, replace, or remove legacy architecture when it blocks:
 - database ownership
 - diagnostics and debugging
 
+## Development Branch Strategy
+
+The `legacy` branch preserves the upstream-derived implementation as a
+read-only forensic reference snapshot. New canonical architecture work continues
+on `main` and does not preserve the legacy file layout/module structure as
+implementation authority.
+
+Branch layout:
+
+```text
+legacy
+  → archived pre-restructure codebase (read-only reference)
+main
+  → canonical architecture baseline (active development)
+architecture/canonical-db-model
+  → DB schema, entity definitions, repository boundaries
+  → no UI work, no runtime patches
+architecture/runtime-contracts
+  → ReaderOpenTarget, Source, Import, Diagnostics contracts
+feature/new-reader-shell
+  → reader UI shell (started after DB/model/runtime contracts stabilize)
+```
+
+Isolation rules:
+
+- `legacy/master-snapshot` tag marks pre-restructure forensic checkpoint
+- `architecture/canonical-db-model` is schema-only; no UI, routing, or reader code
+- DB changes are validated before runtime contracts branch begins
+- Feature branches only start after architecture branches reach review-ready state
+- Problem diagnosis is clear: schema issues vs UI issues are on separate branches
+
+This prevents mixing data model issues with UI/routing changes in the same
+review/debug cycle.
+
 ## Legacy Quarantine Policy
 
 Legacy code may remain temporarily for reference, extraction, or migration.
