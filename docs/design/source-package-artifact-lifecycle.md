@@ -51,6 +51,7 @@ Package install success requires both package store commit and `source_platform`
 - `package store`
   - Future authority for durable verified artifacts.
   - Writes only after integrity verification succeeds.
+  - `PackageStore` behavior is defined separately in [`source-package-store-contract.md`](./source-package-store-contract.md).
 
 - `source_platform mutation`
   - Occurs only after package store commit succeeds.

@@ -29,7 +29,25 @@ It does not define runtime implementation details, storage engines, or TypeScrip
 - If `source_platform` mutation fails after package store commit, artifact state must be transitioned to orphaned/unreferenced state and routed to deterministic cleanup.
 - Orphan cleanup must be auditable through explicit state and cleanup-path signaling at contract level.
 - Orphaned artifacts must not be loadable or executable as active source packages.
-- Read output is evidence for orchestration only; it must not be interpreted as source-identity authority.
+
+## State Semantics
+
+`PackageStore` artifact state should be described behaviorally as:
+
+```text
+committed:
+  verified artifact is durably stored and eligible for source_platform mutation
+active:
+  artifact is referenced by a successful source_platform mutation
+orphaned:
+  artifact was committed but downstream source_platform mutation failed
+cleanup_pending:
+  artifact is scheduled for deterministic cleanup
+removed:
+  artifact is no longer loadable or readable as installed package state
+```
+
+`PackageStore` does not need to implement these exact enum names in this slice, but future implementations must preserve these state meanings.
 
 ## Non-responsibilities
 
@@ -39,8 +57,20 @@ It does not define runtime implementation details, storage engines, or TypeScrip
 - Integrity verification logic (owned by verifier boundary).
 - Source execution, sandbox creation, or runtime loading behavior.
 
-Behavioral invariants:
+## Identity Boundary
 
 - `PackageStore` may store `packageKey`, `providerKey`, `version`, and `archiveSha256` as metadata, but it must not decide whether they are compatible with an existing `source_platform`.
-- `PackageStore` read output is evidence for orchestration, not authority for source identity.
+- Compatibility decisions belong to installer orchestration and `source_platform` mutation policy.
+- Same `packageKey`, `providerKey`, and `version` with different `archiveSha256` must be treated as a conflict by orchestration, not silently overwritten by `PackageStore`.
 
+## Read Contract Rule
+
+Read surfaces must return stored artifact metadata and state only.
+
+They must not:
+
+- infer provider compatibility
+- repair missing `source_platform` rows
+- execute package code
+- validate source runtime behavior
+- decide taxonomy semantics
