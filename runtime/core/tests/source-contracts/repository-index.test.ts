@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  validateSourceRepositoryPackageEntry,
   validateSourceRepositoryIndex,
   type SourceRepositoryPackageEntry,
   type SourceRepositoryIndex,
@@ -171,6 +172,27 @@ describe("validateSourceRepositoryIndex", () => {
             packageUrl,
           }),
         ],
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("SOURCE_REPOSITORY_INDEX_INVALID");
+    }
+  });
+});
+
+describe("validateSourceRepositoryPackageEntry", () => {
+  it("accepts a valid package entry", () => {
+    const result = validateSourceRepositoryPackageEntry(createRepositoryPackageEntry());
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects invalid URL values with repository package entry error code", () => {
+    const result = validateSourceRepositoryPackageEntry(
+      createRepositoryPackageEntry({
+        manifestUrl: "javascript:alert(1)",
       }),
     );
 

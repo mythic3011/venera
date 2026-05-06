@@ -152,6 +152,10 @@ export interface SourceRepositoryIndexValidationOptions {
   readonly urlPolicy?: SourceContractUrlPolicyOptions;
 }
 
+export interface SourceRepositoryPackageEntryValidationOptions {
+  readonly urlPolicy?: SourceContractUrlPolicyOptions;
+}
+
 export interface SourcePackageManifestValidationOptions {
   readonly urlPolicy?: SourceContractUrlPolicyOptions;
 }
@@ -368,6 +372,45 @@ export function validateSourceRepositoryIndex(
     return failure(
       "SOURCE_REPOSITORY_INDEX_INVALID",
       "Invalid source repository index.",
+      issues,
+    );
+  }
+
+  return parsed;
+}
+
+export function validateSourceRepositoryPackageEntry(
+  payload: unknown,
+  options?: SourceRepositoryPackageEntryValidationOptions,
+): Result<SourceRepositoryPackageEntry> {
+  const parsed = parseWithSchema(
+    SOURCE_REPOSITORY_PACKAGE_ENTRY_SCHEMA,
+    payload,
+    "SOURCE_REPOSITORY_INDEX_INVALID",
+    "Invalid source repository package entry.",
+  );
+  if (!parsed.ok) {
+    return parsed;
+  }
+
+  const issues: ValidationIssue[] = [];
+  for (const [field, value] of [
+    ["manifestUrl", parsed.value.manifestUrl],
+    ["packageUrl", parsed.value.packageUrl],
+  ] as const) {
+    const issue = validateUrlValue(value, options?.urlPolicy);
+    if (issue !== null) {
+      issues.push({
+        path: `$.${field}`,
+        message: issue.message,
+      });
+    }
+  }
+
+  if (issues.length > 0) {
+    return failure(
+      "SOURCE_REPOSITORY_INDEX_INVALID",
+      "Invalid source repository package entry.",
       issues,
     );
   }

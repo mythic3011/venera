@@ -26,6 +26,20 @@ const forbiddenDataAccessImports = [
   /(?:^|\/)\.\.\/legacy(?:\/|$)/,
 ];
 
+const forbiddenSourceContractsImports = [
+  /^(?:node:)?fs(?:\/.*)?$/,
+  /^(?:node:)?path(?:\/.*)?$/,
+  /^(?:node:)?http(?:\/.*)?$/,
+  /^(?:node:)?https(?:\/.*)?$/,
+  /^kysely(?:\/.*)?$/,
+  /^better-sqlite3$/,
+  /(?:^|\/)\.\.\/db(?:\/|$)/,
+  /(?:^|\/)\.\.\/repositories(?:\/|$)/,
+  /(?:^|\/)\.\.\/runtime(?:\/|$)/,
+  /(?:^|\/)\.\.\/sandbox(?:\/|$)/,
+  /(?:^|\/)sandbox(?:\/|$)/,
+];
+
 function findForbiddenImports(relativeDir: string, patterns: RegExp[]): string[] {
   return listTypeScriptFiles(relativeDir).flatMap((filePath) => {
     const sourceText = readCoreFile(relativeToCore(filePath));
@@ -84,5 +98,10 @@ describe("runtime/core architectural boundaries", () => {
     expect(forbiddenPublicNames).toEqual([]);
     expect(strippedSource).not.toMatch(/\bcreateCoreDatabase\b/);
     expect(strippedSource).not.toMatch(/\bKysely\b/);
+  });
+
+  it("keeps src/source-contracts pure from fs/network/db/repository/sandbox-runtime imports", () => {
+    const violations = findForbiddenImports("src/source-contracts", forbiddenSourceContractsImports);
+    expect(violations).toEqual([]);
   });
 });

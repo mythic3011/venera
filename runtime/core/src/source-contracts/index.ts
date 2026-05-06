@@ -4,6 +4,7 @@ export {
   validateProviderTagMapping,
   validateSourcePackageChecksums,
   validateSourcePackageManifest,
+  validateSourceRepositoryPackageEntry,
   validateSourceRepositoryIndex,
   type CanonicalKeyValidationOptions,
   type CanonicalTag,
@@ -18,7 +19,18 @@ export {
   type SourceRepositoryIndex,
   type SourceRepositoryIndexValidationOptions,
   type SourceRepositoryPackageEntry,
+  type SourceRepositoryPackageEntryValidationOptions,
   type TagMappingConfidence,
   type TagNamespace,
   type TagValueType,
 } from "./validators.js";
+
+export {
+  createSourcePackageIntegrityVerifier,
+  type CreateSourcePackageIntegrityVerifierOptions,
+  type SourcePackageFile,
+  type SourcePackageIntegrityInput,
+  type SourcePackageIntegrityVerifier,
+  type SourcePackageTaxonomyMapping,
+  type VerifiedSourcePackage,
+} from "./integrity-verifier.js";

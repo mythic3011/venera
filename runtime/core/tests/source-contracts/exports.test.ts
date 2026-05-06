@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import * as runtimeCore from "../../src/index.js";
 
 describe("source contract export surface", () => {
-  it("exports validator utilities without installer-oriented APIs", () => {
+  it("exports verifier + validator utilities without installer-oriented APIs", () => {
     expect(runtimeCore.validateSourceRepositoryIndex).toBeTypeOf("function");
+    expect(runtimeCore.validateSourceRepositoryPackageEntry).toBeTypeOf("function");
     expect(runtimeCore.validateSourcePackageManifest).toBeTypeOf("function");
     expect(runtimeCore.validateSourcePackageChecksums).toBeTypeOf("function");
+    expect(runtimeCore.createSourcePackageIntegrityVerifier).toBeTypeOf("function");
     expect(runtimeCore.validateCanonicalTags).toBeTypeOf("function");
     expect(runtimeCore.validateLocalizedTagLabels).toBeTypeOf("function");
     expect(runtimeCore.validateProviderTagMapping).toBeTypeOf("function");
