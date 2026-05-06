@@ -15,6 +15,8 @@ This comprehensive language-agnostic design defines the entire Venera canonical 
 | **entities.md** | Domain models | 10 core entities (Comic, Chapter, Page, ReaderSession, SourcePlatform, etc.) |
 | **database-schema.md** | Persistence layer | 9 relational tables with constraints, indexes, cascade behavior |
 | **repository-interfaces.md** | Data access contracts | 8 repository interfaces (ComicRepository, ChapterRepository, etc.) with Query + Command operations |
+| **source-package-artifact-lifecycle.md** | Source package lifecycle boundary | Artifact lifecycle ownership, commit order, idempotent source mutation rules, rollback/cleanup boundaries |
+| **source-package-store-contract.md** | Source package store authority boundary | Durable artifact authority, atomic commit contract, read-evidence semantics, orphan safety, non-responsibilities |
 | **use-cases.md** | Business logic | 14 orchestrated workflows (CreateComic, ImportComic, UpdateReaderPosition, etc.) |
 | **diagnostics-events.md** | Observability | Complete event schema for audit trail, monitoring, tracing |
 | **security-boundaries-layering.md** | Architecture | 5-layer hexagonal architecture with security boundaries between each layer |
@@ -443,4 +445,3 @@ All design decisions documented. Ready for implementation in any language.
 - **Error Handling**: Result types (Either<T, Error>)
 - **Concurrency**: Last-write-wins for reader position
 - **Security**: Layers validate at boundaries, encryption at sensitive points
-
