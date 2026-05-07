@@ -2,95 +2,6 @@ import { sql, type Kysely } from "kysely";
 
 import type { CoreDatabaseSchema } from "./schema.js";
 
-async function tableExists(
-  db: Kysely<CoreDatabaseSchema>,
-  tableName: string,
-): Promise<boolean> {
-  const result = await sql<{ count: number }>`
-    SELECT COUNT(*) AS count
-    FROM sqlite_master
-    WHERE type = 'table' AND name = ${tableName}
-  `.execute(db);
-
-  return Number(result.rows[0]?.count ?? 0) > 0;
-}
-
-async function columnExists(
-  db: Kysely<CoreDatabaseSchema>,
-  tableName: string,
-  columnName: string,
-): Promise<boolean> {
-  const result = await sql<{ name: string }>`
-    PRAGMA table_info(${sql.raw(`'${tableName}'`)})
-  `.execute(db);
-
-  return result.rows.some((row) => row.name === columnName);
-}
-
-async function comicsNormalizedTitleIsUnique(
-  db: Kysely<CoreDatabaseSchema>,
-): Promise<boolean> {
-  const indexes = await sql<{ name: string; unique: number }>`
-    PRAGMA index_list('comics')
-  `.execute(db);
-
-  for (const index of indexes.rows) {
-    if (index.unique !== 1 || index.name === "idx_comics_normalized_title") {
-      continue;
-    }
-
-    const columns = await sql<{ name: string }>`
-      PRAGMA index_info(${sql.raw(`'${index.name}'`)})
-    `.execute(db);
-
-    if (columns.rows.length === 1 && columns.rows[0]?.name === "normalized_title") {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-async function rebuildComicsTableWithoutUniqueConstraint(
-  db: Kysely<CoreDatabaseSchema>,
-): Promise<void> {
-  await sql`PRAGMA foreign_keys = OFF`.execute(db);
-  try {
-    await sql`
-      CREATE TABLE comics__new (
-        id TEXT PRIMARY KEY,
-        normalized_title TEXT NOT NULL,
-        origin_hint TEXT NOT NULL DEFAULT 'unknown'
-          CHECK (origin_hint IN ('unknown', 'local', 'remote', 'mixed')),
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    `.execute(db);
-
-    await sql`
-      INSERT INTO comics__new (
-        id,
-        normalized_title,
-        origin_hint,
-        created_at,
-        updated_at
-      )
-      SELECT
-        id,
-        normalized_title,
-        origin_hint,
-        created_at,
-        updated_at
-      FROM comics
-    `.execute(db);
-
-    await sql`DROP TABLE comics`.execute(db);
-    await sql`ALTER TABLE comics__new RENAME TO comics`.execute(db);
-  } finally {
-    await sql`PRAGMA foreign_keys = ON`.execute(db);
-  }
-}
-
 async function ensureNoDanglingForeignKeys(
   db: Kysely<CoreDatabaseSchema>,
 ): Promise<void> {
@@ -98,31 +9,29 @@ async function ensureNoDanglingForeignKeys(
     PRAGMA foreign_key_check
   `.execute(db);
 
-  if (results.rows.length > 0) {
-    const details = results.rows
-      .map((row) => `${row.table}:${row.rowid}->${row.parent}#${row.fkid}`)
-      .join(", ");
-    throw new Error(`Foreign key check failed: ${details}`);
+  if (results.rows.length === 0) {
+    return;
   }
+
+  const details = results.rows
+    .map((row) => `${row.table}:${row.rowid}->${row.parent}#${row.fkid}`)
+    .join(", ");
+  throw new Error(`Foreign key check failed: ${details}`);
 }
 
 export async function migrateCoreDatabase(
   db: Kysely<CoreDatabaseSchema>,
 ): Promise<void> {
-  if (!(await tableExists(db, "comics"))) {
-    await sql`
-      CREATE TABLE comics (
-        id TEXT PRIMARY KEY,
-        normalized_title TEXT NOT NULL,
-        origin_hint TEXT NOT NULL DEFAULT 'unknown'
-          CHECK (origin_hint IN ('unknown', 'local', 'remote', 'mixed')),
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
-    `.execute(db);
-  } else if (await comicsNormalizedTitleIsUnique(db)) {
-    await rebuildComicsTableWithoutUniqueConstraint(db);
-  }
+  await sql`
+    CREATE TABLE IF NOT EXISTS comics (
+      id TEXT PRIMARY KEY,
+      normalized_title TEXT NOT NULL,
+      origin_hint TEXT NOT NULL DEFAULT 'unknown'
+        CHECK (origin_hint IN ('unknown', 'local', 'remote', 'mixed')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `.execute(db);
 
   await sql`
     CREATE INDEX IF NOT EXISTS idx_comics_normalized_title
@@ -135,7 +44,7 @@ export async function migrateCoreDatabase(
       canonical_key TEXT NOT NULL UNIQUE,
       display_name TEXT NOT NULL,
       kind TEXT NOT NULL CHECK (kind IN ('local', 'remote', 'virtual')),
-      is_enabled INTEGER NOT NULL CHECK (is_enabled IN (0, 1)),
+      status TEXT NOT NULL CHECK (status IN ('active', 'disabled', 'deprecated')),
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
@@ -149,7 +58,7 @@ export async function migrateCoreDatabase(
       backend_kind TEXT NOT NULL CHECK (backend_kind IN ('local_app_data', 'webdav', 'future')),
       config_json TEXT NOT NULL,
       secret_ref TEXT,
-      is_enabled INTEGER NOT NULL CHECK (is_enabled IN (0, 1)),
+      status TEXT NOT NULL CHECK (status IN ('active', 'disabled', 'deprecated')),
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
@@ -173,12 +82,11 @@ export async function migrateCoreDatabase(
       comic_id TEXT NOT NULL REFERENCES comics(id) ON DELETE CASCADE,
       parent_chapter_id TEXT REFERENCES chapters(id) ON DELETE SET NULL,
       chapter_kind TEXT NOT NULL CHECK (chapter_kind IN ('season', 'volume', 'chapter', 'episode', 'oneshot', 'group')),
-      chapter_number REAL NOT NULL,
+      chapter_number REAL,
       title TEXT,
       display_label TEXT,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      UNIQUE (comic_id, parent_chapter_id, chapter_number)
+      updated_at TEXT NOT NULL
     )
   `.execute(db);
 
@@ -221,7 +129,8 @@ export async function migrateCoreDatabase(
       remote_chapter_id TEXT NOT NULL,
       remote_url TEXT,
       remote_label TEXT,
-      link_status TEXT NOT NULL CHECK (link_status IN ('active', 'candidate', 'rejected', 'stale')),
+      source_order INTEGER,
+      link_status TEXT NOT NULL CHECK (link_status IN ('active', 'inactive', 'stale')),
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       UNIQUE (source_link_id, remote_chapter_id)
@@ -278,7 +187,7 @@ export async function migrateCoreDatabase(
       locale TEXT,
       source_platform_id TEXT REFERENCES source_platforms(id) ON DELETE SET NULL,
       source_link_id TEXT REFERENCES source_links(id) ON DELETE SET NULL,
-      title_kind TEXT NOT NULL CHECK (title_kind IN ('primary', 'alias', 'translated', 'source')),
+      title_kind TEXT NOT NULL CHECK (title_kind IN ('primary', 'source', 'alias')),
       created_at TEXT NOT NULL,
       UNIQUE (comic_id, normalized_title, locale, source_platform_id)
     )
@@ -298,12 +207,6 @@ export async function migrateCoreDatabase(
     CREATE UNIQUE INDEX IF NOT EXISTS ux_comic_titles_one_primary
       ON comic_titles(comic_id)
       WHERE title_kind = 'primary'
-  `.execute(db);
-
-  await sql`
-    CREATE UNIQUE INDEX IF NOT EXISTS ux_comic_titles_source_less_normalized
-      ON comic_titles(comic_id, normalized_title)
-      WHERE locale IS NULL AND source_platform_id IS NULL
   `.execute(db);
 
   await sql`
@@ -358,9 +261,6 @@ export async function migrateCoreDatabase(
       chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
       page_id TEXT REFERENCES pages(id) ON DELETE SET NULL,
       page_index INTEGER NOT NULL,
-      source_link_id TEXT REFERENCES source_links(id) ON DELETE SET NULL,
-      chapter_source_link_id TEXT REFERENCES chapter_source_links(id) ON DELETE SET NULL,
-      reader_mode TEXT NOT NULL CHECK (reader_mode IN ('gallery', 'continuous')),
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
@@ -384,13 +284,6 @@ export async function migrateCoreDatabase(
     )
   `.execute(db);
 
-  if (!(await columnExists(db, "diagnostics_events", "schema_version"))) {
-    await sql`
-      ALTER TABLE diagnostics_events
-      ADD COLUMN schema_version TEXT NOT NULL DEFAULT '1.0.0'
-    `.execute(db);
-  }
-
   await sql`
     CREATE TABLE IF NOT EXISTS operation_idempotency (
       operation_name TEXT NOT NULL,
@@ -406,27 +299,6 @@ export async function migrateCoreDatabase(
       PRIMARY KEY (operation_name, idempotency_key)
     )
   `.execute(db);
-
-  if (!(await columnExists(db, "operation_idempotency", "result_type"))) {
-    await sql`
-      ALTER TABLE operation_idempotency
-      ADD COLUMN result_type TEXT
-    `.execute(db);
-  }
-
-  if (!(await columnExists(db, "operation_idempotency", "result_resource_id"))) {
-    await sql`
-      ALTER TABLE operation_idempotency
-      ADD COLUMN result_resource_id TEXT
-    `.execute(db);
-  }
-
-  if (!(await columnExists(db, "operation_idempotency", "result_schema_version"))) {
-    await sql`
-      ALTER TABLE operation_idempotency
-      ADD COLUMN result_schema_version TEXT
-    `.execute(db);
-  }
 
   await ensureNoDanglingForeignKeys(db);
 }

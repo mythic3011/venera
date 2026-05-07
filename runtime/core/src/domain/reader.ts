@@ -1,20 +1,11 @@
 import type { Chapter } from "./chapter.js";
 import type {
   ChapterId,
-  ChapterSourceLinkId,
   ComicId,
   PageId,
-  SourceLinkId,
   ReaderSessionId,
 } from "./identifiers.js";
 import type { Page, PageOrderWithItems } from "./page.js";
-
-export const READER_MODES = [
-  "gallery",
-  "continuous",
-] as const;
-
-export type ReaderMode = (typeof READER_MODES)[number];
 
 export const READER_SOURCE_KINDS = [
   "local",
@@ -47,9 +38,6 @@ export interface ReaderSession {
   readonly chapterId: ChapterId;
   readonly pageId?: PageId;
   readonly pageIndex: number;
-  readonly sourceLinkId?: SourceLinkId;
-  readonly chapterSourceLinkId?: ChapterSourceLinkId;
-  readonly readerMode: ReaderMode;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -73,8 +61,6 @@ export interface ReaderOpenTarget {
   readonly pageIndex: number;
   readonly pageId?: PageId;
   readonly sourceKind: ReaderSourceKind;
-  readonly sourceLinkId?: SourceLinkId;
-  readonly chapterSourceLinkId?: ChapterSourceLinkId;
   readonly resolutionReason: ReaderTargetResolutionReason;
 }
 
@@ -103,7 +89,4 @@ export interface UpdateReaderPositionInput {
   readonly chapterId: ChapterId;
   readonly pageId?: PageId;
   readonly pageIndex: number;
-  readonly readerMode: ReaderMode;
-  readonly sourceLinkId?: SourceLinkId;
-  readonly chapterSourceLinkId?: ChapterSourceLinkId;
 }

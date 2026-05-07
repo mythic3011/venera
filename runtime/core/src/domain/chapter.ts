@@ -16,7 +16,7 @@ export interface Chapter {
   readonly comicId: ComicId;
   readonly parentChapterId?: ChapterId;
   readonly chapterKind: ChapterKind;
-  readonly chapterNumber: number;
+  readonly chapterNumber: number | null;
   readonly title?: string;
   readonly displayLabel?: string;
   readonly createdAt: Date;
@@ -33,7 +33,7 @@ export interface CreateChapterInput {
   readonly comicId: ComicId;
   readonly parentChapterId?: ChapterId;
   readonly chapterKind: ChapterKind;
-  readonly chapterNumber: number;
+  readonly chapterNumber: number | null;
   readonly title?: string;
   readonly displayLabel?: string;
   readonly createdAt: Date;
@@ -44,7 +44,7 @@ export interface UpdateChapterInput {
   readonly id: ChapterId;
   readonly parentChapterId?: ChapterId;
   readonly chapterKind?: ChapterKind;
-  readonly chapterNumber?: number;
+  readonly chapterNumber?: number | null;
   readonly title?: string;
   readonly displayLabel?: string;
   readonly updatedAt: Date;

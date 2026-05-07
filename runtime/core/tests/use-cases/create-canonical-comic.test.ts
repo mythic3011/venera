@@ -42,7 +42,7 @@ async function readIdempotencyRows(
 }
 
 describe("CreateCanonicalComic", () => {
-  it("creates comic, metadata, and primary title transactionally", async () => {
+  it("creates comic, metadata, and exactly one primary title transactionally", async () => {
     const runtime = await createTestRuntime();
 
     try {
@@ -65,7 +65,38 @@ describe("CreateCanonicalComic", () => {
       expect(metadata.ok && metadata.value !== null).toBe(true);
       expect(titles.ok && titles.value.length).toBe(1);
       if (titles.ok) {
-        expect(titles.value[0]?.titleKind).toBe("primary");
+        expect(titles.value.map((title) => title.titleKind)).toEqual(["primary"]);
+      }
+    } finally {
+      runtime.close();
+    }
+  });
+
+  it("keeps comic_metadata.title equal to the primary title after create", async () => {
+    const runtime = await createTestRuntime();
+
+    try {
+      const result = await runtime.useCases.createCanonicalComic.execute({
+        title: "Primary Metadata Title",
+        description: "desc",
+      });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) {
+        return;
+      }
+
+      expect(result.value.metadata.title).toBe(result.value.primaryTitle.title);
+      expect(result.value.metadata.comicId).toBe(result.value.primaryTitle.comicId);
+
+      const metadata = await runtime.repositories.comicMetadata.getByComicId(result.value.comic.id);
+      const titles = await runtime.repositories.comicTitles.listByComic(result.value.comic.id);
+
+      expect(metadata.ok).toBe(true);
+      expect(titles.ok).toBe(true);
+      if (metadata.ok && metadata.value !== null && titles.ok) {
+        const primaryTitle = titles.value.find((title) => title.titleKind === "primary");
+        expect(primaryTitle?.title).toBe(metadata.value.title);
       }
     } finally {
       runtime.close();

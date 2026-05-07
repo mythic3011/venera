@@ -3,6 +3,8 @@ import type {
   OpenReaderResult,
   ReaderPageEntry,
 } from "../domain/reader.js";
+import type { ChapterId } from "../domain/identifiers.js";
+import type { Page, PageOrderWithItems } from "../domain/page.js";
 import type { CoreUseCaseDependencies } from "../ports/use-case-dependencies.js";
 import { isErr, ok, type Result } from "../shared/result.js";
 import { fail, unexpectedFailure } from "./helpers.js";
@@ -46,53 +48,29 @@ export class OpenReader {
         return activeOrderResult;
       }
 
-      const activeOrder = activeOrderResult.value ?? {
-        order: {
-          id: `synthetic:${target.value.chapterId}` as never,
-          chapterId: target.value.chapterId,
-          orderKey: "source",
-          orderType: "source",
-          isActive: true,
-          pageCount: pagesResult.value.length,
-          createdAt: this.dependencies.clock.now(),
-          updatedAt: this.dependencies.clock.now(),
-        },
-        items: pagesResult.value.map((page) => ({
-          id: `synthetic:${page.id}` as never,
-          pageOrderId: `synthetic:${target.value.chapterId}` as never,
-          pageId: page.id,
-          sortIndex: page.pageIndex,
-          createdAt: page.createdAt,
-        })),
-      };
+      const orderedPagesResult = this.resolveOrderedPages(
+        target.value.chapterId,
+        pagesResult.value,
+        activeOrderResult.value,
+      );
+      if (isErr(orderedPagesResult)) {
+        return orderedPagesResult;
+      }
 
-      const pagesById = new Map(pagesResult.value.map((page) => [page.id, page]));
-      const orderedPages: ReaderPageEntry[] = activeOrder.items
-        .map((item) => {
-          const page = pagesById.get(item.pageId);
-          if (page === undefined) {
-            return null;
-          }
-
-          return {
-            page,
-            sortIndex: item.sortIndex,
-          };
-        })
-        .filter((entry): entry is ReaderPageEntry => entry !== null)
-        .sort((left, right) => left.sortIndex - right.sortIndex);
-
-      if (orderedPages.length === 0) {
+      if (orderedPagesResult.value.pages.length === 0) {
         return fail("NOT_FOUND", "No pages exist for the resolved chapter.");
       }
 
-      if (target.value.pageIndex < 0 || target.value.pageIndex >= orderedPages.length) {
+      const resolvedPage = orderedPagesResult.value.pages.find(
+        (entry) => entry.page.pageIndex === target.value.pageIndex,
+      );
+      if (resolvedPage === undefined) {
         return fail(
           "READER_INVALID_POSITION",
-          "Reader page index is outside the available page range.",
+          "Reader page index does not map to a canonical page in the chapter.",
           {
             pageIndex: target.value.pageIndex,
-            pageCount: orderedPages.length,
+            pageCount: orderedPagesResult.value.pages.length,
           },
         );
       }
@@ -100,11 +78,99 @@ export class OpenReader {
       return ok({
         target: target.value,
         chapter: chapter.value,
-        activeOrder,
-        pages: orderedPages,
+        activeOrder: orderedPagesResult.value.activeOrder,
+        pages: orderedPagesResult.value.pages,
       });
     } catch (cause) {
       return unexpectedFailure("OpenReader failed.", cause);
     }
+  }
+
+  private resolveOrderedPages(
+    chapterId: ChapterId,
+    pages: readonly Page[],
+    activeOrder: PageOrderWithItems | null,
+  ): Result<{ activeOrder: PageOrderWithItems; pages: readonly ReaderPageEntry[] }> {
+    if (activeOrder === null) {
+      const fallbackOrder = this.buildFallbackOrder(chapterId as never, pages);
+      return ok({
+        activeOrder: fallbackOrder,
+        pages: fallbackOrder.items
+          .map((item) => ({
+            page: pages.find((page) => page.id === item.pageId)!,
+            sortIndex: item.sortIndex,
+          }))
+          .sort((left, right) => left.sortIndex - right.sortIndex),
+      });
+    }
+
+    const pagesById = new Map(pages.map((page) => [page.id, page]));
+    if (activeOrder.order.pageCount !== pages.length || activeOrder.items.length !== pages.length) {
+      return fail(
+        "VALIDATION_ERROR",
+        "Active page order must cover every page in the chapter exactly once.",
+      );
+    }
+
+    const seenPageIds = new Set<string>();
+    const seenSortIndexes = new Set<number>();
+    const orderedPages: ReaderPageEntry[] = [];
+    for (const item of activeOrder.items) {
+      if (seenPageIds.has(item.pageId) || seenSortIndexes.has(item.sortIndex)) {
+        return fail(
+          "VALIDATION_ERROR",
+          "Active page order contains duplicate page or sort positions.",
+        );
+      }
+
+      seenPageIds.add(item.pageId);
+      seenSortIndexes.add(item.sortIndex);
+
+      const page = pagesById.get(item.pageId);
+      if (page === undefined) {
+        return fail(
+          "VALIDATION_ERROR",
+          "Active page order references a page outside the resolved chapter.",
+        );
+      }
+
+      orderedPages.push({
+        page,
+        sortIndex: item.sortIndex,
+      });
+    }
+
+    return ok({
+      activeOrder,
+      pages: orderedPages.sort((left, right) => left.sortIndex - right.sortIndex),
+    });
+  }
+
+  private buildFallbackOrder(
+    chapterId: ChapterId,
+    pages: readonly Page[],
+  ): PageOrderWithItems {
+    const now = this.dependencies.clock.now();
+    const orderedPages = [...pages].sort((left, right) => left.pageIndex - right.pageIndex);
+
+    return {
+      order: {
+        id: `synthetic:${chapterId}` as never,
+        chapterId: chapterId as never,
+        orderKey: "source",
+        orderType: "source",
+        isActive: true,
+        pageCount: orderedPages.length,
+        createdAt: now,
+        updatedAt: now,
+      },
+      items: orderedPages.map((page) => ({
+        id: `synthetic:${page.id}` as never,
+        pageOrderId: `synthetic:${chapterId}` as never,
+        pageId: page.id,
+        sortIndex: page.pageIndex,
+        createdAt: page.createdAt,
+      })),
+    };
   }
 }

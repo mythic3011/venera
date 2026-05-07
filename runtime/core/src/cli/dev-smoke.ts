@@ -37,8 +37,6 @@ export interface CoreSmokeSuccess {
     readonly sourceKind: string;
     readonly resolutionReason: string;
     readonly pageId?: string;
-    readonly sourceLinkId?: string;
-    readonly chapterSourceLinkId?: string;
   };
   readonly openReader: {
     readonly chapterId: string;
@@ -54,12 +52,9 @@ export interface CoreSmokeSuccess {
     readonly comicId: string;
     readonly chapterId: string;
     readonly pageIndex: number;
-    readonly readerMode: string;
     readonly createdAt: string;
     readonly updatedAt: string;
     readonly pageId?: string;
-    readonly sourceLinkId?: string;
-    readonly chapterSourceLinkId?: string;
   };
   readonly seededSourcePlatforms: readonly string[];
 }
@@ -179,51 +174,26 @@ function formatComic(comic: CreatedCanonicalComic): CoreSmokeSuccess["comic"] {
 function formatResolvedTarget(
   openReader: OpenReaderResult,
 ): CoreSmokeSuccess["resolvedTarget"] {
-  return withOptional(
-    withOptional(
-      withOptional(
-        {
-          comicId: openReader.target.comicId,
-          chapterId: openReader.target.chapterId,
-          pageIndex: openReader.target.pageIndex,
-          sourceKind: openReader.target.sourceKind,
-          resolutionReason: openReader.target.resolutionReason,
-        },
-        "pageId",
-        openReader.target.pageId,
-      ),
-      "sourceLinkId",
-      openReader.target.sourceLinkId,
-    ),
-    "chapterSourceLinkId",
-    openReader.target.chapterSourceLinkId,
-  );
+  return withOptional({
+    comicId: openReader.target.comicId,
+    chapterId: openReader.target.chapterId,
+    pageIndex: openReader.target.pageIndex,
+    sourceKind: openReader.target.sourceKind,
+    resolutionReason: openReader.target.resolutionReason,
+  }, "pageId", openReader.target.pageId);
 }
 
 function formatReaderSession(
   session: NonNullable<Awaited<ReturnType<typeof queryReaderSession>>>,
 ): CoreSmokeSuccess["readerSession"] {
-  return withOptional(
-    withOptional(
-      withOptional(
-        {
-          id: session.id,
-          comicId: session.comicId,
-          chapterId: session.chapterId,
-          pageIndex: session.pageIndex,
-          readerMode: session.readerMode,
-          createdAt: session.createdAt.toISOString(),
-          updatedAt: session.updatedAt.toISOString(),
-        },
-        "pageId",
-        session.pageId,
-      ),
-      "sourceLinkId",
-      session.sourceLinkId,
-    ),
-    "chapterSourceLinkId",
-    session.chapterSourceLinkId,
-  );
+  return withOptional({
+    id: session.id,
+    comicId: session.comicId,
+    chapterId: session.chapterId,
+    pageIndex: session.pageIndex,
+    createdAt: session.createdAt.toISOString(),
+    updatedAt: session.updatedAt.toISOString(),
+  }, "pageId", session.pageId);
 }
 
 async function cleanupTempDb(tempDirPath: string | undefined): Promise<boolean> {
@@ -258,7 +228,7 @@ async function queryReaderSession(
 async function querySeededPlatforms(
   runtime: Awaited<ReturnType<typeof createCoreRuntime>>,
 ): Promise<readonly string[]> {
-  const platformsResult = await runtime.repositories.sourcePlatforms.listEnabled();
+  const platformsResult = await runtime.repositories.sourcePlatforms.listByStatus("active");
   if (isErr(platformsResult)) {
     throw platformsResult.error;
   }
@@ -384,16 +354,6 @@ export async function runCoreSmoke(
       chapterId: openReaderResult.value.target.chapterId,
       pageId: nextPage.page.id,
       pageIndex: nextPageIndex,
-      readerMode: "continuous",
-      ...(openReaderResult.value.target.sourceLinkId === undefined
-        ? {}
-        : { sourceLinkId: openReaderResult.value.target.sourceLinkId }),
-      ...(openReaderResult.value.target.chapterSourceLinkId === undefined
-        ? {}
-        : {
-            chapterSourceLinkId:
-              openReaderResult.value.target.chapterSourceLinkId,
-          }),
     });
     if (isErr(updateResult)) {
       return {

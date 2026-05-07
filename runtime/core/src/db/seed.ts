@@ -16,7 +16,7 @@ export async function seedCoreDatabase(
       canonical_key,
       display_name,
       kind,
-      is_enabled,
+      status,
       created_at,
       updated_at
     )
@@ -25,14 +25,14 @@ export async function seedCoreDatabase(
       'local',
       'Local',
       'local',
-      1,
+      'active',
       ${timestamp},
       ${timestamp}
     )
     ON CONFLICT(canonical_key) DO UPDATE SET
       display_name = excluded.display_name,
       kind = excluded.kind,
-      is_enabled = excluded.is_enabled,
+      status = excluded.status,
       updated_at = excluded.updated_at
   `.execute(db);
 }

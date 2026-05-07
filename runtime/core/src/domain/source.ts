@@ -14,6 +14,14 @@ export const SOURCE_PLATFORM_KINDS = [
 
 export type SourcePlatformKind = (typeof SOURCE_PLATFORM_KINDS)[number];
 
+export const SOURCE_PLATFORM_STATUSES = [
+  "active",
+  "disabled",
+  "deprecated",
+] as const;
+
+export type SourcePlatformStatus = (typeof SOURCE_PLATFORM_STATUSES)[number];
+
 export const SOURCE_LINK_STATUSES = [
   "active",
   "candidate",
@@ -31,12 +39,21 @@ export const SOURCE_LINK_CONFIDENCES = [
 
 export type SourceLinkConfidence = (typeof SOURCE_LINK_CONFIDENCES)[number];
 
+export const CHAPTER_SOURCE_LINK_STATUSES = [
+  "active",
+  "inactive",
+  "stale",
+] as const;
+
+export type ChapterSourceLinkStatus =
+  (typeof CHAPTER_SOURCE_LINK_STATUSES)[number];
+
 export interface SourcePlatform {
   readonly id: SourcePlatformId;
   readonly canonicalKey: string;
   readonly displayName: string;
   readonly kind: SourcePlatformKind;
-  readonly isEnabled: boolean;
+  readonly status: SourcePlatformStatus;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -61,7 +78,7 @@ export interface ChapterSourceLink {
   readonly remoteChapterId: string;
   readonly remoteUrl?: string;
   readonly remoteLabel?: string;
-  readonly linkStatus: SourceLinkStatus;
+  readonly linkStatus: ChapterSourceLinkStatus;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }

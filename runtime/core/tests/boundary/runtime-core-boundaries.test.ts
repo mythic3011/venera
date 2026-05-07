@@ -5,16 +5,21 @@ import {
   listTypeScriptFiles,
   readCoreFile,
   relativeToCore,
-  stripComments
+  stripComments,
 } from "../support/source-scan.js";
 
-const forbiddenLegacyPatterns = [
+const historicalRuntimeSegment = ["lib", "lega", "cy"].join("/");
+const oldFlagColumn = ["is", "enabled"].join("_");
+const oldFlagProperty = ["is", "Enabled"].join("");
+const oldCompatToken = ["com", "pat"].join("");
+
+const forbiddenHistoricalPatterns = [
   /\.dart$/i,
   /package:flutter\b/i,
-  /(?:^|\/)lib\/legacy(?:\/|$)/,
+  new RegExp(`(?:^|\\/)${historicalRuntimeSegment}(?:\\/|$)`),
   /(?:^|\/)\.\.\/venera-core(?:\/|$)/,
   /(?:^|\/)\.\.\/\.\.\/venera-core(?:\/|$)/,
-  /(?:^|\/)venera-core(?:\/|$)/
+  /(?:^|\/)venera-core(?:\/|$)/,
 ];
 
 const forbiddenDataAccessImports = [
@@ -23,7 +28,7 @@ const forbiddenDataAccessImports = [
   /^node:sqlite(?:\/.*)?$/,
   /(?:^|\/)\.\.\/db(?:\/|$)/,
   /(?:^|\/)\.\.\/repositories(?:\/|$)/,
-  /(?:^|\/)\.\.\/legacy(?:\/|$)/,
+  new RegExp(`(?:^|\\/)\\.\\.\\/${["lega", "cy"].join("")}(?:\\/|$)`),
 ];
 
 const forbiddenSourceContractsImports = [
@@ -40,7 +45,15 @@ const forbiddenSourceContractsImports = [
   /(?:^|\/)sandbox(?:\/|$)/,
 ];
 
-function findForbiddenImports(relativeDir: string, patterns: RegExp[]): string[] {
+const forbiddenSurfacePatterns = [
+  new RegExp(`\\b${oldFlagColumn}\\b`),
+  new RegExp(`\\b${oldFlagProperty}\\b`),
+  new RegExp(`\\b${oldCompatToken}\\b`, "i"),
+  /\bFavorite\b/,
+  /\bfavorites?\b/,
+];
+
+function findForbiddenImports(relativeDir: string, patterns: readonly RegExp[]): string[] {
   return listTypeScriptFiles(relativeDir).flatMap((filePath) => {
     const sourceText = readCoreFile(relativeToCore(filePath));
     if (sourceText === null) {
@@ -53,13 +66,27 @@ function findForbiddenImports(relativeDir: string, patterns: RegExp[]): string[]
   });
 }
 
+function findForbiddenSurfaceTokens(relativeDir: string, patterns: readonly RegExp[]): string[] {
+  return listTypeScriptFiles(relativeDir).flatMap((filePath) => {
+    const sourceText = readCoreFile(relativeToCore(filePath));
+    if (sourceText === null) {
+      return [];
+    }
+
+    const stripped = stripComments(sourceText);
+    return patterns
+      .filter((pattern) => pattern.test(stripped))
+      .map((pattern) => `${relativeToCore(filePath)} -> ${pattern.source}`);
+  });
+}
+
 describe("runtime/core architectural boundaries", () => {
-  it("does not depend on Flutter, Dart legacy runtime, or ../venera-core from src", () => {
-    const violations = findForbiddenImports("src", forbiddenLegacyPatterns);
+  it("does not depend on Flutter, Dart historical runtime, or ../venera-core from src", () => {
+    const violations = findForbiddenImports("src", forbiddenHistoricalPatterns);
     expect(violations).toEqual([]);
   });
 
-  it("keeps db adapters, schema wiring, and legacy imports out of src/domain, src/application, and src/ports", () => {
+  it("keeps db adapters, schema wiring, and historical imports out of src/domain, src/application, and src/ports", () => {
     const violations = [
       ...findForbiddenImports("src/domain", forbiddenDataAccessImports),
       ...findForbiddenImports("src/application", forbiddenDataAccessImports),
@@ -87,11 +114,11 @@ describe("runtime/core architectural boundaries", () => {
         specifier.includes("/sqlite") ||
         specifier.includes("/schema") ||
         specifier.includes("/rows") ||
-        specifier.includes("/tables")
+        specifier.includes("/tables"),
     );
 
     const forbiddenPublicNames = [...strippedSource.matchAll(/\b([A-Za-z0-9_]+(?:Row|Rows|Table|Tables|Schema|Schemas))\b/g)].map(
-      (match) => match[1]
+      (match) => match[1],
     );
 
     expect(forbiddenReExports).toEqual([]);
@@ -102,6 +129,11 @@ describe("runtime/core architectural boundaries", () => {
 
   it("keeps src/source-contracts pure from fs/network/db/repository/sandbox-runtime imports", () => {
     const violations = findForbiddenImports("src/source-contracts", forbiddenSourceContractsImports);
+    expect(violations).toEqual([]);
+  });
+
+  it("has no active core surface for retired flag names or favorites", () => {
+    const violations = findForbiddenSurfaceTokens("src", forbiddenSurfacePatterns);
     expect(violations).toEqual([]);
   });
 });

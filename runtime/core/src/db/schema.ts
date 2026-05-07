@@ -1,3 +1,8 @@
+export type ComicTitleKindRow = "primary" | "source" | "alias";
+export type ChapterSourceLinkStatusRow = "active" | "inactive" | "stale";
+export type SourcePlatformStatusRow = "active" | "disabled" | "deprecated";
+export type StorageBackendStatusRow = "active" | "disabled" | "deprecated";
+
 export interface ComicsTable {
   id: string;
   normalized_title: string;
@@ -26,7 +31,7 @@ export interface ComicTitlesTable {
   locale: string | null;
   source_platform_id: string | null;
   source_link_id: string | null;
-  title_kind: string;
+  title_kind: ComicTitleKindRow;
   created_at: string;
 }
 
@@ -35,7 +40,7 @@ export interface ChaptersTable {
   comic_id: string;
   parent_chapter_id: string | null;
   chapter_kind: string;
-  chapter_number: number;
+  chapter_number: number | null;
   title: string | null;
   display_label: string | null;
   created_at: string;
@@ -80,7 +85,7 @@ export interface SourcePlatformsTable {
   canonical_key: string;
   display_name: string;
   kind: string;
-  is_enabled: number;
+  status: SourcePlatformStatusRow;
   created_at: string;
   updated_at: string;
 }
@@ -105,7 +110,8 @@ export interface ChapterSourceLinksTable {
   remote_chapter_id: string;
   remote_url: string | null;
   remote_label: string | null;
-  link_status: string;
+  source_order: number | null;
+  link_status: ChapterSourceLinkStatusRow;
   created_at: string;
   updated_at: string;
 }
@@ -117,7 +123,7 @@ export interface StorageBackendsTable {
   backend_kind: string;
   config_json: string;
   secret_ref: string | null;
-  is_enabled: number;
+  status: StorageBackendStatusRow;
   created_at: string;
   updated_at: string;
 }
@@ -150,9 +156,6 @@ export interface ReaderSessionsTable {
   chapter_id: string;
   page_id: string | null;
   page_index: number;
-  source_link_id: string | null;
-  chapter_source_link_id: string | null;
-  reader_mode: string;
   created_at: string;
   updated_at: string;
 }

@@ -775,26 +775,6 @@ export class CreateCanonicalComic {
           return comic;
         }
 
-        const metadata = await this.dependencies.repositories.comicMetadata.create(
-          withOptional(
-            withOptional(
-              {
-                comicId: comicId.value,
-                title: title.value,
-                createdAt: now,
-                updatedAt: now,
-              },
-              "description",
-              canonicalInput.description,
-            ),
-            "authorName",
-            canonicalInput.authorName,
-          ),
-        );
-        if (isErr(metadata)) {
-          return metadata;
-        }
-
         const titleId = parseComicTitleId(this.dependencies.idGenerator.create());
         if (isErr(titleId)) {
           return titleId;
@@ -809,6 +789,26 @@ export class CreateCanonicalComic {
         });
         if (isErr(primaryTitle)) {
           return primaryTitle;
+        }
+
+        const metadata = await this.dependencies.repositories.comicMetadata.create(
+          withOptional(
+            withOptional(
+              {
+                comicId: comicId.value,
+                title: primaryTitle.value.title,
+                createdAt: now,
+                updatedAt: now,
+              },
+              "description",
+              canonicalInput.description,
+            ),
+            "authorName",
+            canonicalInput.authorName,
+          ),
+        );
+        if (isErr(metadata)) {
+          return metadata;
         }
 
         const storedPrimaryTitle = await this.dependencies.repositories.comicTitles.addTitle(

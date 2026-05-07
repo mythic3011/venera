@@ -62,7 +62,7 @@ describe("validateSourcePackageManifest", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("rejects legacy provider-only payloads", () => {
+  it("rejects prior provider-only payloads", () => {
     const result = validateSourcePackageManifest({
       schemaVersion: "1.0.0",
       provider: "copymanga",
@@ -134,7 +134,7 @@ describe("validateSourcePackageManifest", () => {
   it("rejects previousProviderKeys and providerLineageId", () => {
     const result = validateSourcePackageManifest({
       ...createPackageManifest(),
-      previousProviderKeys: ["legacy"],
+      previousProviderKeys: ["prior-provider"],
       providerLineageId: "copymanga-lineage",
     });
 

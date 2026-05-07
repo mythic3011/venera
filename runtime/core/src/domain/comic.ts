@@ -25,9 +25,8 @@ export type ComicOriginHint = (typeof COMIC_ORIGIN_HINTS)[number];
 
 export const COMIC_TITLE_KINDS = [
   "primary",
-  "alias",
-  "translated",
   "source",
+  "alias",
 ] as const;
 
 export type ComicTitleKind = (typeof COMIC_TITLE_KINDS)[number];

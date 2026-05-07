@@ -34,7 +34,13 @@ import type {
   ReaderSessionPersistResult,
   UpdateReaderPositionInput,
 } from "../domain/reader.js";
-import type { ChapterSourceLink, ProviderWorkRef, SourceLink, SourcePlatform } from "../domain/source.js";
+import type {
+  ChapterSourceLink,
+  ProviderWorkRef,
+  SourceLink,
+  SourcePlatform,
+  SourcePlatformStatus,
+} from "../domain/source.js";
 import type { StorageObject, StoragePlacement } from "../domain/storage.js";
 import type { Result } from "../shared/result.js";
 
@@ -85,7 +91,13 @@ export interface ReaderSessionRepositoryPort {
 export interface SourcePlatformRepositoryPort {
   getById(id: SourcePlatformId): Promise<Result<SourcePlatform | null>>;
   getByKey(canonicalKey: string): Promise<Result<SourcePlatform | null>>;
-  listEnabled(): Promise<Result<readonly SourcePlatform[]>>;
+  listByStatus(
+    status: SourcePlatformStatus,
+  ): Promise<Result<readonly SourcePlatform[]>>;
+  updateStatus(input: {
+    id: SourcePlatformId;
+    status: SourcePlatformStatus;
+  }): Promise<Result<SourcePlatform>>;
 }
 
 export interface SourceLinkRepositoryPort {

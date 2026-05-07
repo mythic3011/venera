@@ -36,10 +36,11 @@ export class UpdateReaderPosition {
         return pages;
       }
 
-      if (input.pageIndex < 0 || input.pageIndex >= pages.value.length) {
+      const pageAtIndex = pages.value.find((page) => page.pageIndex === input.pageIndex);
+      if (pageAtIndex === undefined) {
         return fail(
           "READER_INVALID_POSITION",
-          "Page index is outside the chapter page range.",
+          "Page index does not map to a canonical page in the chapter.",
           {
             pageIndex: input.pageIndex,
             pageCount: pages.value.length,
@@ -53,10 +54,14 @@ export class UpdateReaderPosition {
           return page;
         }
 
-        if (page.value === null || page.value.chapterId !== input.chapterId) {
+        if (
+          page.value === null
+          || page.value.chapterId !== input.chapterId
+          || page.value.pageIndex !== input.pageIndex
+        ) {
           return fail(
             "READER_INVALID_POSITION",
-            "Page does not belong to the requested chapter.",
+            "Page does not match the requested chapter/page index.",
           );
         }
       }
@@ -72,10 +77,7 @@ export class UpdateReaderPosition {
         existing.value !== null &&
         existing.value.chapterId === input.chapterId &&
         existing.value.pageId === input.pageId &&
-        existing.value.pageIndex === input.pageIndex &&
-        existing.value.readerMode === input.readerMode &&
-        existing.value.sourceLinkId === input.sourceLinkId &&
-        existing.value.chapterSourceLinkId === input.chapterSourceLinkId
+        existing.value.pageIndex === input.pageIndex
       ) {
         return {
           ok: true,

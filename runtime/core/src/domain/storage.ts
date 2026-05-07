@@ -12,6 +12,14 @@ export const STORAGE_BACKEND_KINDS = [
 
 export type StorageBackendKind = (typeof STORAGE_BACKEND_KINDS)[number];
 
+export const STORAGE_BACKEND_STATUSES = [
+  "active",
+  "disabled",
+  "deprecated",
+] as const;
+
+export type StorageBackendStatus = (typeof STORAGE_BACKEND_STATUSES)[number];
+
 export const STORAGE_OBJECT_KINDS = [
   "page_image",
   "cover",
@@ -48,7 +56,7 @@ export interface StorageBackend {
   readonly backendKind: StorageBackendKind;
   readonly configJson: string;
   readonly secretRef?: string;
-  readonly isEnabled: boolean;
+  readonly status: StorageBackendStatus;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }

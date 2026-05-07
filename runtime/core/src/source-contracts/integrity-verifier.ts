@@ -8,7 +8,6 @@ import {
   validateSourcePackageManifest,
   validateSourceRepositoryPackageEntry,
   type ProviderTagMappingDocument,
-  type SourcePackageChecksums,
   type SourcePackageManifest,
   type SourceRepositoryPackageEntry,
 } from "./validators.js";

@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { type Kysely } from "kysely";
+import { sql, type Kysely } from "kysely";
 
 import {
+  COMIC_TITLE_KINDS,
   parseDisplayTitle,
   parseNormalizedTitle,
   type AddComicTitleInput,
@@ -58,6 +59,7 @@ import {
   type ComicTitleId,
   type PageId,
   type SourceLinkId,
+  type SourcePlatformId,
   type StorageObjectId,
 } from "../domain/identifiers.js";
 import {
@@ -68,22 +70,23 @@ import {
   type SetUserPageOrderInput,
 } from "../domain/page.js";
 import {
-  READER_MODES,
   type ReaderSession,
   type ReaderSessionPersistResult,
   type UpdateReaderPositionInput,
 } from "../domain/reader.js";
 import {
+  CHAPTER_SOURCE_LINK_STATUSES,
   SOURCE_LINK_CONFIDENCES,
   SOURCE_LINK_STATUSES,
   SOURCE_PLATFORM_KINDS,
+  SOURCE_PLATFORM_STATUSES,
   type ChapterSourceLink,
   type ProviderWorkRef,
   type SourceLink,
   type SourcePlatform,
+  type SourcePlatformStatus,
 } from "../domain/source.js";
 import {
-  STORAGE_BACKEND_KINDS,
   STORAGE_OBJECT_KINDS,
   STORAGE_PLACEMENT_ROLES,
   STORAGE_SYNC_STATUSES,
@@ -109,12 +112,19 @@ import type {
 } from "../ports/repositories.js";
 import type { QueryExecutorProvider } from "../db/database.js";
 import type { CoreDatabaseSchema } from "../db/schema.js";
-import type { JsonObject } from "../shared/json.js";
 import { createCoreError } from "../shared/errors.js";
 import { err, isErr, ok, type Result } from "../shared/result.js";
 import { ensureEnumValue, isoToDate, parseJsonObject, unwrapMappedResult } from "./mappers/common.js";
 
 type Queryable = Kysely<CoreDatabaseSchema>;
+type SourcePlatformRow = CoreDatabaseSchema["source_platforms"] & {
+  status?: string | null;
+};
+type SourceLinkRow = CoreDatabaseSchema["source_links"];
+type ChapterSourceLinkRow = CoreDatabaseSchema["chapter_source_links"] & {
+  source_link_status?: string | null;
+  source_platform_status?: string | null;
+};
 
 function currentDb(executorProvider: QueryExecutorProvider): Queryable {
   return executorProvider.current() as Queryable;
@@ -270,7 +280,7 @@ function mapComicTitle(row: CoreDatabaseSchema["comic_titles"]): Result<ComicTit
     return sourceLinkId;
   }
 
-  const titleKind = ensureEnumValue(row.title_kind, ["primary", "alias", "translated", "source"], "title_kind");
+  const titleKind = ensureEnumValue(row.title_kind, COMIC_TITLE_KINDS, "title_kind");
   if (isErr(titleKind)) {
     return titleKind;
   }
@@ -376,7 +386,11 @@ function mapPage(row: CoreDatabaseSchema["pages"]): Result<Page> {
   }, "storageObjectId", storageObjectId.value), "chapterSourceLinkId", chapterSourceLinkId.value), "mimeType", row.mime_type ?? undefined), "width", row.width ?? undefined), "height", row.height ?? undefined), "checksum", row.checksum ?? undefined));
 }
 
-function mapSourcePlatform(row: CoreDatabaseSchema["source_platforms"]): Result<SourcePlatform> {
+function parseSourcePlatformStatus(row: SourcePlatformRow): Result<SourcePlatformStatus> {
+  return ensureEnumValue(row.status, SOURCE_PLATFORM_STATUSES, "status");
+}
+
+function mapSourcePlatform(row: SourcePlatformRow): Result<SourcePlatform> {
   const id = parseSourcePlatformId(row.id);
   if (isErr(id)) {
     return id;
@@ -397,18 +411,23 @@ function mapSourcePlatform(row: CoreDatabaseSchema["source_platforms"]): Result<
     return updatedAt;
   }
 
+  const status = parseSourcePlatformStatus(row);
+  if (isErr(status)) {
+    return status;
+  }
+
   return ok({
     id: id.value,
     canonicalKey: row.canonical_key,
     displayName: row.display_name,
     kind: kind.value,
-    isEnabled: row.is_enabled === 1,
+    status: status.value,
     createdAt: createdAt.value,
     updatedAt: updatedAt.value,
   });
 }
 
-function mapSourceLink(row: CoreDatabaseSchema["source_links"]): Result<SourceLink> {
+function mapSourceLink(row: SourceLinkRow): Result<SourceLink> {
   const id = parseSourceLinkId(row.id);
   if (isErr(id)) {
     return id;
@@ -457,7 +476,7 @@ function mapSourceLink(row: CoreDatabaseSchema["source_links"]): Result<SourceLi
 }
 
 function mapChapterSourceLink(
-  row: CoreDatabaseSchema["chapter_source_links"],
+  row: ChapterSourceLinkRow,
 ): Result<ChapterSourceLink> {
   const id = parseChapterSourceLinkId(row.id);
   if (isErr(id)) {
@@ -474,7 +493,7 @@ function mapChapterSourceLink(
     return sourceLinkId;
   }
 
-  const linkStatus = ensureEnumValue(row.link_status, SOURCE_LINK_STATUSES, "link_status");
+  const linkStatus = ensureEnumValue(row.link_status, CHAPTER_SOURCE_LINK_STATUSES, "link_status");
   if (isErr(linkStatus)) {
     return linkStatus;
   }
@@ -489,7 +508,23 @@ function mapChapterSourceLink(
     return updatedAt;
   }
 
-  return ok(withOptional(withOptional({
+  const platformStatus =
+    row.source_platform_status == null
+      ? ok(undefined)
+      : ensureEnumValue(row.source_platform_status, SOURCE_PLATFORM_STATUSES, "source_platform_status");
+  if (isErr(platformStatus)) {
+    return platformStatus;
+  }
+
+  const sourceLinkStatus =
+    row.source_link_status == null
+      ? ok(undefined)
+      : ensureEnumValue(row.source_link_status, SOURCE_LINK_STATUSES, "source_link_status");
+  if (isErr(sourceLinkStatus)) {
+    return sourceLinkStatus;
+  }
+
+  return ok(withOptional(withOptional(withOptional(withOptional(withOptional({
     id: id.value,
     chapterId: chapterId.value,
     sourceLinkId: sourceLinkId.value,
@@ -497,7 +532,7 @@ function mapChapterSourceLink(
     linkStatus: linkStatus.value,
     createdAt: createdAt.value,
     updatedAt: updatedAt.value,
-  }, "remoteUrl", row.remote_url ?? undefined), "remoteLabel", row.remote_label ?? undefined));
+  }, "remoteUrl", row.remote_url ?? undefined), "remoteLabel", row.remote_label ?? undefined), "sourceOrder", row.source_order ?? undefined), "sourcePlatformStatus", platformStatus.value), "sourceLinkStatus", sourceLinkStatus.value));
 }
 
 function mapStorageObject(row: CoreDatabaseSchema["storage_objects"]): Result<StorageObject> {
@@ -608,24 +643,6 @@ function mapReaderSession(
     return pageId;
   }
 
-  const sourceLinkId = row.source_link_id === null ? ok(undefined) : parseSourceLinkId(row.source_link_id);
-  if (isErr(sourceLinkId)) {
-    return sourceLinkId;
-  }
-
-  const chapterSourceLinkId =
-    row.chapter_source_link_id === null
-      ? ok(undefined)
-      : parseChapterSourceLinkId(row.chapter_source_link_id);
-  if (isErr(chapterSourceLinkId)) {
-    return chapterSourceLinkId;
-  }
-
-  const readerMode = ensureEnumValue(row.reader_mode, READER_MODES, "reader_mode");
-  if (isErr(readerMode)) {
-    return readerMode;
-  }
-
   const createdAt = isoToDate(row.created_at, "created_at");
   if (isErr(createdAt)) {
     return createdAt;
@@ -636,15 +653,14 @@ function mapReaderSession(
     return updatedAt;
   }
 
-  return ok(withOptional(withOptional(withOptional({
+  return ok(withOptional({
     id: id.value,
     comicId: comicId.value,
     chapterId: chapterId.value,
     pageIndex: row.page_index,
-    readerMode: readerMode.value,
     createdAt: createdAt.value,
     updatedAt: updatedAt.value,
-  }, "pageId", pageId.value), "sourceLinkId", sourceLinkId.value), "chapterSourceLinkId", chapterSourceLinkId.value));
+  }, "pageId", pageId.value));
 }
 
 function mapDiagnosticsEvent(
@@ -1159,14 +1175,45 @@ class SqliteChapterRepository implements ChapterRepositoryPort {
   async listByComic(comicId: ComicId): Promise<Result<readonly Chapter[]>> {
     return catchRepositoryError(async () => {
       const rows = await currentDb(this.executorProvider)
-        .selectFrom("chapters")
-        .selectAll()
-        .where("comic_id", "=", comicId)
-        .orderBy("chapter_number", "asc")
-        .orderBy("created_at", "asc")
+        .selectFrom("chapters as c")
+        .leftJoin("chapter_source_links as csl", "csl.chapter_id", "c.id")
+        .leftJoin("source_links as sl", "sl.id", "csl.source_link_id")
+        .leftJoin("source_platforms as sp", "sp.id", "sl.source_platform_id")
+        .selectAll("c")
+        .select((eb) => [
+          eb.fn.min(
+            sql<number | null>`
+              CASE
+                WHEN csl.link_status = 'active'
+                  AND sp.status = 'active'
+                  AND csl.source_order IS NOT NULL
+                THEN csl.source_order
+                ELSE NULL
+              END
+            `,
+          ).as("aggregated_source_order"),
+        ])
+        .where("c.comic_id", "=", comicId)
+        .groupBy([
+          "c.id",
+          "c.comic_id",
+          "c.parent_chapter_id",
+          "c.chapter_kind",
+          "c.chapter_number",
+          "c.title",
+          "c.display_label",
+          "c.created_at",
+          "c.updated_at",
+        ])
+        .orderBy(sql<number>`CASE WHEN c.chapter_number IS NULL THEN 1 ELSE 0 END`, "asc")
+        .orderBy("c.chapter_number", "asc")
+        .orderBy(sql<number>`CASE WHEN aggregated_source_order IS NULL THEN 1 ELSE 0 END`, "asc")
+        .orderBy("aggregated_source_order", "asc")
+        .orderBy("c.created_at", "asc")
+        .orderBy("c.id", "asc")
         .execute();
 
-      return ok(rows.map((row) => unwrapMappedResult(mapChapter(row))));
+      return ok(rows.map((row) => unwrapMappedResult(mapChapter(row as CoreDatabaseSchema["chapters"]))));
     });
   }
 }
@@ -1376,10 +1423,7 @@ class SqliteReaderSessionRepository implements ReaderSessionRepositoryPort {
         if (
           session.chapterId === input.chapterId &&
           session.pageId === input.pageId &&
-          session.pageIndex === input.pageIndex &&
-          session.readerMode === input.readerMode &&
-          session.sourceLinkId === input.sourceLinkId &&
-          session.chapterSourceLinkId === input.chapterSourceLinkId
+          session.pageIndex === input.pageIndex
         ) {
           return ok({
             session,
@@ -1393,34 +1437,18 @@ class SqliteReaderSessionRepository implements ReaderSessionRepositoryPort {
             chapter_id: input.chapterId,
             page_id: input.pageId ?? null,
             page_index: input.pageIndex,
-            source_link_id: input.sourceLinkId ?? null,
-            chapter_source_link_id: input.chapterSourceLinkId ?? null,
-            reader_mode: input.readerMode,
             updated_at: now.toISOString(),
           })
           .where("comic_id", "=", input.comicId)
           .execute();
 
         return ok({
-          session: withOptional(
-            withOptional(
-              withOptional(
-                {
-                  ...session,
-                  chapterId: input.chapterId,
-                  pageIndex: input.pageIndex,
-                  readerMode: input.readerMode,
-                  updatedAt: now,
-                },
-                "pageId",
-                input.pageId,
-              ),
-              "sourceLinkId",
-              input.sourceLinkId,
-            ),
-            "chapterSourceLinkId",
-            input.chapterSourceLinkId,
-          ),
+          session: withOptional({
+            ...session,
+            chapterId: input.chapterId,
+            pageIndex: input.pageIndex,
+            updatedAt: now,
+          }, "pageId", input.pageId),
           status: "written",
         });
       }
@@ -1438,36 +1466,20 @@ class SqliteReaderSessionRepository implements ReaderSessionRepositoryPort {
           chapter_id: input.chapterId,
           page_id: input.pageId ?? null,
           page_index: input.pageIndex,
-          source_link_id: input.sourceLinkId ?? null,
-          chapter_source_link_id: input.chapterSourceLinkId ?? null,
-          reader_mode: input.readerMode,
           created_at: now.toISOString(),
           updated_at: now.toISOString(),
         })
         .execute();
 
       return ok({
-        session: withOptional(
-          withOptional(
-            withOptional(
-              {
-                id: sessionId.value,
-                comicId: input.comicId,
-                chapterId: input.chapterId,
-                pageIndex: input.pageIndex,
-                readerMode: input.readerMode,
-                createdAt: now,
-                updatedAt: now,
-              },
-              "pageId",
-              input.pageId,
-            ),
-            "sourceLinkId",
-            input.sourceLinkId,
-          ),
-          "chapterSourceLinkId",
-          input.chapterSourceLinkId,
-        ),
+        session: withOptional({
+          id: sessionId.value,
+          comicId: input.comicId,
+          chapterId: input.chapterId,
+          pageIndex: input.pageIndex,
+          createdAt: now,
+          updatedAt: now,
+        }, "pageId", input.pageId),
         status: "written",
       });
     });
@@ -1496,7 +1508,7 @@ class SqliteSourcePlatformRepository implements SourcePlatformRepositoryPort {
         .where("id", "=", id)
         .executeTakeFirst();
 
-      return row === undefined ? ok(null) : mapSourcePlatform(row);
+      return row === undefined ? ok(null) : mapSourcePlatform(row as SourcePlatformRow);
     });
   }
 
@@ -1508,20 +1520,88 @@ class SqliteSourcePlatformRepository implements SourcePlatformRepositoryPort {
         .where("canonical_key", "=", canonicalKey)
         .executeTakeFirst();
 
-      return row === undefined ? ok(null) : mapSourcePlatform(row);
+      return row === undefined ? ok(null) : mapSourcePlatform(row as SourcePlatformRow);
     });
   }
 
-  async listEnabled(): Promise<Result<readonly SourcePlatform[]>> {
+  async listByStatus(
+    status: SourcePlatformStatus,
+  ): Promise<Result<readonly SourcePlatform[]>> {
     return catchRepositoryError(async () => {
       const rows = await currentDb(this.executorProvider)
         .selectFrom("source_platforms")
         .selectAll()
-        .where("is_enabled", "=", 1)
+        .where("status", "=", status)
         .orderBy("canonical_key", "asc")
         .execute();
 
-      return ok(rows.map((row) => unwrapMappedResult(mapSourcePlatform(row))));
+      return ok(rows.map((row) => unwrapMappedResult(mapSourcePlatform(row as SourcePlatformRow))));
+    });
+  }
+
+  async updateStatus(input: {
+    id: SourcePlatformId;
+    status: SourcePlatformStatus;
+  }): Promise<Result<SourcePlatform>> {
+    return catchRepositoryError(async () => {
+      const existing = await this.getById(input.id);
+      if (isErr(existing)) {
+        return existing;
+      }
+
+      if (existing.value === null) {
+        return err(
+          createCoreError({
+            code: "NOT_FOUND",
+            message: "Source platform not found.",
+          }),
+        );
+      }
+
+      const currentStatus = existing.value.status;
+      const nextStatus = input.status;
+      const isAllowedTransition =
+        currentStatus === nextStatus
+        || (currentStatus === "active" && (nextStatus === "disabled" || nextStatus === "deprecated"))
+        || (currentStatus === "disabled" && (nextStatus === "active" || nextStatus === "deprecated"));
+
+      if (!isAllowedTransition) {
+        return err(
+          createCoreError({
+            code: "VALIDATION_ERROR",
+            message: "Unsupported source platform status transition.",
+            details: {
+              currentStatus,
+              nextStatus,
+            },
+          }),
+        );
+      }
+
+      await currentDb(this.executorProvider)
+        .updateTable("source_platforms")
+        .set({
+          status: nextStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .where("id", "=", input.id)
+        .execute();
+
+      const refreshed = await this.getById(input.id);
+      if (isErr(refreshed)) {
+        return refreshed;
+      }
+
+      if (refreshed.value === null) {
+        return err(
+          createCoreError({
+            code: "INTERNAL_ERROR",
+            message: "Source platform disappeared after status update.",
+          }),
+        );
+      }
+
+      return ok(refreshed.value);
     });
   }
 }
@@ -1574,26 +1654,44 @@ class SqliteChapterSourceLinkRepository implements ChapterSourceLinkRepositoryPo
   async listByChapter(chapterId: ChapterId): Promise<Result<readonly ChapterSourceLink[]>> {
     return catchRepositoryError(async () => {
       const rows = await currentDb(this.executorProvider)
-        .selectFrom("chapter_source_links")
-        .selectAll()
-        .where("chapter_id", "=", chapterId)
-        .orderBy("created_at", "asc")
+        .selectFrom("chapter_source_links as csl")
+        .innerJoin("source_links as sl", "sl.id", "csl.source_link_id")
+        .innerJoin("source_platforms as sp", "sp.id", "sl.source_platform_id")
+        .selectAll("csl")
+        .select([
+          sql<number | null>`csl.source_order`.as("source_order"),
+          sql<string>`sl.link_status`.as("source_link_status"),
+          sql<string>`sp.status`.as("source_platform_status"),
+        ])
+        .where("csl.chapter_id", "=", chapterId)
+        .orderBy("csl.created_at", "asc")
         .execute();
 
-      return ok(rows.map((row) => unwrapMappedResult(mapChapterSourceLink(row))));
+      return ok(
+        rows.map((row) => unwrapMappedResult(mapChapterSourceLink(row as ChapterSourceLinkRow))),
+      );
     });
   }
 
   async listBySourceLink(sourceLinkId: SourceLinkId): Promise<Result<readonly ChapterSourceLink[]>> {
     return catchRepositoryError(async () => {
       const rows = await currentDb(this.executorProvider)
-        .selectFrom("chapter_source_links")
-        .selectAll()
-        .where("source_link_id", "=", sourceLinkId)
-        .orderBy("created_at", "asc")
+        .selectFrom("chapter_source_links as csl")
+        .innerJoin("source_links as sl", "sl.id", "csl.source_link_id")
+        .innerJoin("source_platforms as sp", "sp.id", "sl.source_platform_id")
+        .selectAll("csl")
+        .select([
+          sql<number | null>`csl.source_order`.as("source_order"),
+          sql<string>`sl.link_status`.as("source_link_status"),
+          sql<string>`sp.status`.as("source_platform_status"),
+        ])
+        .where("csl.source_link_id", "=", sourceLinkId)
+        .orderBy("csl.created_at", "asc")
         .execute();
 
-      return ok(rows.map((row) => unwrapMappedResult(mapChapterSourceLink(row))));
+      return ok(
+        rows.map((row) => unwrapMappedResult(mapChapterSourceLink(row as ChapterSourceLinkRow))),
+      );
     });
   }
 }
